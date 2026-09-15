@@ -1544,6 +1544,13 @@ class RiskFactorsManager {
         const resEl = document.getElementById(`${prefix}motivering-residual`);
         if (emptyIn && motIn && inEl) inEl.value = motIn;
         if (emptyRes && motRes && resEl) resEl.value = motRes;
+        // Synka synliga S/K-rutor från dold kombinerad motivering (annars ser det tomt ut).
+        if ((emptyIn && motIn) || (emptyRes && motRes)) {
+            this.fillSplitMotiveringToDom(prefix, {
+                motivering_inneboende_risk: inEl ? inEl.value : '',
+                motivering_residual_risk: resEl ? resEl.value : ''
+            });
+        }
     }
 
 
@@ -1619,11 +1626,17 @@ class RiskFactorsManager {
     }
     applyOvrigAiIfEmpty(prefix, existing, data) {
         const Ai = window.AiFaltGranskning;
+        const mode = prefix === 'edit-' ? 'edit' : 'add';
+        const listPrefix = this.listPrefix(mode);
         if (!(Ai && Ai.isFilledText(existing.beskrivning)) && data.beskrivning) {
             document.getElementById(`${prefix}description`).value = data.beskrivning;
         }
         if (!(Ai && Ai.isFilledText(existing.atgard)) && data.atgard) {
             document.getElementById(`${prefix}action`).value = data.atgard;
+        }
+        if (!(Ai && Ai.isFilledText(existing.ptTfRelevans)) && data.ptTfRelevans) {
+            const pt = document.getElementById(`${prefix}pt-tf`);
+            if (pt) pt.value = (window.RiskSkala && RiskSkala.normalizePtTf(data.ptTfRelevans)) || data.ptTfRelevans;
         }
         const emptySxk = !(Ai && (Ai.isFilledScore(existing.sannolikhet) || Ai.isFilledScore(existing.konsekvens)));
         const emptyRes = !(Ai && (Ai.isFilledScore(existing.sannolikhetEfter) || Ai.isFilledScore(existing.konsekvensEfter)));
@@ -1632,6 +1645,43 @@ class RiskFactorsManager {
         if (emptyRes && data.sannolikhetEfter != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, data.sannolikhetEfter);
         if (emptyRes && data.konsekvensEfter != null) this.setScoreSelect(`${prefix}konsekvens-efter`, data.konsekvensEfter);
         this.applyOvrigAiMotivering(prefix, data, { onlyEmpty: true, existing });
+        // Prefill från byråprofilen lämnar hot/sårbarheter tomma — fyll dem som tjänst-AI gör.
+        const existingHot = existing.hot || [];
+        const existingSar = existing.sarbarheter || [];
+        if (!existingHot.length && Array.isArray(data.hot) && data.hot.length) {
+            const hotList = document.getElementById(listPrefix + 'hot-list');
+            if (hotList) hotList.innerHTML = '';
+            data.hot.forEach((h) => this.addHotRow(mode, h, { aiAdd: true }));
+        }
+        if (!existingSar.length && Array.isArray(data.sarbarheter) && data.sarbarheter.length) {
+            const sarList = document.getElementById(listPrefix + 'sarbarhet-list');
+            if (sarList) sarList.innerHTML = '';
+            data.sarbarheter.forEach((s) => this.addSarbarhetRow(mode, s, { aiAdd: true }));
+        }
+        if ((!existingHot.length && (data.hot || []).length) || (!existingSar.length && (data.sarbarheter || []).length)) {
+            this.updateRiskDynLists(mode);
+        }
+    }
+
+    /** Efter AI: lämna inte användaren kvar på Frågor-fliken där resultatet inte syns. */
+    focusRiskTabAfterAi(mode, data, existing = {}) {
+        const modalId = mode === 'edit' ? 'edit-risk-modal' : 'add-risk-modal';
+        const hadHot = (existing.hot || []).length > 0;
+        const hadSar = (existing.sarbarheter || []).length > 0;
+        if (!hadHot && (data.hot || []).length) {
+            this.setRiskTab(modalId, 'hot');
+            return 'hot';
+        }
+        if (!hadSar && (data.sarbarheter || []).length) {
+            this.setRiskTab(modalId, 'sarbarhet');
+            return 'sarbarhet';
+        }
+        if (data.atgard || data.beskrivning) {
+            this.setRiskTab(modalId, 'oversikt');
+            return 'oversikt';
+        }
+        this.setRiskTab(modalId, 'inneboende');
+        return 'inneboende';
     }
 
     attachOvrigFieldAi(afterEl, { label, html, comment, onApply }) {
@@ -1763,9 +1813,17 @@ class RiskFactorsManager {
         } else if (falt === 'motiveringInneboende') {
             const el = document.getElementById(`${prefix}motivering-inneboende`);
             if (el) el.value = String(forslag || '');
+            this.fillSplitMotiveringToDom(prefix, {
+                motivering_inneboende_risk: el ? el.value : String(forslag || ''),
+                motivering_residual_risk: document.getElementById(`${prefix}motivering-residual`)?.value || ''
+            });
         } else if (falt === 'motiveringResidual') {
             const el = document.getElementById(`${prefix}motivering-residual`);
             if (el) el.value = String(forslag || '');
+            this.fillSplitMotiveringToDom(prefix, {
+                motivering_inneboende_risk: document.getElementById(`${prefix}motivering-inneboende`)?.value || '',
+                motivering_residual_risk: el ? el.value : String(forslag || '')
+            });
         }
         this.updateRiskBadges(prefix ? 'edit' : 'add');
     }
@@ -1831,20 +1889,22 @@ class RiskFactorsManager {
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
             if (reviewMode) {
                 // Prefill från byråprofilen gör reviewMode (beskrivning redan ifylld).
-                // Tomma flikar (åtgärd, S×K, motivering) måste ändå fyllas — annars
-                // blockeras sparning tyst av required-fält i dolda Din resa-paneler.
+                // Tomma flikar (hot, sårbarheter, åtgärd, S×K, motivering) måste ändå fyllas —
+                // annars ser det ut som att AI inte gjort något (användaren står kvar på Frågor).
                 this.applyOvrigAiIfEmpty(prefix, befintligt, data);
                 const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
                     ? data.granskning.poster
                     : [];
                 const poster = Ai.ensureAnalysisPosters('ovrig', befintligt, data, basePoster);
                 const changed = this.paintInlineOvrigAi(prefix, poster, befintligt, reviewHost);
+                const tab = this.focusRiskTabAfterAi(mode, data, befintligt);
                 this.showNotification(changed
-                    ? 'AI har fyllt tomma fält och lagt förslag under ifyllda. Granska, kopiera in ändringar ni vill behålla, och spara.'
-                    : 'AI har fyllt tomma fält. Granska och spara — analysen hamnar under listan på sidan.', 'success');
+                    ? 'AI har fyllt tomma fält och lagt förslag under ifyllda. Granska flikarna, kopiera in ändringar ni vill behålla, och spara.'
+                    : 'AI har fyllt tomma fält (se fliken ' + (tab === 'hot' ? 'Hot' : tab === 'sarbarhet' ? 'Sårbarheter' : 'Översikt') + '). Granska och spara.', 'success');
             } else {
                 this.applyOvrigAiAll(prefix, data);
-                this.showNotification('AI-förslag inlagt. Granska och spara — analysen hamnar under listan på sidan.', 'success');
+                this.focusRiskTabAfterAi(mode, data, {});
+                this.showNotification('AI-förslag inlagt. Granska flikarna och spara — analysen hamnar under listan på sidan.', 'success');
             }
             if (mode === 'edit') this.editNeedsReview = false;
             this.updateRiskBadges(mode);
