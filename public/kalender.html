@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260915kal">
+    <link rel="stylesheet" href="styles.css?v=20260915kal2">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -26,6 +26,11 @@
                                     <div class="uppdragboard-month" id="kal-month">September 2026</div>
                                     <button type="button" class="uppdragboard-navbtn" id="kal-next" title="Nästa månad" aria-label="Nästa månad"><i class="fas fa-chevron-right"></i></button>
                                     <button type="button" class="btn btn-ghost btn-sm" id="kal-today">Idag</button>
+                                    <div class="kalender-view-toggle" role="tablist" aria-label="Kalendervy">
+                                        <button type="button" class="uppdragboard-tab is-active" role="tab" id="kal-view-month" data-kal-view="month" aria-selected="true"><span>Månad</span></button>
+                                        <button type="button" class="uppdragboard-tab" role="tab" id="kal-view-week" data-kal-view="week" aria-selected="false"><span>Vecka</span></button>
+                                        <button type="button" class="uppdragboard-tab" role="tab" id="kal-view-day" data-kal-view="day" aria-selected="false"><span>Dag</span></button>
+                                    </div>
                                 </div>
                             </div>
                             <div class="uppdragboard-actions">
@@ -74,13 +79,13 @@
                 </div>
 
                 <div id="kal-content" class="kalender-layout" style="display:none;">
-                    <div class="kalender-grid-wrap">
-                        <div class="kalender-weekdays" aria-hidden="true">
+                    <div class="kalender-grid-wrap" id="kal-grid-wrap" data-view="month">
+                        <div class="kalender-weekdays" id="kal-weekdays" aria-hidden="true">
                             <span>Mån</span><span>Tis</span><span>Ons</span><span>Tor</span><span>Fre</span><span>Lör</span><span>Sön</span>
                         </div>
                         <div class="kalender-grid" id="kal-grid" role="grid" aria-label="Månadskalender"></div>
                     </div>
-                    <aside class="kalender-side" aria-label="Deadlines i månaden">
+                    <aside class="kalender-side" id="kal-side" aria-label="Deadlines i perioden">
                         <h2 class="kalender-side-title">Deadlines <span id="kal-side-count" class="kalender-side-count"></span></h2>
                         <div id="kal-side-list" class="kalender-side-list"></div>
                     </aside>
@@ -108,6 +113,7 @@
     <script src="js/lone-period.js?v=1.2" defer></script>
     <script src="js/koring-visibility.js?v=1.1" defer></script>
     <script src="js/uppdrag-typ.js?v=2" defer></script>
-    <script src="js/kalender.js?v=1" defer></script>
+    <script src="js/kalender-view.js?v=1" defer></script>
+    <script src="js/kalender.js?v=2" defer></script>
 </body>
 </html>
