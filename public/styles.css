@@ -7788,6 +7788,18 @@ button.document-list-date--editable:focus-visible {
     max-height: 90vh;
     overflow: hidden;
 }
+.ua-pdf-preview-box {
+    overflow: hidden;
+}
+.ua-pdf-preview-box .document-preview-body {
+    flex: 1;
+    overflow: hidden;
+}
+.ua-pdf-preview-footer {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
 .document-preview-header-actions {
     display: flex;
     align-items: center;
