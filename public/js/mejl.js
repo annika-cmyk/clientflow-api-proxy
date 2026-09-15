@@ -483,13 +483,37 @@
             m.source === 'shared' || folder === 'shared'
               ? `<span class="mejl-item-shared-badge"><i class="fas fa-share-alt" aria-hidden="true"></i> Delat med dig</span>`
               : '';
+          const menuHtml = isSharedListId(m.id)
+            ? ''
+            : `<div class="mejl-item-menu">
+            <button type="button" class="mejl-item-menu-btn" data-mejl-menu-toggle aria-label="Fler alternativ" aria-haspopup="true" aria-expanded="false" title="Fler alternativ">
+              <i class="fas fa-ellipsis-v" aria-hidden="true"></i>
+            </button>
+            <div class="mejl-item-menu-panel" role="menu" hidden>
+              <button type="button" class="mejl-item-menu-item" role="menuitem" data-mejl-menu-action="todo">
+                <i class="fas fa-exclamation-circle" aria-hidden="true"></i> Att hantera
+              </button>
+              <button type="button" class="mejl-item-menu-item" role="menuitem" data-mejl-menu-action="handled">
+                <i class="fas fa-check" aria-hidden="true"></i> Hanterat
+              </button>
+              <button type="button" class="mejl-item-menu-item" role="menuitem" data-mejl-menu-action="koppla">
+                <i class="fas fa-link" aria-hidden="true"></i> Koppla till uppdrag / skapa uppgift
+              </button>
+              <button type="button" class="mejl-item-menu-item is-danger" role="menuitem" data-mejl-menu-action="radera">
+                <i class="fas fa-eye-slash" aria-hidden="true"></i> Radera
+              </button>
+            </div>
+          </div>`;
           return `
       <div class="mejl-item${m.id === activeId ? ' is-active' : ''}${handleClass}" data-id="${esc(m.id)}" role="button" tabindex="0">
         <div class="mejl-item-top">
           <div class="mejl-item-customer-row">
             ${customerLink}
           </div>
-          <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
+          <div class="mejl-item-top-right">
+            <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
+            ${menuHtml}
+          </div>
         </div>
         <div class="mejl-item-from">${esc(sender)}</div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
@@ -698,6 +722,65 @@
     activeId = null;
     els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
     renderList();
+  }
+
+  function closeAllMejlItemMenus() {
+    document.querySelectorAll('.mejl-item-menu.is-open').forEach((menu) => {
+      menu.classList.remove('is-open');
+      const panel = menu.querySelector('.mejl-item-menu-panel');
+      if (panel) panel.hidden = true;
+      const toggle = menu.querySelector('[data-mejl-menu-toggle]');
+      if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function findListMessage(id) {
+    return (
+      (messages || []).find((m) => m.id === id) ||
+      (sharedMessages || []).find((m) => m.id === id) ||
+      null
+    );
+  }
+
+  async function handleMejlItemMenuAction(id, action) {
+    if (isSharedListId(id)) return;
+    if (action === 'todo' || action === 'handled') {
+      if (!handleStatusApi) {
+        showToast('Kunde inte uppdatera status.', 'error');
+        return;
+      }
+      const status = action === 'handled' ? 'handled' : 'todo';
+      handleStatusApi.set(id, status);
+      renderList();
+      if (activeId === id && detailContext && detailContext.message) {
+        renderDetail(id, detailContext.message, detailContext.listMeta, kunderLabelsCache, null);
+      }
+      showToast(status === 'handled' ? 'Markerat som hanterat.' : 'Markerat som att hantera.', 'success');
+      return;
+    }
+    if (action === 'radera') {
+      await trashMessage(id);
+      return;
+    }
+    if (action === 'koppla') {
+      const listMsg = findListMessage(id);
+      const cid = resolveMessageCustomerId(listMsg || {});
+      if (!cid) {
+        showToast('Koppla mejlet till en kund först (via kundetikett).', 'error');
+        await openMessage(id);
+        return;
+      }
+      await openMessage(id);
+      const msg =
+        (detailContext && detailContext.message) || listMsg || { id, attachments: [] };
+      if (archiveApi && typeof archiveApi.openSaveWizard === 'function') {
+        await archiveApi.openSaveWizard(id, msg, cid, () => openMessage(id));
+      } else {
+        const saveBtn = document.getElementById('mejl-save-btn');
+        if (saveBtn && !saveBtn.disabled) saveBtn.click();
+        else showToast('Kunde inte öppna koppla-dialogen.', 'error');
+      }
+    }
   }
 
   function applyLabelResultToList(id, data) {
@@ -1473,6 +1556,40 @@
   });
   els.list.addEventListener('click', (e) => {
     if (e.target.closest('[data-kundkort-link]')) return;
+
+    const menuToggle = e.target.closest('[data-mejl-menu-toggle]');
+    if (menuToggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = menuToggle.closest('.mejl-item-menu');
+      const panel = menu && menu.querySelector('.mejl-item-menu-panel');
+      const wasOpen = menu && menu.classList.contains('is-open');
+      closeAllMejlItemMenus();
+      if (!wasOpen && menu && panel) {
+        menu.classList.add('is-open');
+        panel.hidden = false;
+        menuToggle.setAttribute('aria-expanded', 'true');
+      }
+      return;
+    }
+
+    const menuAction = e.target.closest('[data-mejl-menu-action]');
+    if (menuAction) {
+      e.preventDefault();
+      e.stopPropagation();
+      const item = menuAction.closest('.mejl-item');
+      const id = item && item.getAttribute('data-id');
+      const action = menuAction.getAttribute('data-mejl-menu-action');
+      closeAllMejlItemMenus();
+      if (id && action) handleMejlItemMenuAction(id, action);
+      return;
+    }
+
+    if (e.target.closest('.mejl-item-menu')) {
+      e.stopPropagation();
+      return;
+    }
+
     const btn = e.target.closest('.mejl-item');
     if (!btn) return;
     openMessage(btn.getAttribute('data-id'));
@@ -1480,10 +1597,18 @@
   els.list.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     if (e.target.closest('[data-kundkort-link]')) return;
+    if (e.target.closest('.mejl-item-menu')) return;
     const btn = e.target.closest('.mejl-item');
     if (!btn || e.target !== btn) return;
     e.preventDefault();
     openMessage(btn.getAttribute('data-id'));
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.mejl-item-menu')) return;
+    closeAllMejlItemMenus();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAllMejlItemMenus();
   });
 
   // Panel tabs + compose/sidfot listeners (DOM already present; bind once after load)
