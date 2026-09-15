@@ -65,6 +65,8 @@
   let byKey = new Map();
   let dragState = null;
   let saveToastTimer = null;
+  /** Nyckel för öppnad detaljpanel – synkas efter drag/resize av tidblock. */
+  let openDetailKey = null;
 
   function show(node, on) { if (node) node.style.display = on ? '' : 'none'; }
   function esc(s) {
@@ -231,6 +233,45 @@
     return KV.normalizeSchedule(ev.scheduledStart, ev.scheduledEnd);
   }
 
+  function hoursLabel(startMin, endMin) {
+    const h = Math.round(((Number(endMin) - Number(startMin)) / 60) * 100) / 100;
+    return Number.isFinite(h) && h > 0 ? h : 0;
+  }
+
+  /** Uppdatera avsatt tid i öppen detaljpanel medan man drar/ändrar längd. */
+  function previewDetailSchedule(key, startMin, endMin) {
+    if (!openDetailKey || String(openDetailKey) !== String(key || '')) return;
+    if (!el.detail || el.detail.hidden || !el.detailBody) return;
+    const hours = hoursLabel(startMin, endMin);
+    const label = `${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)} (${hours} t)`;
+    const dd = el.detailBody.querySelector('[data-avsatt-tid]');
+    if (dd) dd.textContent = label;
+    const btn = el.detailBody.querySelector('[data-registrera-tid]');
+    if (btn) {
+      btn.innerHTML = `<i class="fas fa-clock"></i> Registrera tid (${hours} t)`;
+      const href = btn.getAttribute('href');
+      if (href) {
+        try {
+          const u = new URL(href, window.location.origin);
+          u.searchParams.set('hours', String(hours));
+          const date = dragState?.date;
+          if (date) {
+            u.searchParams.set('date', date);
+            u.searchParams.set('start', KV.toLocalDateTimeIso(date, startMin));
+            u.searchParams.set('end', KV.toLocalDateTimeIso(date, endMin));
+          }
+          btn.setAttribute('href', `${u.pathname}?${u.searchParams.toString()}`);
+        } catch (_) { /* ignore bad href */ }
+      }
+    }
+  }
+
+  function refreshOpenDetail() {
+    if (!openDetailKey || !el.detail || el.detail.hidden) return;
+    if (!byKey.has(String(openDetailKey))) return;
+    openDetail(openDetailKey);
+  }
+
   function showSaveToast(msg, isError) {
     let toast = document.getElementById('kal-toast');
     if (!toast) {
@@ -393,7 +434,10 @@
         const startIso = KV.toLocalDateTimeIso(date, startMin);
         const endIso = KV.toLocalDateTimeIso(date, Math.min(endMin, KV.dayEndMinutes()));
         const ok = await persistSchedule(ev, startIso, endIso);
-        if (ok) render();
+        if (ok) {
+          render();
+          refreshOpenDetail();
+        }
       });
     });
   }
@@ -528,7 +572,10 @@
         const elBtn = gridEl.querySelector(`[data-key="${String(key).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`);
         if (elBtn) elBtn.dataset.suppressClick = '1';
         const ok = await persistSchedule(ev, startIso, endIso);
-        if (ok) render();
+        if (ok) {
+          render();
+          refreshOpenDetail();
+        }
       });
     });
 
@@ -566,6 +613,7 @@
           timeEl.textContent = `${KV.fmtTimeLabel(resized.startMin)}–${KV.fmtTimeLabel(resized.endMin)}`;
         }
         dragState.endMin = resized.endMin;
+        previewDetailSchedule(key, resized.startMin, resized.endMin);
       });
       const finishResize = async (e) => {
         if (!dragState || dragState.mode !== 'resize' || dragState.key !== key) return;
@@ -576,11 +624,16 @@
         const startMin = dragState.startMin;
         dragState = null;
         if (endMin == null || !date) return;
+        const ev = byKey.get(String(key || ''));
+        if (!ev) {
+          render();
+          return;
+        }
         const startIso = KV.toLocalDateTimeIso(date, startMin);
         const endIso = KV.toLocalDateTimeIso(date, endMin);
-        const ok = await persistSchedule(ev, startIso, endIso);
-        if (ok) render();
-        else render();
+        await persistSchedule(ev, startIso, endIso);
+        render();
+        refreshOpenDetail();
       };
       handle.addEventListener('pointerup', finishResize);
       handle.addEventListener('pointercancel', finishResize);
@@ -656,7 +709,10 @@
         const startIso = KV.toLocalDateTimeIso(date, 9 * 60);
         const endIso = KV.toLocalDateTimeIso(date, 9 * 60 + KV.DEFAULT_BLOCK_MINUTES);
         const ok = await persistSchedule(ev, startIso, endIso);
-        if (ok) render();
+        if (ok) {
+          render();
+          refreshOpenDetail();
+        }
       });
     });
   }
@@ -735,6 +791,7 @@
   function openDetail(key, group) {
     const ev = byKey.get(String(key || '')) || (group || []).find((x) => x.key === key);
     if (!ev || !el.detail) return;
+    openDetailKey = String(ev.key || key || '');
     const f = ev.record?.fields || {};
     const kundId = String(f['Kund ID'] || '').trim();
     const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
@@ -757,12 +814,12 @@
         <div><dt>Period</dt><dd>${esc(period)}</dd></div>
         <div><dt>Öppet från</dt><dd>${esc(toDate(ev.startDate) || '—')}</dd></div>
         <div><dt>Deadline</dt><dd>${esc(toDate(ev.deadline) || '—')}</dd></div>
-        <div><dt>Avsatt tid</dt><dd>${esc(blockLabel)}</dd></div>
+        <div><dt>Avsatt tid</dt><dd data-avsatt-tid>${esc(blockLabel)}</dd></div>
         ${ansvarig ? `<div><dt>Ansvarig</dt><dd>${esc(ansvarig)}</dd></div>` : ''}
       </dl>
       <div class="kalender-detail-actions">
         ${kundId ? `<a class="btn btn-primary btn-sm" href="kundkort.html?id=${encodeURIComponent(kundId)}"><i class="fas fa-user"></i> Öppna kundkort</a>` : ''}
-        ${tidUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(tidUrl)}"><i class="fas fa-clock"></i> Registrera tid${sched ? ` (${esc(String(sched.hours))} t)` : ''}</a>` : ''}
+        ${tidUrl ? `<a class="btn btn-ghost btn-sm" data-registrera-tid href="${esc(tidUrl)}"><i class="fas fa-clock"></i> Registrera tid${sched ? ` (${esc(String(sched.hours))} t)` : ''}</a>` : ''}
         <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
       </div>
       ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
@@ -786,6 +843,7 @@
 
   function closeDetail() {
     if (!el.detail) return;
+    openDetailKey = null;
     el.detail.hidden = true;
     document.body.classList.remove('kalender-detail-open');
   }
