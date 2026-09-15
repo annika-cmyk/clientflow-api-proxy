@@ -266,6 +266,24 @@
       if (pre.get('customerId')) el.customerId.value = pre.get('customerId');
       if (pre.get('uppdrag')) el.uppdrag.value = pre.get('uppdrag');
       if (pre.get('hours')) el.hours.value = pre.get('hours');
+      if (pre.get('date') && /^\d{4}-\d{2}-\d{2}$/.test(pre.get('date'))) {
+        el.date.value = pre.get('date');
+      }
+      const start = pre.get('start');
+      const end = pre.get('end');
+      if (start && end && el.description && !el.description.value) {
+        const fmt = (iso) => {
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return '';
+          return d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+        };
+        const a = fmt(start);
+        const b = fmt(end);
+        if (a && b) el.description.value = 'Avsatt tid ' + a + '–' + b + ' (från kalender)';
+      }
+      if (!el.activity.value && pre.get('hours')) {
+        el.activity.value = 'Uppdragsarbete';
+      }
     }
     updateAmountHint();
     el.modal.hidden = false;
