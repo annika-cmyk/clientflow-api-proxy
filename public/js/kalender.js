@@ -616,5 +616,41 @@
   }
 
   syncUi();
-  load();
+
+  // AuthManager hydrerar via cookie asynkront – vänta in clientflow:authReady
+  // innan auth-gaten, annars visas "Logga in…" trots att användaren är inloggad.
+  function init() {
+    const user = window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser();
+    if (user) {
+      load();
+      return;
+    }
+    show(el.loading, true);
+    show(el.noAuth, false);
+    show(el.content, false);
+    let settled = false;
+    const go = () => {
+      if (settled) return;
+      settled = true;
+      load();
+    };
+    window.addEventListener('clientflow:authReady', go, { once: true });
+    setTimeout(() => {
+      if (settled) return;
+      if (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) {
+        go();
+      } else {
+        settled = true;
+        show(el.loading, false);
+        show(el.content, false);
+        show(el.noAuth, true);
+      }
+    }, 4000);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
