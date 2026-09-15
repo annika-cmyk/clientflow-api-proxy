@@ -19990,6 +19990,38 @@ body.byra-resa-page .risk-header h1 {
   border-color: #38bdf8;
   outline: none;
 }
+.kundrisker-clientflow-statistik-section {
+  margin: 0 0 1.25rem;
+}
+.kundrisker-clientflow-statistik {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.15rem 1.25rem 1.25rem;
+}
+.kundrisker-clientflow-statistik-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+.kundrisker-clientflow-statistik-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--title-text);
+}
+.kundrisker-clientflow-sections {
+  margin-top: 0.75rem;
+}
+.kundrisker-enkat .statistik-stat-chips {
+  margin-top: 0.1rem;
+}
 .kundrisker-enkat-empty {
   margin: 0 0 0.85rem;
   font-size: 0.95rem;

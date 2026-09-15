@@ -48,6 +48,7 @@
     const hr = data.högriskbransch || [];
     const oms = data.omsattning || [];
     const anst = data.anstallda || [];
+    const bolagsform = data.bolagsform || [];
     const branschBuckets = data.kundBranschBuckets || [];
     const utsatt = (data.utsattOmrade && data.utsattOmrade.rader) || [];
 
@@ -63,6 +64,17 @@
     document.getElementById('stat-ovrigt').textContent = r['Övrigt'] || 0;
     const pepEl = document.getElementById('stat-pep-sanktion');
     if (pepEl) pepEl.textContent = typeof data.antalPepEllerSanktion === 'number' ? data.antalPepEllerSanktion : '–';
+
+    const bolagsformList = document.getElementById('statistik-bolagsform-lista');
+    if (bolagsformList) {
+      if (bolagsform.length === 0) {
+        bolagsformList.innerHTML = '<p class="stat-list-empty">Ingen bolagsform registrerad hos kunderna.</p>';
+      } else {
+        bolagsformList.innerHTML = chipsWrap(bolagsform.map(b => chipHtml({
+          typ: 'bolagsform', namn: b.namn, titel: b.namn, label: b.namn, antal: b.antal
+        })).join(''));
+      }
+    }
 
     const tjansterList = document.getElementById('statistik-tjanster-lista');
     if (tjansterList) {
