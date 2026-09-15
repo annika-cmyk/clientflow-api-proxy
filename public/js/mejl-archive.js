@@ -1,5 +1,5 @@
 /**
- * Mejlarkiv-UI: spara / dela / privat / maska på mejldetalj.
+ * Mejlarkiv-UI: koppla / dela / privat / maska på mejldetalj.
  */
 (function (global) {
   function esc(s) {
@@ -34,7 +34,7 @@
         '<div class="mejl-modal-body">' + bodyHtml + '</div>' +
         '<div class="mejl-modal-actions">' +
         '<button type="button" class="btn btn-secondary btn-sm" data-mejl-cancel>Avbryt</button>' +
-        '<button type="button" class="btn btn-primary btn-sm" data-mejl-ok>' + esc(confirmLabel || 'Spara') + '</button>' +
+        '<button type="button" class="btn btn-primary btn-sm" data-mejl-ok>' + esc(confirmLabel || 'Koppla') + '</button>' +
         '</div></div>';
       document.body.appendChild(root);
       root.addEventListener('click', (e) => { if (e.target === root) closeModal(); });
@@ -83,7 +83,7 @@
             : dest.attachments.length + ' bilagor (' + names + more + ')'
         );
       }
-      return parts.length ? parts.join(' + ') : 'sparad';
+      return parts.length ? parts.join(' + ') : 'kopplad';
     }
 
     function summarizeSavedToClient(savedTo, customerId) {
@@ -164,7 +164,7 @@
     function archiveMetaHtml(archive, opts) {
       const messageAttachments = (opts && opts.attachments) || [];
       if (!archive) {
-        return '<div class="mejl-archive-meta">Inte sparat i ClientFlow ännu.</div>';
+        return '<div class="mejl-archive-meta">Inte kopplat i ClientFlow ännu.</div>';
       }
       const vis = archive.visibility === 'privat' ? 'privat' : 'byra';
       const summary =
@@ -195,7 +195,7 @@
       html += '</div>';
 
       if (summary.hasSaves) {
-        html += '<div class="mejl-archive-saved-label">Sparat i ClientFlow</div><ul class="mejl-archive-dest-list">';
+        html += '<div class="mejl-archive-saved-label">Kopplat i ClientFlow</div><ul class="mejl-archive-dest-list">';
         summary.destinations.forEach((dest) => {
           const title = destinationDisplayName(dest);
           const contents = destinationContents(dest);
@@ -221,15 +221,15 @@
               ? savedAttCount +
                 ' av ' +
                 flags.length +
-                ' bilaga(or) sparad(e)' +
-                (unsavedAttCount ? '; ' + unsavedAttCount + ' ej sparad(e)' : '')
-              : 'Inga bilagor sparade ännu (' + flags.length + ' i mejlet)') +
+                ' bilaga(or) kopplad(e)' +
+                (unsavedAttCount ? '; ' + unsavedAttCount + ' ej kopplad(e)' : '')
+              : 'Inga bilagor kopplade ännu (' + flags.length + ' i mejlet)') +
             '.</div>';
         }
       } else {
         html +=
           '<div class="mejl-archive-saved-label mejl-archive-saved-label--muted">' +
-          'I Mejlarkiv (synlighet/delning) — inte sparat till dokumentation eller uppdrag ännu.' +
+          'I Mejlarkiv (synlighet/delning) — inte kopplat till dokumentation eller uppdrag ännu.' +
           '</div>';
       }
       html += '</div>';
@@ -242,7 +242,7 @@
       return (
         '<div class="mejl-archive-bar">' +
         '<button type="button" class="btn btn-secondary btn-sm" id="mejl-save-btn"' + disabled + '>' +
-        '<i class="fas fa-save"></i> Spara…</button>' +
+        '<i class="fas fa-link"></i> Koppla…</button>' +
         '<button type="button" class="btn btn-secondary btn-sm" id="mejl-share-btn"' + disabled + '>' +
         '<i class="fas fa-share-alt"></i> Dela…</button>' +
         '<button type="button" class="btn btn-secondary btn-sm" id="mejl-privat-btn"' + disabled + '>' +
@@ -269,7 +269,7 @@
               a.size ? ' <span class="mejl-att-size">(' + Math.round(a.size / 1024) + ' kB)</span>' : '';
             const saved = savedById.get(String(a.attachmentId || '')) === true;
             const savedBadge = saved
-              ? ' <span class="mejl-att-saved" title="Sparad i ClientFlow">Sparad</span>'
+              ? ' <span class="mejl-att-saved" title="Kopplad i ClientFlow">Kopplad</span>'
               : '';
             return (
               '<li class="mejl-att-item">' +
@@ -541,10 +541,111 @@
       } catch (_) { return []; }
     }
 
+    function todayIsoDate() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + day;
+    }
+
+    function uppdragOptionLabel(u) {
+      const f = (u && (u.fields || u)) || {};
+      const typ = f.Typ || f.typ || '';
+      if (global.UppdragTyp && UppdragTyp.uppdragDisplayName) {
+        return UppdragTyp.uppdragDisplayName(typ, f) || typ || u.id;
+      }
+      return f.Namn || typ || f.Name || u.id;
+    }
+
+    function userNameOptionsHtml(users, selectedName, placeholder) {
+      const selected = String(selectedName || '').trim();
+      const names = [];
+      const seen = new Set();
+      (users || []).forEach((u) => {
+        const n = String((u && u.name) || '').trim();
+        if (!n || seen.has(n)) return;
+        seen.add(n);
+        names.push(n);
+      });
+      if (selected && !seen.has(selected)) names.unshift(selected);
+      let html = '<option value="">' + esc(placeholder || 'Välj…') + '</option>';
+      names.forEach((n) => {
+        html +=
+          '<option value="' +
+          esc(n) +
+          '"' +
+          (n === selected ? ' selected' : '') +
+          '>' +
+          esc(n) +
+          '</option>';
+      });
+      return html;
+    }
+
+    async function loadCustomerKlientansvarig(customerId) {
+      try {
+        const res = await fetch(baseUrl + '/api/kunddata/' + encodeURIComponent(customerId), authOpts());
+        const data = await res.json().catch(() => ({}));
+        const fields =
+          (data && data.record && data.record.fields) ||
+          (data && data.fields) ||
+          (data && data.data && data.data.fields) ||
+          {};
+        return String(fields['Klientansvarig'] || fields.Klientansvarig || '').trim();
+      } catch (_) {
+        return '';
+      }
+    }
+
+    async function createEngangUppdrag(customerId, root) {
+      const namn = String((root.querySelector('#mejl-new-uppdrag-namn') || {}).value || '').trim();
+      const ansvarig = String((root.querySelector('#mejl-new-uppdrag-ansvarig') || {}).value || '').trim();
+      const klientansvarig = String(
+        (root.querySelector('#mejl-new-uppdrag-klientansvarig') || {}).value || ''
+      ).trim();
+      const deadline = String((root.querySelector('#mejl-new-uppdrag-deadline') || {}).value || '').trim();
+      const egetTyp =
+        (global.UppdragTyp && UppdragTyp.EGET_UPPDRAG_TYP) || 'Eget uppdrag';
+      if (!namn) throw new Error('Ange ett namn på uppdraget (t.ex. Lön).');
+      if (!klientansvarig) throw new Error('Välj klientansvarig.');
+      if (!ansvarig) throw new Error('Välj handläggare.');
+      if (!deadline) throw new Error('Ange deadline.');
+      const today = todayIsoDate();
+      const fields = {
+        Namn: namn,
+        Ansvarig: ansvarig,
+        Klientansvarig: klientansvarig,
+        Frekvens: 'Engång',
+        Startdatum: today,
+        'Nästa deadline': deadline,
+        Status: 'Aktiv'
+      };
+      const res = await fetch(baseUrl + '/api/uppdrag', {
+        method: 'POST',
+        ...authOpts(),
+        body: JSON.stringify({ customerId, typ: egetTyp, fields })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || 'Kunde inte skapa uppdrag');
+      const record = data.record || data;
+      if (!record || !record.id) throw new Error('Uppdraget skapades men id saknas');
+      return { record, displayName: namn };
+    }
+
     async function openSaveWizard(id, m, customerId, onDone) {
       if (!customerId) { showToast('Koppla mejlet till en kund först.', 'error'); return; }
       const atts = Array.isArray(m.attachments) ? m.attachments : [];
-      const [uppdrag, runs] = await Promise.all([loadUppdrag(customerId), loadRuns(customerId)]);
+      const currentUser =
+        (global.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) || {};
+      const currentUserName = String(currentUser.name || currentUser.Namn || '').trim();
+      const [uppdrag, runs, users, klientFromCustomer] = await Promise.all([
+        loadUppdrag(customerId),
+        loadRuns(customerId),
+        loadByraUsers(),
+        loadCustomerKlientansvarig(customerId)
+      ]);
+      const defaultKlient = klientFromCustomer || currentUserName;
       const attChecks = atts.length
         ? atts.map((a) =>
             '<label style="display:block;"><input type="checkbox" name="att" value="' +
@@ -552,30 +653,50 @@
           ).join('')
         : '<p class="mejl-hint">Inga bilagor.</p>';
       const uppdragOpts = (uppdrag || []).map((u) => {
-        const f = u.fields || u;
-        return '<option value="' + esc(u.id) + '">' + esc(f.Typ || f.Name || u.id) + '</option>';
+        return '<option value="' + esc(u.id) + '">' + esc(uppdragOptionLabel(u)) + '</option>';
       }).join('');
       const runOpts = (runs || []).map((r) => {
         const f = r.fields || r;
         const label = ((f['Period Label'] || f.PeriodKey || '') + (f.Typ ? ' · ' + f.Typ : '') + (f.Deadline ? ' (' + f.Deadline + ')' : '')) || r.id;
-        return '<option value="' + esc(r.id) + '">' + esc(label) + '</option>';
+        return '<option value="' + esc(r.id) + '" data-uppdrag-id="' + esc(f['Uppdrag ID'] || '') + '">' + esc(label) + '</option>';
       }).join('');
+      const today = todayIsoDate();
+      const ansvarigOpts = userNameOptionsHtml(users, currentUserName, 'Välj handläggare');
+      const klientOpts = userNameOptionsHtml(users, defaultKlient, 'Välj klientansvarig');
 
       openModal(
-        'Spara mejl / bilagor',
+        'Koppla mejl / bilagor',
         '<div class="form-grid">' +
-          '<label><input type="checkbox" id="mejl-save-email" checked> Spara hela mejlet</label>' +
-          '<label><input type="checkbox" id="mejl-save-atts"' + (atts.length ? ' checked' : ' disabled') + '> Spara bilagor</label>' +
+          '<label><input type="checkbox" id="mejl-save-email" checked> Koppla hela mejlet</label>' +
+          '<label><input type="checkbox" id="mejl-save-atts"' + (atts.length ? ' checked' : ' disabled') + '> Koppla bilagor</label>' +
           '<div><div class="mejl-labels-heading">Välj bilagor</div>' + attChecks + '</div>' +
-          '<div><label class="mejl-label-edit-label" for="mejl-save-mode">Sparmål</label>' +
+          '<div><label class="mejl-label-edit-label" for="mejl-save-mode">Kopplingsmål</label>' +
           '<select id="mejl-save-mode" class="form-select form-input">' +
           '<option value="dokumentation">Dokumentation på kunden</option>' +
           '<option value="uppdrag">Uppdrag</option>' +
           '<option value="korning">Uppdragskörning</option>' +
           '<option value="split">Dela upp: mejl→dokumentation, bilagor→uppdrag/körning</option>' +
           '</select></div>' +
-          '<div id="mejl-save-uppdrag-wrap" hidden><label class="mejl-label-edit-label" for="mejl-save-uppdrag">Uppdrag</label>' +
-          '<select id="mejl-save-uppdrag" class="form-select form-input"><option value="">Välj…</option>' + uppdragOpts + '</select></div>' +
+          '<div id="mejl-save-uppdrag-wrap" hidden>' +
+          '<label class="mejl-label-edit-label" for="mejl-save-uppdrag">Uppdrag</label>' +
+          '<select id="mejl-save-uppdrag" class="form-select form-input">' +
+          '<option value="">Välj…</option>' +
+          '<option value="__new__">＋ Skapa nytt enstaka uppdrag…</option>' +
+          uppdragOpts +
+          '</select>' +
+          '<p class="mejl-hint" style="margin:0.35rem 0 0;">För engångsjobb (t.ex. en lön) som saknar löpande uppdrag — skapa ett enstaka här.</p>' +
+          '</div>' +
+          '<div id="mejl-new-uppdrag-wrap" hidden class="form-grid" style="margin:0; padding:0.65rem 0.75rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">' +
+          '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-namn">Namn på uppdrag *</label>' +
+          '<input type="text" id="mejl-new-uppdrag-namn" class="form-input" placeholder="t.ex. Lön, Extra bokföring"></div>' +
+          '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-klientansvarig">Klientansvarig *</label>' +
+          '<select id="mejl-new-uppdrag-klientansvarig" class="form-select form-input">' + klientOpts + '</select></div>' +
+          '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-ansvarig">Handläggare *</label>' +
+          '<select id="mejl-new-uppdrag-ansvarig" class="form-select form-input">' + ansvarigOpts + '</select></div>' +
+          '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-deadline">Deadline *</label>' +
+          '<input type="date" id="mejl-new-uppdrag-deadline" class="form-input" value="' + esc(today) + '"></div>' +
+          '<p class="mejl-hint" style="margin:0;">Skapas som Eget uppdrag med frekvens Engång (en körning).</p>' +
+          '</div>' +
           '<div id="mejl-save-run-wrap" hidden><label class="mejl-label-edit-label" for="mejl-save-run">Körning</label>' +
           '<select id="mejl-save-run" class="form-select form-input"><option value="">Välj…</option>' + runOpts + '</select></div>' +
           '</div>',
@@ -586,21 +707,53 @@
           const selectedAtts = [...root.querySelectorAll('input[name="att"]:checked')].map((el) => el.value);
           const uppdragEl = root.querySelector('#mejl-save-uppdrag');
           const runEl = root.querySelector('#mejl-save-run');
-          const uppdragId = (uppdragEl || {}).value || '';
-          const runId = (runEl || {}).value || '';
-          const uppdragName =
-            uppdragEl && uppdragEl.selectedIndex > 0
+          let uppdragId = (uppdragEl || {}).value || '';
+          let runId = (runEl || {}).value || '';
+          let uppdragName =
+            uppdragEl && uppdragEl.selectedIndex > 0 && uppdragId !== '__new__'
               ? String(uppdragEl.options[uppdragEl.selectedIndex].textContent || '').trim()
               : '';
-          const runName =
+          let runName =
             runEl && runEl.selectedIndex > 0
               ? String(runEl.options[runEl.selectedIndex].textContent || '').trim()
               : '';
+
+          if ((mode === 'uppdrag' || mode === 'split' || mode === 'korning') && uppdragId === '__new__') {
+            try {
+              const created = await createEngangUppdrag(customerId, root);
+              uppdragId = created.record.id;
+              uppdragName = created.displayName;
+              if (mode === 'korning' || mode === 'split') {
+                const freshRuns = await loadRuns(customerId);
+                const match = (freshRuns || []).find((r) => {
+                  const f = r.fields || r;
+                  return String(f['Uppdrag ID'] || '').trim() === uppdragId;
+                });
+                if (match) {
+                  runId = match.id;
+                  const f = match.fields || match;
+                  runName =
+                    ((f['Period Label'] || f.PeriodKey || '') +
+                      (f.Typ ? ' · ' + f.Typ : '') +
+                      (f.Deadline ? ' (' + f.Deadline + ')' : '')) ||
+                    uppdragName ||
+                    match.id;
+                } else if (mode === 'korning') {
+                  // Engång-uppdrag utan körning ännu — koppla till uppdraget istället
+                  showToast('Körning saknas ännu — kopplar till det nya uppdraget.', 'info');
+                }
+              }
+            } catch (err) {
+              showToast((err && err.message) || 'Kunde inte skapa uppdrag', 'error');
+              return;
+            }
+          }
+
           let targets = [];
           if (mode === 'dokumentation') {
             targets = [{ type: 'dokumentation', customerId, includeEmail, attachmentIds: saveAtts ? selectedAtts : [] }];
           } else if (mode === 'uppdrag') {
-            if (!uppdragId) { showToast('Välj ett uppdrag.', 'error'); return; }
+            if (!uppdragId || uppdragId === '__new__') { showToast('Välj eller skapa ett uppdrag.', 'error'); return; }
             targets = [{
               type: 'uppdrag',
               uppdragId,
@@ -610,15 +763,28 @@
               attachmentIds: saveAtts ? selectedAtts : []
             }];
           } else if (mode === 'korning') {
-            if (!runId) { showToast('Välj en körning.', 'error'); return; }
-            targets = [{
-              type: 'korning',
-              runId,
-              runName,
-              customerId,
-              includeEmail,
-              attachmentIds: saveAtts ? selectedAtts : []
-            }];
+            if (runId) {
+              targets = [{
+                type: 'korning',
+                runId,
+                runName,
+                customerId,
+                includeEmail,
+                attachmentIds: saveAtts ? selectedAtts : []
+              }];
+            } else if (uppdragId && uppdragId !== '__new__') {
+              targets = [{
+                type: 'uppdrag',
+                uppdragId,
+                uppdragName,
+                customerId,
+                includeEmail,
+                attachmentIds: saveAtts ? selectedAtts : []
+              }];
+            } else {
+              showToast('Välj en körning eller skapa ett enstaka uppdrag.', 'error');
+              return;
+            }
           } else {
             if (includeEmail) targets.push({ type: 'dokumentation', customerId, includeEmail: true, attachmentIds: [] });
             if (saveAtts && selectedAtts.length) {
@@ -631,7 +797,7 @@
                   includeEmail: false,
                   attachmentIds: selectedAtts
                 });
-              } else if (uppdragId) {
+              } else if (uppdragId && uppdragId !== '__new__') {
                 targets.push({
                   type: 'uppdrag',
                   uppdragId,
@@ -643,7 +809,7 @@
               } else { showToast('Välj uppdrag eller körning för bilagor.', 'error'); return; }
             }
           }
-          if (!targets.length) { showToast('Inget att spara.', 'error'); return; }
+          if (!targets.length) { showToast('Inget att koppla.', 'error'); return; }
           const res = await fetch(baseUrl + '/api/gmail/messages/' + encodeURIComponent(id) + '/save', {
             method: 'POST', ...authOpts(),
             body: JSON.stringify({ customerId, includeEmail: false, saveAttachments: false, targets })
@@ -654,11 +820,11 @@
           const nErr = errResults.length;
           const firstResultErr = errResults[0] && errResults[0].error;
           if (!res.ok || data.success === false) {
-            showToast(data.error || firstResultErr || 'Kunde inte spara', 'error');
+            showToast(data.error || firstResultErr || 'Kunde inte koppla', 'error');
             return;
           }
           if (nErr && !nOk) {
-            showToast(firstResultErr || 'Kunde inte spara', 'error');
+            showToast(firstResultErr || 'Kunde inte koppla', 'error');
             return;
           }
           const destLabel =
@@ -670,11 +836,11 @@
             uppdragName ||
             '';
           const okMsg = destLabel
-            ? 'Sparat till ' + destLabel + ' (' + nOk + ' objekt).'
-            : 'Sparat (' + nOk + ' objekt).';
+            ? 'Kopplat till ' + destLabel + ' (' + nOk + ' objekt).'
+            : 'Kopplat (' + nOk + ' objekt).';
           showToast(
             nErr
-              ? 'Sparat ' +
+              ? 'Kopplat ' +
                   nOk +
                   (destLabel ? ' till ' + destLabel : '') +
                   ', ' +
@@ -688,18 +854,24 @@
           archiveState = data.archive || archiveState;
           if (onDone) await onDone();
         },
-        'Spara'
+        'Koppla'
       );
       const modeEl = document.getElementById('mejl-save-mode');
+      const uppdragEl = document.getElementById('mejl-save-uppdrag');
       const sync = () => {
-        const mode = modeEl.value;
+        const mode = modeEl ? modeEl.value : 'dokumentation';
         const u = document.getElementById('mejl-save-uppdrag-wrap');
         const r = document.getElementById('mejl-save-run-wrap');
+        const neu = document.getElementById('mejl-new-uppdrag-wrap');
         if (u) u.hidden = !(mode === 'uppdrag' || mode === 'split' || mode === 'korning');
         if (r) r.hidden = !(mode === 'korning' || mode === 'split');
         if (mode === 'uppdrag' && r) r.hidden = true;
+        const creating = !!(u && !u.hidden && uppdragEl && uppdragEl.value === '__new__');
+        if (neu) neu.hidden = !creating;
       };
-      if (modeEl) { modeEl.addEventListener('change', sync); sync(); }
+      if (modeEl) modeEl.addEventListener('change', sync);
+      if (uppdragEl) uppdragEl.addEventListener('change', sync);
+      sync();
     }
 
     async function openShareDialog(id, customerId, onDone) {
