@@ -3,6 +3,7 @@
  * Delas mellan Node-tester och övriga-riskfaktorer-sidan.
  *
  * Analysförslag filtreras av quiz-svar: Ja (eller Delvis) → visas, Nej/tomt → döljs.
+ * Betalningsuppdrag och högrisktjänster landar på Byråns tjänster (ByraProfilTjanstForslag).
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -23,8 +24,7 @@
     { key: 'geografiskMarknad', label: 'Byråns geografiska marknad' },
     { key: 'lopandeUtbildning', label: 'Löpande utbildning' },
     { key: 'personalomsattning', label: 'Personalomsättning' },
-    { key: 'outsourcingUnderleverantorer', label: 'Outsourcing' },
-    { key: 'betalningsuppdrag', label: 'Betalningsuppdrag' }
+    { key: 'outsourcingUnderleverantorer', label: 'Outsourcing' }
   ];
 
   function trimStr(value) {
@@ -232,19 +232,6 @@
       });
     }
 
-    if (isYes(p.betalningsuppdrag)) {
-      add({
-        id: 'betalningsuppdrag',
-        typ: TYP_VERKSAMHET,
-        riskfaktor: 'Betalningsuppdrag åt kunder',
-        triggerLabel: 'Betalningsuppdrag: Ja',
-        beskrivning:
-          'Behörighet att genomföra betalningar åt kunder är en förhöjd riskfaktor: byrån kan bli kanal för otillåtna flöden om uppdraget missbrukas.',
-        ptTf: 'PT',
-        why: 'Byråprofil: betalningsuppdrag = Ja'
-      });
-    }
-
     if (isYesOrPartial(p.storaKundberoenden)) {
       add({
         id: 'kundberoende',
@@ -258,57 +245,8 @@
       });
     }
 
-    if (isYesOrPartial(p.bolagsbildningAtKund)) {
-      add({
-        id: 'bolagsbildning',
-        typ: TYP_VERKSAMHET,
-        riskfaktor: 'Bolagsbildning åt kunder',
-        triggerLabel: 'Bolagsbildning: ' + trimStr(p.bolagsbildningAtKund),
-        beskrivning:
-          'Att bilda bolag åt kunder är en tjänst med förhöjd risk i sig — kan användas för målvaktsupplägg, snabb omsättning av skalbolag och dolda ägarförhållanden.',
-        ptTf: 'Båda',
-        why: 'Byråprofil: bolagsbildning = ' + trimStr(p.bolagsbildningAtKund)
-      });
-    }
-
-    if (isYesOrPartial(p.styrelseEllerNomineeRoller)) {
-      add({
-        id: 'nominee-styrelse',
-        typ: TYP_VERKSAMHET,
-        riskfaktor: 'Styrelse- eller nominee-liknande roller åt kund',
-        triggerLabel: 'Styrelse/nominee: ' + trimStr(p.styrelseEllerNomineeRoller),
-        beskrivning:
-          'När byrån tar styrelse- eller nominee-liknande roller för kunds räkning ökar risken för att byrån används som skylt eller för att dölja verklig kontroll.',
-        ptTf: 'Båda',
-        why: 'Byråprofil: styrelse/nominee = ' + trimStr(p.styrelseEllerNomineeRoller)
-      });
-    }
-
-    if (isYesOrPartial(p.satePostadress)) {
-      add({
-        id: 'sate-postadress',
-        typ: TYP_VERKSAMHET,
-        riskfaktor: 'Säte eller postadress åt kunder (brevlådeföretag)',
-        triggerLabel: 'Säte/postadress: ' + trimStr(p.satePostadress),
-        beskrivning:
-          'Att tillhandahålla säte eller postadress åt kunder är en klassisk högrisktjänst kopplad till brevlådeföretag och svag faktisk verksamhet.',
-        ptTf: 'Båda',
-        why: 'Byråprofil: säte/postadress = ' + trimStr(p.satePostadress)
-      });
-    }
-
-    if (isYesOrPartial(p.fullmaktBolagsverket)) {
-      add({
-        id: 'fullmakt-bolagsverket',
-        typ: TYP_VERKSAMHET,
-        riskfaktor: 'Fullmakt hos Bolagsverket att ändra bolagsuppgifter',
-        triggerLabel: 'Bolagsverket-fullmakt: ' + trimStr(p.fullmaktBolagsverket),
-        beskrivning:
-          'Fullmakt att ändra styrelse, firmatecknare eller adress hos Bolagsverket är känsligare än vanligt ombud och kan missbrukas vid bolagskapning.',
-        ptTf: 'Båda',
-        why: 'Byråprofil: Bolagsverket-fullmakt = ' + trimStr(p.fullmaktBolagsverket)
-      });
-    }
+    // Betalningsuppdrag + högrisktjänster (bolagsbildning, nominee, säte, fullmakt)
+    // föreslås som tjänstekort på Byråns tjänster via ByraProfilTjanstForslag.
 
     if (isYes(p.nearMisses)) {
       add({

@@ -3,7 +3,7 @@
  * Delas mellan Node-tester, enkäten och Övriga riskfaktorer / Vilka är våra kunder.
  *
  * Analysförslag på målsidorna filtreras av quiz-svar (Ja → visas, Nej → döljs)
- * via ByraProfilRiskForslag / KundriskerProfilAnalysForslag.
+ * via ByraProfilRiskForslag / ByraProfilTjanstForslag / KundriskerProfilAnalysForslag.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -21,7 +21,7 @@
     shortLabel: 'Byråns tjänster',
     pageTitle: 'Byråns tjänster',
     hint:
-      'Svar om tjänsternas karaktär och tjänster med förhöjd risk används som underlag på Byråns tjänster.'
+      'Svar om betalningsuppdrag och tjänster med förhöjd risk ger förslag på tjänstekort under Från byråprofilen på Byråns tjänster.'
   };
 
   var VERKSAMHET_TARGET = {
@@ -85,7 +85,7 @@
       TJANSTER_TARGET,
       {
         hint:
-          'Bolagsbildning, nominee, säte/postadress och känsliga fullmakter ingår nu i steget Byråns tjänster.'
+          'Bolagsbildning, nominee, säte/postadress och känsliga fullmakter ger förslag på tjänstekort under Från byråprofilen på Byråns tjänster.'
       }
     ),
     geografi: {
@@ -96,7 +96,7 @@
       shortLabel: 'Geografisk risk',
       pageTitle: 'Övriga riskfaktorer',
       hint:
-        'Byråns geografiska marknad bedöms under Övriga riskfaktorer. Kundernas hemvist syns också under Från byråprofilen på Vilka är våra kunder.'
+        'Byråns geografiska marknad bedöms under Övriga riskfaktorer. Kunder i utsatta områden och övrig kundgeo hör hemma under Vilka är våra kunder.'
     },
     historik: {
       sectionId: 'historik',
@@ -106,7 +106,7 @@
       shortLabel: 'Historik och track record',
       pageTitle: 'Allmän riskbedömning byrå',
       hint:
-        'Avvikelserapporter, tillsynsanmärkningar och near misses visas under Historik och track record i allmän riskbedömning.'
+        'Avvikelserapporter, tillsynsanmärkningar och near misses syns som underlag under Historik och track record i allmän riskbedömning — där kan ni också skriva och generera analys.'
     },
     beroende: Object.assign(
       { sectionId: 'beroende' },
@@ -154,6 +154,8 @@
     styrelseEllerNomineeRoller: 'tjanster',
     satePostadress: 'tjanster',
     fullmaktBolagsverket: 'tjanster',
+    ombudSkatteprocesser: 'tjanster',
+    generalfullmaktMyndighet: 'tjanster',
     nearMisses: 'historik',
     lanstyrelsenAnmarkningar: 'historik'
   };
