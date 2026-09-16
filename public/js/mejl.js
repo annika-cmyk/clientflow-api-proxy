@@ -162,11 +162,13 @@
     sigPreview: document.getElementById('mejl-sig-preview'),
     sigSave: document.getElementById('mejl-sig-save'),
     sigStatus: document.getElementById('mejl-sig-status'),
-    sigLayouts: document.getElementById('mejl-sig-layouts')
+    sigLayouts: document.getElementById('mejl-sig-layouts'),
+    sigComposeHint: document.getElementById('mejl-sig-compose-hint')
   };
 
   let status = null;
   let customers = [];
+  let signatureReady = false;
   let messages = [];
   let sharedMessages = [];
   let activeId = null;
@@ -1404,12 +1406,32 @@
     const res = await fetch(`${baseUrl}/api/mejl/signature/preview`, { method:'POST', ...authOpts(), body: JSON.stringify({ settings: collectSignatureSettings() }) });
     const data = await res.json().catch(() => ({}));
     els.sigPreview.innerHTML = data.previewHtml || '<p class="mejl-hint">Ingen sidfot ännu.</p>';
+    signatureReady = !!(data.previewHtml && String(data.previewHtml).trim());
+    updateComposeSignatureHint();
+  }
+  function updateComposeSignatureHint() {
+    if (!els.sigComposeHint) return;
+    if (signatureReady) {
+      els.sigComposeHint.innerHTML = 'Din mejl-sidfot bifogas automatiskt när du skickar. Ändra under <button type="button" class="mejl-hint-link" id="mejl-sig-hint-open" style="background:none;border:none;padding:0;color:#1e3a5f;text-decoration:underline;cursor:pointer;font:inherit;">Inställningar · sidfot</button>.';
+    } else {
+      els.sigComposeHint.innerHTML = 'Ingen sidfot sparad ännu — lägg till under <button type="button" class="mejl-hint-link" id="mejl-sig-hint-open" style="background:none;border:none;padding:0;color:#1e3a5f;text-decoration:underline;cursor:pointer;font:inherit;">Inställningar · sidfot</button> så den följer med varje utskick.';
+    }
+    const openBtn = document.getElementById('mejl-sig-hint-open');
+    if (openBtn) openBtn.onclick = () => showMejlPanel('settings');
   }
   async function loadSignatureSettings() {
-    if (!els.panelSettings) return;
+    if (!els.panelSettings && !els.sigComposeHint) return;
     const res = await fetch(`${baseUrl}/api/mejl/signature`, authOpts());
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.settings) { fillSignatureForm(data.settings); if (data.previewHtml && els.sigPreview) els.sigPreview.innerHTML = data.previewHtml; else await refreshSignaturePreview(); }
+    if (res.ok && data.settings) {
+      fillSignatureForm(data.settings);
+      if (data.previewHtml && els.sigPreview) els.sigPreview.innerHTML = data.previewHtml;
+      else if (els.panelSettings && !els.panelSettings.hidden) await refreshSignaturePreview();
+      signatureReady = !!(data.previewHtml && String(data.previewHtml).trim());
+    } else {
+      signatureReady = false;
+    }
+    updateComposeSignatureHint();
   }
   function showMejlPanel(name) {
     const isSettings = name === 'settings';
@@ -1459,12 +1481,29 @@
       });
       const prep = await prepRes.json().catch(() => ({}));
       if (!prepRes.ok || !prep.success) { els.sendStatus.textContent = prep.error || 'Kunde inte förbereda mejlet'; return; }
+      if (!prep.signatureAttached) {
+        const go = window.confirm('Ingen mejl-sidfot bifogades. Skicka ändå?\n\nTips: spara en sidfot under Inställningar · sidfot.');
+        if (!go) { els.sendStatus.textContent = 'Skickning avbruten — lägg till sidfot först.'; return; }
+      }
       els.sendStatus.textContent = 'Skickar…';
-      const payload = { to: els.to.value.trim(), subject: els.subject.value.trim(), text: prep.text || publicText, html: prep.html || undefined, customerId: els.customer.value || undefined, threadId: els.compose.dataset.threadId || undefined, inReplyTo: els.compose.dataset.inReplyTo || undefined };
+      const payload = {
+        to: els.to.value.trim(),
+        subject: els.subject.value.trim(),
+        text: prep.text || publicText,
+        html: prep.html || undefined,
+        inlineImages: Array.isArray(prep.inlineImages) ? prep.inlineImages : [],
+        customerId: els.customer.value || undefined,
+        threadId: els.compose.dataset.threadId || undefined,
+        inReplyTo: els.compose.dataset.inReplyTo || undefined
+      };
       const res = await fetch(`${baseUrl}/api/gmail/send`, { method:'POST', ...authOpts(), body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok || !data.success) { els.sendStatus.textContent = data.error || 'Kunde inte skicka'; return; }
-      els.sendStatus.textContent = `Skickat från ${data.from || 'Gmail'}`;
+      els.sendStatus.textContent = prep.signatureAttached
+        ? `Skickat från ${data.from || 'Gmail'} (med sidfot)`
+        : `Skickat från ${data.from || 'Gmail'}`;
+      signatureReady = !!prep.signatureAttached;
+      updateComposeSignatureHint();
       els.compose.hidden = true;
       els.to.value = ''; els.subject.value = ''; els.body.value = '';
       if (els.protectedBody) els.protectedBody.value = '';
@@ -1549,6 +1588,7 @@
   els.composeToggle.addEventListener('click', () => {
     els.compose.hidden = false;
     els.sendStatus.textContent = '';
+    loadSignatureSettings().catch(() => updateComposeSignatureHint());
   });
   els.composeCancel.addEventListener('click', () => {
     els.compose.hidden = true;
@@ -1804,6 +1844,8 @@
         fillSignatureForm(data.settings);
         if (data.previewHtml && els.sigPreview) els.sigPreview.innerHTML = data.previewHtml;
         els.sigStatus.textContent = 'Sparad.';
+        signatureReady = !!(data.previewHtml && String(data.previewHtml).trim());
+        updateComposeSignatureHint();
         showToast('Mejl-sidfot sparad.', 'success');
       } catch (err) {
         const msg = (err && err.message) || 'Kunde inte spara sidfoten.';
