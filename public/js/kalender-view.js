@@ -188,7 +188,7 @@
   const DAY_END_HOUR = 20;
   const SNAP_MINUTES = 15;
   const DEFAULT_BLOCK_MINUTES = 60;
-  const PX_PER_HOUR = 48;
+  const PX_PER_HOUR = 54;
 
   function dayStartMinutes() {
     return DAY_START_HOUR * 60;
