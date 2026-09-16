@@ -239,12 +239,27 @@
                                                             <span data-ar-title-text>2.1.6 Historik och track record</span>
                                                         </h5>
                                                         <p class="byra-card-source-hint">
-                                                            Underlag från byråprofil-enkäten: avvikelserapporter, tillsynsanmärkningar och near misses.
+                                                            Analysera byråns track record: avvikelserapporter, tillsynsanmärkningar och near misses — och vad det innebär för riskbedömning och kontroller.
                                                             <a href="byra-profil-enkate.html?section=historik">Öppna enkätsteget</a>
                                                         </p>
+                                                        <div class="byra-card byra-card--flat" data-field-id="fld-ar-historik">
+                                                            <div class="byra-card-view">
+                                                                <div class="byra-card-value"></div>
+                                                                <div class="byra-card-actions">
+                                                                    <button type="button" class="btn-ai-suggest" data-ai-kartlaggning="historik" title="AI skriver historikanalys utifrån byråprofilens svar"><i class="fas fa-robot"></i> Generera AI-förslag</button>
+                                                                    <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
+                                                                </div>
+                                                            </div>
+                                                            <div class="byra-card-edit">
+                                                                <div class="form-group full-width">
+                                                                    <textarea id="fld-ar-historik" class="form-input form-textarea" rows="6" placeholder="Beskriv hur byråns historik och track record påverkar riskbedömning och kontroller..."></textarea>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <p class="byra-card-source-hint" style="margin-top:0.75rem;">Underlag från byråprofil-enkäten:</p>
                                                         <div id="ar-historik-chips" class="byra-profil-kaskad-chips" aria-live="polite"></div>
                                                         <p id="ar-historik-empty" class="byra-profil-kaskad-empty" hidden>
-                                                            Inga historiksvar ifyllda ännu. Fyll i byråprofil-enkäten så syns de här.
+                                                            Inga historiksvar ifyllda ännu. Fyll i byråprofil-enkäten så syns de här som underlag.
                                                         </p>
                                                     </div>
                                                 </div>
@@ -430,7 +445,7 @@
     <script src="js/identifierade-risker-view.js?v=9" defer></script>
     <script src="js/riskaptit.js?v=2" defer></script>
     <script src="js/byra-profil-analys-koppling.js?v=1" defer></script>
-    <script src="js/allman-riskbedomning-byra.js?v=3.10" defer></script>
+    <script src="js/allman-riskbedomning-byra.js?v=3.11" defer></script>
     <script src="app.js" defer></script>
 </body>
 </html>

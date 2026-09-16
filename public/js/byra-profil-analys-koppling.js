@@ -96,7 +96,7 @@
       shortLabel: 'Geografisk risk',
       pageTitle: 'Övriga riskfaktorer',
       hint:
-        'Byråns geografiska marknad bedöms under Övriga riskfaktorer. Kundernas hemvist syns också under Från byråprofilen på Vilka är våra kunder.'
+        'Byråns geografiska marknad bedöms under Övriga riskfaktorer. Kunder i utsatta områden och övrig kundgeo hör hemma under Vilka är våra kunder.'
     },
     historik: {
       sectionId: 'historik',
@@ -106,7 +106,7 @@
       shortLabel: 'Historik och track record',
       pageTitle: 'Allmän riskbedömning byrå',
       hint:
-        'Avvikelserapporter, tillsynsanmärkningar och near misses visas under Historik och track record i allmän riskbedömning.'
+        'Avvikelserapporter, tillsynsanmärkningar och near misses syns som underlag under Historik och track record i allmän riskbedömning — där kan ni också skriva och generera analys.'
     },
     beroende: Object.assign(
       { sectionId: 'beroende' },

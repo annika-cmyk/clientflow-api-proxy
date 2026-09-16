@@ -26512,16 +26512,16 @@ Ge endast den färdiga texten, utan rubrik eller inledning.`;
   }
 });
 
-const AR_KARTLAGGNING_SECTIONS = new Set(['kunder', 'distribution', 'geografi', 'verksamhet']);
+const AR_KARTLAGGNING_SECTIONS = new Set(['kunder', 'distribution', 'geografi', 'verksamhet', 'historik']);
 
-// POST /api/ai-ar-kartlaggning – AI-förslag för AR avsnitt 2.1.2–2.1.5
+// POST /api/ai-ar-kartlaggning – AI-förslag för AR avsnitt 2.1.2–2.1.6
 app.post('/api/ai-ar-kartlaggning', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
 
   const section = String((req.body && req.body.section) || '').trim();
   if (!AR_KARTLAGGNING_SECTIONS.has(section)) {
-    return res.status(400).json({ error: 'Ogiltigt avsnitt. Ange kunder, distribution, geografi eller verksamhet.' });
+    return res.status(400).json({ error: 'Ogiltigt avsnitt. Ange kunder, distribution, geografi, verksamhet eller historik.' });
   }
 
   try {
@@ -26544,10 +26544,16 @@ app.post('/api/ai-ar-kartlaggning', authenticateToken, async (req, res) => {
 
     const rutinerFields = (rutinerRes.data && rutinerRes.data.records && rutinerRes.data.records[0] && rutinerRes.data.records[0].fields) || {};
     const kart = arKartlaggning.parseKartlaggningJson(rutinerFields[arKartlaggning.KARTLAGGNING_FIELD]);
-    const statistikText = section === 'verksamhet'
-      ? arKartlaggning.formatByraVerksamhetBlock(statistik, rutinerFields)
-      : arKartlaggning.formatStatBlock(statistik);
-    const byraProfil = formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields));
+    const profil = mapByraProfilFromAirtable(rutinerFields);
+    let statistikText;
+    if (section === 'verksamhet') {
+      statistikText = arKartlaggning.formatByraVerksamhetBlock(statistik, rutinerFields);
+    } else if (section === 'historik') {
+      statistikText = arKartlaggning.formatHistorikUnderlag(profil);
+    } else {
+      statistikText = arKartlaggning.formatStatBlock(statistik);
+    }
+    const byraProfil = formatByraProfilPromptBlock(profil);
 
     const systemPrompt = arKartlaggning.buildAiSystemPrompt(section);
     const userPrompt = arKartlaggning.buildAiUserPrompt(section, {
