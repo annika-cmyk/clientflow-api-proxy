@@ -20826,6 +20826,24 @@ a.byra-profil-chip:hover {
     font-size: 0.8rem;
     color: var(--text);
 }
+.kalender-toolbar-row {
+    align-items: center;
+    row-gap: 0.45rem;
+}
+.kalender-toolbar-search {
+    margin-left: auto;
+    flex: 1 1 11rem;
+    min-width: 9.5rem;
+    max-width: 15rem;
+}
+.kalender-toolbar-search .kunduppgifter-input {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+}
+.kalender-filters-legend {
+    margin-top: 0.45rem;
+}
 .kalender-legend-item {
     display: inline-flex;
     align-items: center;
@@ -20843,21 +20861,22 @@ a.byra-profil-chip:hover {
 .kalender-dot--sen { background: var(--error, #b42318); }
 
 .kalender-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
-    gap: 1rem;
-    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-top: 0.35rem;
     align-items: stretch;
-    min-height: min(72vh, 880px);
+    min-height: min(78vh, 940px);
 }
 .kalender-grid-wrap {
     background: #fff;
     border: 1px solid var(--border, var(--line));
     border-radius: 12px;
     overflow: hidden;
-    min-height: 100%;
+    min-height: min(70vh, 860px);
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
 }
 .kalender-weekdays {
     display: grid;
@@ -21087,14 +21106,14 @@ a.byra-profil-chip:hover {
     background: #fff;
     border: 1px solid var(--border, var(--line));
     border-radius: 12px;
-    padding: 0.9rem 0.85rem;
-    position: sticky;
-    top: 1rem;
-    max-height: calc(100vh - 2rem);
-    overflow: auto;
+    padding: 0.75rem 0.85rem;
+    position: static;
+    max-height: none;
+    width: 100%;
+    overflow: visible;
 }
 .kalender-side-title {
-    margin: 0 0 0.75rem;
+    margin: 0 0 0.55rem;
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--title-text, #0f172a);
@@ -21110,13 +21129,20 @@ a.byra-profil-chip:hover {
     color: var(--text);
 }
 .kalender-side-date {
-    margin: 0.7rem 0 0.35rem;
+    margin: 0.55rem 0 0.25rem;
     font-size: 0.75rem;
     font-weight: 700;
     text-transform: capitalize;
     color: var(--text);
+    grid-column: 1 / -1;
 }
 .kalender-side-date:first-child { margin-top: 0; }
+.kalender-side-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.15rem 0.65rem;
+    align-items: start;
+}
 .kalender-side-item {
     display: flex;
     align-items: flex-start;
@@ -21131,7 +21157,7 @@ a.byra-profil-chip:hover {
     cursor: pointer;
     text-align: left;
     font: inherit;
-    margin-bottom: 0.2rem;
+    margin-bottom: 0;
 }
 .kalender-side-item:hover { background: var(--muted, #e3eef0); }
 .kalender-side-item--klar { border-left-color: var(--success, #1f7a4d); }
@@ -21274,13 +21300,16 @@ a.byra-profil-chip:hover {
 
 @media (max-width: 960px) {
     .kalender-layout {
-        grid-template-columns: 1fr;
+        min-height: 0;
     }
-    .kalender-side {
-        position: static;
-        max-height: none;
+    .kalender-grid-wrap {
+        min-height: min(62vh, 720px);
     }
-    .kalender-layout { min-height: 0; }
+    .kalender-toolbar-search {
+        margin-left: 0;
+        flex: 1 1 100%;
+        max-width: none;
+    }
     .kalender-cell { min-height: 6.5rem; }
     .kalender-cell--week { min-height: 11.5rem; }
 }
@@ -21294,6 +21323,9 @@ a.byra-profil-chip:hover {
     }
     .kalender-grid-wrap[data-view="week"] .kalender-weekdays {
         display: none;
+    }
+    .kalender-side-list {
+        grid-template-columns: 1fr;
     }
 }
 @media (max-width: 640px) {
@@ -21309,7 +21341,6 @@ a.byra-profil-chip:hover {
     }
 }
 
-.kalender-side-list { display: flex; flex-direction: column; gap: 0.15rem; }
 body.kalender-detail-open { overflow: hidden; }
 
 /* Timed week/day grid + drag */
