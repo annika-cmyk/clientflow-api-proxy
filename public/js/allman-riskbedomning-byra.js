@@ -737,6 +737,8 @@
       initCollapsibleCards();
       initArLayoutEditor(canEdit);
       loadArStatistikBlock();
+      loadByraProfilHistorik();
+      applyHistorikFokusFromUrl();
       if (content) content.style.display = 'block';
       var headerActions = getEl('allman-risk-header-actions');
       if (headerActions) headerActions.style.display = 'flex';
@@ -1213,6 +1215,75 @@
         }
       });
     });
+  }
+
+  function escHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatHistorikValue(value) {
+    if (value == null || value === '') return '';
+    if (Array.isArray(value)) return value.map(function (v) { return String(v).trim(); }).filter(Boolean).join(', ');
+    return String(value).trim();
+  }
+
+  async function loadByraProfilHistorik() {
+    var chips = getEl('ar-historik-chips');
+    var empty = getEl('ar-historik-empty');
+    if (!chips) return;
+    var keys = [
+      { key: 'finanspolisenAvvikelserAntal', label: 'Avvikelserapporter (antal)' },
+      { key: 'finanspolisenAvvikelserTyp', label: 'Typ av misstanke' },
+      { key: 'lanstyrelsenAnmarkningar', label: 'Tillsynsanmärkningar' },
+      { key: 'lanstyrelsenAnmarkningarDetalj', label: 'Tillsynsdetalj' },
+      { key: 'nearMisses', label: 'Near misses' },
+      { key: 'nearMissesDetalj', label: 'Near misses detalj' }
+    ];
+    try {
+      var res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts());
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      var data = await res.json();
+      var fields = data.fields || {};
+      var answered = 0;
+      chips.innerHTML = keys.map(function (row) {
+        var val = formatHistorikValue(fields[row.key]);
+        var has = !!val;
+        if (has) answered += 1;
+        var href = 'byra-profil-enkate.html?section=historik';
+        return '<a class="byra-profil-chip' + (has ? '' : ' is-empty') + '" href="' + href + '">'
+          + '<span class="byra-profil-chip-label">' + escHtml(row.label) + '</span>'
+          + '<span class="byra-profil-chip-value">' + escHtml(has ? val : '–') + '</span>'
+          + '</a>';
+      }).join('');
+      if (empty) empty.hidden = answered > 0;
+    } catch (err) {
+      console.warn('Kunde inte ladda historik från byråprofil:', err);
+      chips.innerHTML = '';
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent = 'Kunde inte ladda historik från byråprofilen just nu.';
+      }
+    }
+  }
+
+  function applyHistorikFokusFromUrl() {
+    var Koppling = window.ByraProfilAnalysKoppling;
+    var fokus = Koppling && Koppling.fokusFromUrlSearch
+      ? Koppling.fokusFromUrlSearch(window.location.search)
+      : '';
+    if (fokus !== 'historik') return;
+    var target = getEl('ar-historik-track-record');
+    if (!target) return;
+    target.classList.add('is-fokus-target');
+    setTimeout(function () {
+      try {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (_) { /* ignore */ }
+    }, 120);
   }
 
   function init() {

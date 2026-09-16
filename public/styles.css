@@ -20425,7 +20425,13 @@ a.byra-profil-chip:hover {
   box-shadow: 0 0 0 1px rgba(19, 80, 92, 0.12);
 }
 .risk-group.is-fokus-target,
-.byra-profil-forslag-card.is-fokus-target {
+.byra-profil-forslag-card.is-fokus-target,
+.byra-profil-chip.is-fokus-target,
+#ar-historik-track-record.is-fokus-target {
+  outline: 2px solid var(--cf-accent, #0f766e);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
   outline: 2px solid #13505c;
   outline-offset: 3px;
   border-radius: 10px;

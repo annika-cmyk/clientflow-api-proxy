@@ -1,6 +1,8 @@
 /**
  * Föreslagna övriga riskfaktorer utifrån byråprofil (fakta → bedömning).
  * Delas mellan Node-tester och övriga-riskfaktorer-sidan.
+ *
+ * Analysförslag filtreras av quiz-svar: Ja (eller Delvis) → visas, Nej/tomt → döljs.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -58,6 +60,15 @@
 
   function isLeveransMedDistans(value) {
     return isLeveransEndastDistans(value) || isLeveransBlandad(value);
+  }
+
+  function isYes(value) {
+    return fold(value) === 'ja';
+  }
+
+  function isYesOrPartial(value) {
+    var t = fold(value);
+    return t === 'ja' || t === 'delvis';
   }
 
   function isAnswered(value) {
@@ -208,7 +219,7 @@
       });
     }
 
-    if (trimStr(p.outsourcingUnderleverantorer) === 'Ja') {
+    if (isYes(p.outsourcingUnderleverantorer)) {
       add({
         id: 'outsourcing',
         typ: TYP_VERKSAMHET,
@@ -221,7 +232,7 @@
       });
     }
 
-    if (trimStr(p.betalningsuppdrag) === 'Ja') {
+    if (isYes(p.betalningsuppdrag)) {
       add({
         id: 'betalningsuppdrag',
         typ: TYP_VERKSAMHET,
@@ -231,6 +242,97 @@
           'Behörighet att genomföra betalningar åt kunder är en förhöjd riskfaktor: byrån kan bli kanal för otillåtna flöden om uppdraget missbrukas.',
         ptTf: 'PT',
         why: 'Byråprofil: betalningsuppdrag = Ja'
+      });
+    }
+
+    if (isYesOrPartial(p.storaKundberoenden)) {
+      add({
+        id: 'kundberoende',
+        typ: TYP_VERKSAMHET,
+        riskfaktor: 'Ekonomiskt beroende av enskilda kunder',
+        triggerLabel: 'Kundberoende: ' + trimStr(p.storaKundberoenden),
+        beskrivning:
+          'När enskilda kunder står för en stor andel av omsättningen ökar sårbarheten för påtryckningar och risken att byrån tonar ner AML-kontroller för att behålla uppdraget.',
+        ptTf: 'Båda',
+        why: 'Byråprofil: stora kundberoenden = ' + trimStr(p.storaKundberoenden)
+      });
+    }
+
+    if (isYesOrPartial(p.bolagsbildningAtKund)) {
+      add({
+        id: 'bolagsbildning',
+        typ: TYP_VERKSAMHET,
+        riskfaktor: 'Bolagsbildning åt kunder',
+        triggerLabel: 'Bolagsbildning: ' + trimStr(p.bolagsbildningAtKund),
+        beskrivning:
+          'Att bilda bolag åt kunder är en tjänst med förhöjd risk i sig — kan användas för målvaktsupplägg, snabb omsättning av skalbolag och dolda ägarförhållanden.',
+        ptTf: 'Båda',
+        why: 'Byråprofil: bolagsbildning = ' + trimStr(p.bolagsbildningAtKund)
+      });
+    }
+
+    if (isYesOrPartial(p.styrelseEllerNomineeRoller)) {
+      add({
+        id: 'nominee-styrelse',
+        typ: TYP_VERKSAMHET,
+        riskfaktor: 'Styrelse- eller nominee-liknande roller åt kund',
+        triggerLabel: 'Styrelse/nominee: ' + trimStr(p.styrelseEllerNomineeRoller),
+        beskrivning:
+          'När byrån tar styrelse- eller nominee-liknande roller för kunds räkning ökar risken för att byrån används som skylt eller för att dölja verklig kontroll.',
+        ptTf: 'Båda',
+        why: 'Byråprofil: styrelse/nominee = ' + trimStr(p.styrelseEllerNomineeRoller)
+      });
+    }
+
+    if (isYesOrPartial(p.satePostadress)) {
+      add({
+        id: 'sate-postadress',
+        typ: TYP_VERKSAMHET,
+        riskfaktor: 'Säte eller postadress åt kunder (brevlådeföretag)',
+        triggerLabel: 'Säte/postadress: ' + trimStr(p.satePostadress),
+        beskrivning:
+          'Att tillhandahålla säte eller postadress åt kunder är en klassisk högrisktjänst kopplad till brevlådeföretag och svag faktisk verksamhet.',
+        ptTf: 'Båda',
+        why: 'Byråprofil: säte/postadress = ' + trimStr(p.satePostadress)
+      });
+    }
+
+    if (isYesOrPartial(p.fullmaktBolagsverket)) {
+      add({
+        id: 'fullmakt-bolagsverket',
+        typ: TYP_VERKSAMHET,
+        riskfaktor: 'Fullmakt hos Bolagsverket att ändra bolagsuppgifter',
+        triggerLabel: 'Bolagsverket-fullmakt: ' + trimStr(p.fullmaktBolagsverket),
+        beskrivning:
+          'Fullmakt att ändra styrelse, firmatecknare eller adress hos Bolagsverket är känsligare än vanligt ombud och kan missbrukas vid bolagskapning.',
+        ptTf: 'Båda',
+        why: 'Byråprofil: Bolagsverket-fullmakt = ' + trimStr(p.fullmaktBolagsverket)
+      });
+    }
+
+    if (isYes(p.nearMisses)) {
+      add({
+        id: 'near-misses',
+        typ: TYP_VERKSAMHET,
+        riskfaktor: 'Near misses – avböjda eller avslutade uppdrag pga risk',
+        triggerLabel: 'Near misses: Ja',
+        beskrivning:
+          'Tidigare near misses visar att byrån mött riskfyllda upplägg. Erfarenheterna bör vägas in i arbetssätt, trösklar och när uppdrag ska avböjas.',
+        ptTf: 'Båda',
+        why: 'Byråprofil: near misses = Ja'
+      });
+    }
+
+    if (isYes(p.lanstyrelsenAnmarkningar)) {
+      add({
+        id: 'tillsynsanmarkning',
+        typ: TYP_VERKSAMHET,
+        riskfaktor: 'Tidigare anmärkningar från Länsstyrelsens tillsyn',
+        triggerLabel: 'Tillsynsanmärkning: Ja',
+        beskrivning:
+          'Tidigare tillsynsanmärkningar indikerar sårbarheter i byråns kontrollmiljö som behöver adresseras i den allmänna riskbedömningen och i löpande åtgärder.',
+        ptTf: 'Båda',
+        why: 'Byråprofil: Länsstyrelsen anmärkning = Ja'
       });
     }
 
@@ -282,6 +384,8 @@
     isLeveransEndastDistans: isLeveransEndastDistans,
     isLeveransBlandad: isLeveransBlandad,
     isLeveransMedDistans: isLeveransMedDistans,
+    isYes: isYes,
+    isYesOrPartial: isYesOrPartial,
     TYP_VERKSAMHET: TYP_VERKSAMHET,
     TYP_DISTRIBUTION: TYP_DISTRIBUTION,
     SUMMARY_KEYS: SUMMARY_KEYS,
