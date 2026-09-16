@@ -493,6 +493,7 @@
       nameName: 'risk-factor',
       namePlaceholder: 't.ex. Distansmöte utan BankID',
       nameFormAttr: ' form="' + formId + '"',
+      hiddenRecordId: isEdit ? 'edit-record-id' : undefined,
       aiSummaryId: aiSummaryId,
       progressId: listPrefix + 'risk-resa-progress',
       klarmarkeraId: listPrefix + 'risk-klarmarkera-btn',
