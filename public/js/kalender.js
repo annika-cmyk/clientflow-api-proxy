@@ -43,6 +43,9 @@
     detailBody: document.getElementById('kal-detail-body'),
     statusOpen: document.getElementById('kal-status-open'),
     statusDone: document.getElementById('kal-status-done'),
+    modeDeadline: document.getElementById('kal-mode-deadline'),
+    modeOpen: document.getElementById('kal-mode-open'),
+    sideLabel: document.getElementById('kal-side-label'),
     typeTabs: Array.from(document.querySelectorAll('[data-kal-typ]')),
     viewTabs: Array.from(document.querySelectorAll('[data-kal-view]'))
   };
@@ -58,6 +61,7 @@
   let showDone = false;
   let q = '';
   let view = KV.loadStoredView();
+  let eventMode = KV.loadStoredEventMode();
   let focus = KV.goToday(view, new Date());
   let records = [];
   let runRecords = [];
@@ -175,9 +179,28 @@
     return hay.includes(q.toLowerCase());
   }
 
+  function eventVisibleInMode(ev) {
+    if (eventMode !== 'open') return !!ev.inRange;
+    const range = KV.visibleRange(view, focus);
+    return KV.isOpenEventInRange(ev.startDate, ev.deadline, statusOf(ev), range, today());
+  }
+
+  function placeDateOf(ev) {
+    if (eventMode === 'open') {
+      return KV.placementDateOpen(
+        ev.scheduledStart,
+        ev.deadline,
+        ev.startDate,
+        KV.visibleRange(view, focus),
+        today()
+      ) || toDate(ev.deadline);
+    }
+    return KV.placementDate(ev.scheduledStart, ev.deadline) || toDate(ev.deadline);
+  }
+
   function filtered() {
     return events.filter((ev) => {
-      if (!ev.inRange) return false;
+      if (!eventVisibleInMode(ev)) return false;
       if (!typeMatch(ev.typ)) return false;
       if (!searchMatch(ev.record)) return false;
       const st = statusOf(ev);
@@ -188,8 +211,8 @@
       if (!showOpen && showDone) return done;
       return true;
     }).sort((a, b) => {
-      const da = KV.placementDate(a.scheduledStart, a.deadline) || String(a.deadline || '');
-      const db = KV.placementDate(b.scheduledStart, b.deadline) || String(b.deadline || '');
+      const da = placeDateOf(a) || '';
+      const db = placeDateOf(b) || '';
       const d = da.localeCompare(db);
       if (d) return d;
       const sa = scheduleOf(a);
@@ -206,7 +229,7 @@
   function byDay(list) {
     const map = new Map();
     list.forEach((ev) => {
-      const dl = KV.placementDate(ev.scheduledStart, ev.deadline) || toDate(ev.deadline);
+      const dl = placeDateOf(ev);
       if (!dl) return;
       const arr = map.get(dl) || [];
       arr.push(ev);
@@ -756,10 +779,12 @@
 
   function renderSide(list) {
     if (!el.sideList) return;
+    if (el.sideLabel) el.sideLabel.textContent = eventMode === 'open' ? 'Öppna' : 'Deadlines';
     if (el.sideCount) el.sideCount.textContent = list.length ? `(${list.length})` : '';
     const emptyWhen = KV.rangeEmptyLabel(view);
+    const emptyNoun = eventMode === 'open' ? 'öppna körningar' : 'deadlines';
     if (!list.length) {
-      el.sideList.innerHTML = `<p class="kalender-side-empty">Inga deadlines ${esc(emptyWhen)} med aktuella filter.</p>`;
+      el.sideList.innerHTML = `<p class="kalender-side-empty">Inga ${esc(emptyNoun)} ${esc(emptyWhen)} med aktuella filter.</p>`;
       return;
     }
     let last = '';
@@ -768,7 +793,7 @@
       const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
       const st = statusOf(ev);
       const cls = statusClass(st, ev.deadline);
-      const place = KV.placementDate(ev.scheduledStart, ev.deadline) || toDate(ev.deadline);
+      const place = placeDateOf(ev);
       const head = place !== last ? `<div class="kalender-side-date">${esc(fmtDate(place))}</div>` : '';
       last = place;
       const period = ev.periodLabel || ev.periodKey || '';
@@ -869,8 +894,10 @@
       el.weekdays.style.display = showWeekdays ? '' : 'none';
     }
     if (el.side) {
-      el.side.setAttribute('aria-label', `Deadlines ${KV.rangeEmptyLabel(view)}`);
+      const label = eventMode === 'open' ? 'Öppna' : 'Deadlines';
+      el.side.setAttribute('aria-label', `${label} ${KV.rangeEmptyLabel(view)}`);
     }
+    if (el.sideLabel) el.sideLabel.textContent = eventMode === 'open' ? 'Öppna' : 'Deadlines';
     syncNavLabels();
   }
 
@@ -898,6 +925,15 @@
     render();
   }
 
+  function setEventMode(next) {
+    const m = KV.normalizeEventMode(next);
+    if (m === eventMode) return;
+    eventMode = m;
+    KV.saveStoredEventMode(eventMode);
+    syncUi();
+    render();
+  }
+
   function syncUi() {
     if (el.mine) el.mine.classList.toggle('is-active', scope === 'mine');
     if (el.byra) el.byra.classList.toggle('is-active', scope === 'byra');
@@ -906,6 +942,8 @@
     });
     if (el.statusOpen) el.statusOpen.classList.toggle('is-active', showOpen);
     if (el.statusDone) el.statusDone.classList.toggle('is-active', showDone);
+    if (el.modeDeadline) el.modeDeadline.classList.toggle('is-active', eventMode === 'deadline');
+    if (el.modeOpen) el.modeOpen.classList.toggle('is-active', eventMode === 'open');
     el.viewTabs.forEach((tab) => {
       const on = tab.getAttribute('data-kal-view') === view;
       tab.classList.toggle('is-active', on);
@@ -992,6 +1030,8 @@
     syncUi();
     render();
   });
+  if (el.modeDeadline) el.modeDeadline.addEventListener('click', () => setEventMode('deadline'));
+  if (el.modeOpen) el.modeOpen.addEventListener('click', () => setEventMode('open'));
   if (el.search) {
     let t = null;
     el.search.addEventListener('input', () => {
