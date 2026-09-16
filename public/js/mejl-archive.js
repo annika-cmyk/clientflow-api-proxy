@@ -599,7 +599,7 @@
       return html;
     }
 
-    async function loadCustomerKlientansvarig(customerId) {
+    async function loadCustomerMeta(customerId) {
       try {
         const res = await fetch(baseUrl + '/api/kunddata/' + encodeURIComponent(customerId), authOpts());
         const data = await res.json().catch(() => ({}));
@@ -608,19 +608,44 @@
           (data && data.fields) ||
           (data && data.data && data.data.fields) ||
           {};
-        return String(fields['Klientansvarig'] || fields.Klientansvarig || '').trim();
+        return {
+          klientansvarig: String(fields['Klientansvarig'] || fields.Klientansvarig || '').trim(),
+          byraId: String(fields['Byrå ID'] || fields['ByråID'] || fields.byraId || '').trim(),
+          orgnr: String(fields['Orgnr'] || fields['Organisationsnummer'] || '').trim(),
+          namn: String(fields['Namn'] || fields['Företagsnamn'] || '').trim()
+        };
       } catch (_) {
-        return '';
+        return { klientansvarig: '', byraId: '', orgnr: '', namn: '' };
       }
     }
 
-    async function createEngangUppdrag(customerId, root) {
-      const namn = String((root.querySelector('#mejl-new-uppdrag-namn') || {}).value || '').trim();
-      const ansvarig = String((root.querySelector('#mejl-new-uppdrag-ansvarig') || {}).value || '').trim();
-      const klientansvarig = String(
-        (root.querySelector('#mejl-new-uppdrag-klientansvarig') || {}).value || ''
+    async function loadCustomerKlientansvarig(customerId) {
+      const meta = await loadCustomerMeta(customerId);
+      return meta.klientansvarig;
+    }
+
+    async function createEngangUppdrag(customerId, root, overrides) {
+      const o = overrides || {};
+      const namn = String(
+        o.namn != null
+          ? o.namn
+          : (root.querySelector('#mejl-new-uppdrag-namn') || {}).value || ''
       ).trim();
-      const deadline = String((root.querySelector('#mejl-new-uppdrag-deadline') || {}).value || '').trim();
+      const ansvarig = String(
+        o.ansvarig != null
+          ? o.ansvarig
+          : (root.querySelector('#mejl-new-uppdrag-ansvarig') || {}).value || ''
+      ).trim();
+      const klientansvarig = String(
+        o.klientansvarig != null
+          ? o.klientansvarig
+          : (root.querySelector('#mejl-new-uppdrag-klientansvarig') || {}).value || ''
+      ).trim();
+      const deadline = String(
+        o.deadline != null
+          ? o.deadline
+          : (root.querySelector('#mejl-new-uppdrag-deadline') || {}).value || ''
+      ).trim();
       const egetTyp =
         (global.UppdragTyp && UppdragTyp.EGET_UPPDRAG_TYP) || 'Eget uppdrag';
       if (!namn) throw new Error('Ange ett namn på uppdraget (t.ex. Lön).');
@@ -649,19 +674,71 @@
       return { record, displayName: namn };
     }
 
+    async function createUppgiftFromMejl(customerId, root, message, customerMeta) {
+      const text = String((root.querySelector('#mejl-uppgift-text') || {}).value || '').trim();
+      const ansvarig = String((root.querySelector('#mejl-uppgift-ansvarig') || {}).value || '').trim();
+      const deadline = String((root.querySelector('#mejl-uppgift-deadline') || {}).value || '').trim();
+      const meta = customerMeta || {};
+      const klientansvarig = String(meta.klientansvarig || ansvarig || '').trim();
+      const today = todayIsoDate();
+      const Koppla = global.MejlKopplaUppdrag || null;
+      const notePayload = Koppla && typeof Koppla.buildUppgiftNotePayload === 'function'
+        ? Koppla.buildUppgiftNotePayload({
+          text,
+          ansvarig,
+          byraId: meta.byraId,
+          orgnr: meta.orgnr,
+          foretagsnamn: meta.namn,
+          mejlSubject: (message && (message.subject || message.Subject)) || '',
+          today
+        })
+        : (() => {
+          if (!text) throw new Error('Ange vad som ska göras.');
+          if (!ansvarig) throw new Error('Välj handläggare.');
+          const subject = String((message && (message.subject || message.Subject)) || '').trim();
+          return {
+            typAvAnteckning: ['Emailkonversation'],
+            datum: today,
+            notes: subject ? ('Uppgift från mejl: ' + subject + '\n\n' + text) : ('Uppgift från mejl\n\n' + text),
+            ToDo1: text,
+            Status1: 'Att göra',
+            name: ansvarig,
+            byraId: meta.byraId,
+            orgnr: meta.orgnr,
+            foretagsnamn: meta.namn
+          };
+        })();
+      const noteRes = await fetch(baseUrl + '/api/notes', {
+        method: 'POST',
+        ...authOpts(),
+        body: JSON.stringify(notePayload)
+      });
+      const noteData = await noteRes.json().catch(() => ({}));
+      if (!noteRes.ok) {
+        throw new Error(noteData.message || noteData.error || 'Kunde inte skapa uppgift i anteckningar');
+      }
+      const created = await createEngangUppdrag(customerId, root, {
+        namn: text,
+        ansvarig,
+        klientansvarig,
+        deadline: deadline || today
+      });
+      return created;
+    }
+
     async function openSaveWizard(id, m, customerId, onDone) {
       if (!customerId) { showToast('Koppla mejlet till en kund först.', 'error'); return; }
       const atts = Array.isArray(m.attachments) ? m.attachments : [];
       const currentUser =
         (global.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) || {};
       const currentUserName = String(currentUser.name || currentUser.Namn || '').trim();
-      const [uppdrag, runs, users, klientFromCustomer] = await Promise.all([
+      const [uppdrag, runs, users, customerMeta] = await Promise.all([
         loadUppdrag(customerId),
         loadRuns(customerId),
         loadByraUsers(),
-        loadCustomerKlientansvarig(customerId)
+        loadCustomerMeta(customerId)
       ]);
-      const defaultKlient = klientFromCustomer || currentUserName;
+      const defaultKlient = customerMeta.klientansvarig || currentUserName;
       const attChecks = atts.length
         ? atts.map((a) =>
             '<label style="display:block;"><input type="checkbox" name="att" value="' +
@@ -679,6 +756,7 @@
       const today = todayIsoDate();
       const ansvarigOpts = userNameOptionsHtml(users, currentUserName, 'Välj handläggare');
       const klientOpts = userNameOptionsHtml(users, defaultKlient, 'Välj klientansvarig');
+      const defaultUppgiftText = String((m && (m.subject || m.Subject)) || '').trim();
 
       openModal(
         'Koppla mejl / bilagor',
@@ -691,6 +769,7 @@
           '<option value="dokumentation">Dokumentation på kunden</option>' +
           '<option value="uppdrag">Uppdrag</option>' +
           '<option value="korning">Uppdragskörning</option>' +
+          '<option value="uppgift">Uppgift (som från anteckningar)</option>' +
           '<option value="split">Dela upp: mejl→dokumentation, bilagor→uppdrag/körning</option>' +
           '</select></div>' +
           '<div id="mejl-save-uppdrag-wrap" hidden>' +
@@ -713,6 +792,15 @@
           '<input type="date" id="mejl-new-uppdrag-deadline" class="form-input" value="' + esc(today) + '"></div>' +
           '<p class="mejl-hint" style="margin:0;">Skapas som Eget uppdrag med frekvens Engång (en körning).</p>' +
           '</div>' +
+          '<div id="mejl-uppgift-wrap" hidden class="form-grid" style="margin:0; padding:0.65rem 0.75rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">' +
+          '<div><label class="mejl-label-edit-label" for="mejl-uppgift-text">Uppgift *</label>' +
+          '<input type="text" id="mejl-uppgift-text" class="form-input" placeholder="Beskriv vad som ska göras…" value="' + esc(defaultUppgiftText) + '"></div>' +
+          '<div><label class="mejl-label-edit-label" for="mejl-uppgift-ansvarig">Handläggare *</label>' +
+          '<select id="mejl-uppgift-ansvarig" class="form-select form-input">' + ansvarigOpts + '</select></div>' +
+          '<div><label class="mejl-label-edit-label" for="mejl-uppgift-deadline">Deadline *</label>' +
+          '<input type="date" id="mejl-uppgift-deadline" class="form-input" value="' + esc(today) + '"></div>' +
+          '<p class="mejl-hint" style="margin:0;">Skapas som Att göra på en anteckning (Mina uppgifter) och som engångsuppdrag så du kan sätta tid i kalendern.</p>' +
+          '</div>' +
           '<div id="mejl-save-run-wrap" hidden><label class="mejl-label-edit-label" for="mejl-save-run">Körning</label>' +
           '<select id="mejl-save-run" class="form-select form-input"><option value="">Välj…</option>' + runOpts + '</select></div>' +
           '</div>',
@@ -734,7 +822,31 @@
               ? String(runEl.options[runEl.selectedIndex].textContent || '').trim()
               : '';
 
-          if ((mode === 'uppdrag' || mode === 'split' || mode === 'korning') && uppdragId === '__new__') {
+          if (mode === 'uppgift') {
+            try {
+              const created = await createUppgiftFromMejl(customerId, root, m, customerMeta);
+              uppdragId = created.record.id;
+              uppdragName = created.displayName;
+              const freshRuns = await loadRuns(customerId);
+              const match = (freshRuns || []).find((r) => {
+                const f = r.fields || r;
+                return String(f['Uppdrag ID'] || '').trim() === uppdragId;
+              });
+              if (match) {
+                runId = match.id;
+                const f = match.fields || match;
+                runName =
+                  ((f['Period Label'] || f.PeriodKey || '') +
+                    (f.Typ ? ' · ' + f.Typ : '') +
+                    (f.Deadline ? ' (' + f.Deadline + ')' : '')) ||
+                  uppdragName ||
+                  match.id;
+              }
+            } catch (err) {
+              showToast((err && err.message) || 'Kunde inte skapa uppgift', 'error');
+              return;
+            }
+          } else if ((mode === 'uppdrag' || mode === 'split' || mode === 'korning') && uppdragId === '__new__') {
             try {
               const created = await createEngangUppdrag(customerId, root);
               uppdragId = created.record.id;
@@ -799,6 +911,40 @@
               }];
             } else {
               showToast('Välj en körning eller skapa ett enstaka uppdrag.', 'error');
+              return;
+            }
+          } else if (mode === 'uppgift') {
+            // Uppgift + engångsuppdrag skapades redan; koppla mejl/bilagor till körning/uppdrag om valt.
+            const wantsAttach = includeEmail || (saveAtts && selectedAtts.length);
+            if (wantsAttach) {
+              if (runId) {
+                targets = [{
+                  type: 'korning',
+                  runId,
+                  runName,
+                  customerId,
+                  includeEmail,
+                  attachmentIds: saveAtts ? selectedAtts : []
+                }];
+              } else if (uppdragId && uppdragId !== '__new__') {
+                targets = [{
+                  type: 'uppdrag',
+                  uppdragId,
+                  uppdragName,
+                  customerId,
+                  includeEmail,
+                  attachmentIds: saveAtts ? selectedAtts : []
+                }];
+              } else {
+                showToast('Uppgift skapad, men ingen körning/uppdrag att koppla mejlet till.', 'info');
+                closeModal();
+                if (onDone) await onDone();
+                return;
+              }
+            } else {
+              showToast('Uppgift skapad (Mina uppgifter + kalender).', 'success');
+              closeModal();
+              if (onDone) await onDone();
               return;
             }
           } else {
@@ -879,9 +1025,11 @@
         const u = document.getElementById('mejl-save-uppdrag-wrap');
         const r = document.getElementById('mejl-save-run-wrap');
         const neu = document.getElementById('mejl-new-uppdrag-wrap');
+        const uppg = document.getElementById('mejl-uppgift-wrap');
         if (u) u.hidden = !(mode === 'uppdrag' || mode === 'split' || mode === 'korning');
         if (r) r.hidden = !(mode === 'korning' || mode === 'split');
         if (mode === 'uppdrag' && r) r.hidden = true;
+        if (uppg) uppg.hidden = mode !== 'uppgift';
         const creating = !!(u && !u.hidden && uppdragEl && uppdragEl.value === '__new__');
         if (neu) neu.hidden = !creating;
       };

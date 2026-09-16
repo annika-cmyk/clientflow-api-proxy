@@ -17481,8 +17481,11 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
       // userData.id är ett Airtable record ID ("recXXX") — hoppa över det
     }
     
-    // Lägg till Name (användarens namn) - endast om det finns
-    if (userData.name && userData.name.trim() !== '') {
+    // Lägg till Name – tillåten override (t.ex. mejl → uppgift till handläggare), annars skaparen
+    const nameOverride = String(noteData.name || noteData.Name || noteData.ansvarig || '').trim();
+    if (nameOverride) {
+      airtableFields['Name'] = nameOverride;
+    } else if (userData.name && userData.name.trim() !== '') {
       airtableFields['Name'] = userData.name.trim();
     }
     
