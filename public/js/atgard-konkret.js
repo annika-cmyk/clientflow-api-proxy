@@ -13,10 +13,11 @@
 
 PROPORTIONERLIGA KONTROLLER (redovisningsbyrå — inte bank/KYC-operatör):
 - Föreslå riskbaserade kontroller: stickprov, avvikelser, kontanter, saknat underlag, orealistiska belopp/styckpris, ovanliga kanaler — inte manuell granskning av varenda rad.
-- FÖRBJUDET om underlaget inte uttryckligen säger att byrån gör det: "granskar alla transaktioner", "alla fakturor", "varje betalning", "alla köp och försäljningar", eller låga beloppströsklar som i praktiken betyder totalgranskning (t.ex. "alla över 1000 kr").
+- FÖRBJUDET om underlaget inte uttryckligen säger att byrån gör det: "vid varje transaktion", "granskar alla transaktioner", "alla fakturor", "varje betalning", "alla köp och försäljningar", "verifiera legitimiteten av medlen", eller låga beloppströsklar som i praktiken betyder totalgranskning (t.ex. "alla över 1000 kr").
 - Föreslå inte trösklar eller frekvenser som byrån inte uppgett. Hitta inte på "över X kr" om det saknas i underlaget.
-- Dåligt: "Klientansvarig granskar alla transaktioner över 1000 kr och sparar dokumentationen."
+- Dåligt: "Vid varje transaktion granskar klientansvarig underlaget…" / "Klientansvarig granskar alla transaktioner över 1000 kr och sparar dokumentationen."
 - Bra: "Vid bokslut gör klientansvarig stickprov på inköp/försäljning med fokus på saknat underlag, kontant och belopp som avviker från normalt styckpris. Stickprovet och eventuella avvikelser noteras i Capego/kundakt med datum så en kollega kan följa vad som kontrollerats."
+- Bra (e-handel/export): "Vid löpande bokföring och bokslut stämmer klientansvarig stickprovvis bokförda intäkter mot Shopify-rapporter och återförsäljaravräkningar; avvikelser (stora returer, runda belopp, betalning från annan part) dokumenteras i Fortnox/Capego och sammanfattas i kundakten."
 
 - FÖRBJUDET: avsikter utan införande — "Inför striktare krav…", "Öka dokumentationskrav", "Byrån bör stärka…", "Se över rutinerna", "Förbättra dokumentationen".
 - FÖRBJUDET (för tunt): en ensam mening om "dokumentation och regelbundna granskningar" utan vad, vem, var och hur.

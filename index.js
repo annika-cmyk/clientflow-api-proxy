@@ -107,6 +107,10 @@ const {
   readOvrigExtraUnderlag,
   OVRIG_EXTRA_UNDERLAG_AI_RULES
 } = require('./lib/ai-ovrig-riskfaktor-prompt');
+const {
+  OVRIG_HARD_PRIORITY_RULES,
+  validateOvrigAiPayload
+} = require('./lib/ai-ovrig-riskfaktor-quality');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
   resolveAssistantVectorStoreId,
@@ -26029,6 +26033,8 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   // Statiska regler i instructions (återanvänds via prompt cache). Variabelt underlag i input.
   const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
+${OVRIG_HARD_PRIORITY_RULES}
+
 ${REDOVISNINGSBYRA_AI_RULES}
 
 Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst). Utgå alltid från riskfaktorns benämning i användarmeddelandet — typen är bara kategori.
@@ -26052,8 +26058,8 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvensEfter": 1,
   "motiveringInneboende": "4-8 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning (branschens generella risk; sänk inte inneboende p.g.a. kundspecifika mildrande detaljer). Förklara mekanismen i klarspråk.",
   "motiveringResidual": "4-8 meningar: hur åtgärderna OCH konkreta fakta från extra underlag (om finns) sänkt S och/eller K — inte bara «strikta kontroller». Koppla till dokumenterade kontroller.",
-  "atgard": "4-8 meningar eller flera kontroller: VAD kontrolleras, VEM, NÄR, VAR det dokumenteras, VARFÖR det minskar PT/TF. Riskbaserat stickprov/avvikelser — inte «alla transaktioner» eller påhittade trösklar (t.ex. över 1000 kr). När extra underlag finns: använd dess fakta. Inte Inför/öka/bör. Inte Capego-boilerplate utan underlagsfakta.",
-  "hot": [ { "titel": "Kort hot-titel", "beskrivning": "3-6 meningar: hur riskfaktorn kan utnyttjas steg för steg (PT/TF), i klarspråk.", "kalla": "valfri källa" } ],
+  "atgard": "4-8 meningar eller flera kontroller: VAD kontrolleras, VEM, NÄR, VAR det dokumenteras, VARFÖR det minskar PT/TF. Riskbaserat stickprov/avvikelser — inte «vid varje transaktion» eller påhittade trösklar (t.ex. över 1000 kr). När extra underlag finns: använd dess fakta. Inte Inför/öka/bör. Inte Capego-boilerplate utan underlagsfakta.",
+  "hot": [ { "titel": "Kort hot-titel", "beskrivning": "3-6 meningar: hur riskfaktorn kan utnyttjas steg för steg (PT/TF), i klarspråk.", "kalla": "valfri exakt källa med dokument+år/avsnitt" } ],
   "sarbarheter": [ { "titel": "Kort sårbarhetstitel", "beskrivning": "3-5 meningar: varför byrån kan vara exponerad och vad medarbetaren ska tänka på." } ]${reviewMode ? `,
   "granskning": {
     "poster": [
@@ -26109,26 +26115,14 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
   const byraAnalysModel = resolveByraAnalysModel();
   const debugOut = {};
-
-  try {
-    const aiText = await runOpenAIAssistantRunWithRetry(
-      openaiKey,
-      userPrompt,
-      {
-        model: byraAnalysModel,
-        instructions: systemPrompt,
-        vectorStoreId: byraAnalysVector,
-        maxOutputTokens: 8192,
-        promptCacheKey: reviewMode ? 'cf-ovrig-riskfaktor-rev' : 'cf-ovrig-riskfaktor-gen',
-        maxWaitMs: 180000,
-        pollMs: 1500,
-        debugOut,
-        debugMeta: { route: '/api/ai-ovriga-riskfaktor', user: req.user?.email || '' }
-      },
-      { maxAttempts: 3 }
-    );
-    const result = parseAssistantJson(aiText);
-    if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
+  const normList = (arr) => (Array.isArray(arr) ? arr : []).map((item) => ({
+    titel: cleanStr(item?.titel ?? item?.title),
+    beskrivning: cleanStr(item?.beskrivning ?? item?.description),
+    kalla: cleanStr(item?.kalla ?? item?.källa ?? item?.source),
+    ...(item?.typ || item?.type ? { typ: RiskSkala.normalizePtTf(item.typ ?? item.type) || undefined } : {}),
+    ...(item?.userAdded ? { userAdded: true } : {})
+  })).filter((item) => item.titel || item.beskrivning);
+  const buildFaktorPayload = (result) => {
     const inherentOut = RiskSkala.assessRisk(result.sannolikhet, result.konsekvens);
     const residualOut = RiskSkala.assessRisk(result.sannolikhetEfter, result.konsekvensEfter);
     const fallbackLevel = inherentOut.level || normRiskfaktorNiva(result.riskbedomning || result.riskniva);
@@ -26136,14 +26130,7 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       RiskSkala.scoresFromLegacyLevel(fallbackLevel).sannolikhet,
       RiskSkala.scoresFromLegacyLevel(fallbackLevel).konsekvens
     );
-    const normList = (arr) => (Array.isArray(arr) ? arr : []).map((item) => ({
-      titel: cleanStr(item?.titel ?? item?.title),
-      beskrivning: cleanStr(item?.beskrivning ?? item?.description),
-      kalla: cleanStr(item?.kalla ?? item?.källa ?? item?.source),
-      ...(item?.typ || item?.type ? { typ: RiskSkala.normalizePtTf(item.typ ?? item.type) || undefined } : {}),
-      ...(item?.userAdded ? { userAdded: true } : {})
-    })).filter((item) => item.titel || item.beskrivning);
-    const faktorAiPayload = {
+    return {
       beskrivning: (result.beskrivning || '').toString().trim(),
       ptTfRelevans: RiskSkala.normalizePtTf(result.ptTfRelevans) || 'PT',
       sannolikhet: fallbackScores.sannolikhet,
@@ -26157,6 +26144,59 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       hot: HotAmlTf.filterHots(normList(result.hot)),
       sarbarheter: normList(result.sarbarheter)
     };
+  };
+
+  try {
+    const runOvrigAi = async (inputPrompt, cacheKey) => runOpenAIAssistantRunWithRetry(
+      openaiKey,
+      inputPrompt,
+      {
+        model: byraAnalysModel,
+        instructions: systemPrompt,
+        vectorStoreId: byraAnalysVector,
+        maxOutputTokens: 8192,
+        promptCacheKey: cacheKey,
+        maxWaitMs: 180000,
+        pollMs: 1500,
+        debugOut,
+        debugMeta: { route: '/api/ai-ovriga-riskfaktor', user: req.user?.email || '' }
+      },
+      { maxAttempts: 3 }
+    );
+
+    let aiText = await runOvrigAi(
+      userPrompt,
+      reviewMode ? 'cf-ovrig-riskfaktor-rev' : 'cf-ovrig-riskfaktor-gen'
+    );
+    let result = parseAssistantJson(aiText);
+    if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
+    let faktorAiPayload = buildFaktorPayload(result);
+    let quality = validateOvrigAiPayload(faktorAiPayload, {
+      extraUnderlag: extraUnderlagText,
+      sannolikhet: faktorAiPayload.sannolikhet,
+      konsekvens: faktorAiPayload.konsekvens
+    });
+    if (!quality.ok) {
+      console.warn('AI-övriga-riskfaktor kvalitet underkänd:', quality.violations.map((v) => v.id).join(', '));
+      aiText = await runOvrigAi(
+        `${userPrompt}\n\n${quality.repairHint}\n`,
+        reviewMode ? 'cf-ovrig-riskfaktor-fix-rev' : 'cf-ovrig-riskfaktor-fix-gen'
+      );
+      result = parseAssistantJson(aiText);
+      if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar efter kvalitetsreparation.');
+      faktorAiPayload = buildFaktorPayload(result);
+      quality = validateOvrigAiPayload(faktorAiPayload, {
+        extraUnderlag: extraUnderlagText,
+        sannolikhet: faktorAiPayload.sannolikhet,
+        konsekvens: faktorAiPayload.konsekvens
+      });
+      if (!quality.ok) {
+        console.warn(
+          'AI-övriga-riskfaktor kvalitet fortfarande underkänd efter reparation:',
+          quality.violations.map((v) => v.id).join(', ')
+        );
+      }
+    }
     let granskningPoster = reviewMode
       ? AiFaltGranskning.normalizeGranskning(result.granskning, 'ovrig', befintligt)
       : [];
@@ -26179,6 +26219,10 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
     res.json({
       ...faktorAiPayload,
       aiModel: byraAnalysModel,
+      quality: {
+        ok: quality.ok,
+        violations: quality.violations.map((v) => v.id)
+      },
       granskning: {
         lage: reviewMode ? 'granska' : 'generera',
         poster: granskningPoster
