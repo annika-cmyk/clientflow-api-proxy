@@ -29,6 +29,7 @@ class RiskAssessmentManager {
         this._utforandeStatsPromise = null;
         this.klarmarkeradeFlikar = new Set();
         this._activeTjanstTab = 'utforande';
+        this._profilTjanstForslagDismissed = this.readDismissedProfilTjanstSuggestions();
 
         this.init();
     }
@@ -75,7 +76,138 @@ class RiskAssessmentManager {
         }
         await this.fetchByraProfil().catch(() => {});
         this.renderUtforandeKatalog();
+        this.renderByraProfilTjanstKaskad();
     }
+
+    readDismissedProfilTjanstSuggestions() {
+        try {
+            const raw = sessionStorage.getItem('byraProfilTjanstForslagDismissed');
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    persistDismissedProfilTjanstSuggestions() {
+        try {
+            sessionStorage.setItem(
+                'byraProfilTjanstForslagDismissed',
+                JSON.stringify(this._profilTjanstForslagDismissed || [])
+            );
+        } catch (_) { /* ignore */ }
+    }
+
+    renderByraProfilTjanstKaskad() {
+        const root = document.getElementById('byra-profil-tjanst-kaskad');
+        const API = window.ByraProfilTjanstForslag;
+        if (!root || !API) {
+            if (root) root.hidden = true;
+            return;
+        }
+        root.hidden = false;
+        const chips = document.getElementById('byra-profil-tjanst-kaskad-chips');
+        const forslagHost = document.getElementById('byra-profil-tjanst-kaskad-forslag');
+        const forslagWrap = document.getElementById('byra-profil-tjanst-kaskad-forslag-wrap');
+        const empty = document.getElementById('byra-profil-tjanst-kaskad-empty');
+        const summary = API.buildProfilSummary(this.byraProfil || {});
+        const answered = summary.filter((r) => r.answered);
+        const Koppling = window.ByraProfilAnalysKoppling;
+        if (chips) {
+            chips.innerHTML = summary.map((row) => {
+                const val = row.answered ? this.esc(row.value) : '–';
+                const cls = row.answered ? '' : ' is-empty';
+                const section = Koppling && Koppling.enkateSectionForFieldKey
+                    ? Koppling.enkateSectionForFieldKey(row.key)
+                    : 'tjanster';
+                const href = section && Koppling && Koppling.enkateHref
+                    ? Koppling.enkateHref(section)
+                    : 'byra-profil-enkate.html?section=tjanster';
+                return `<a class="byra-profil-chip${cls}" href="${this.esc(href)}" data-profil-key="${this.esc(row.key)}" title="${this.esc(row.label)} — öppna i byråprofilen"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></a>`;
+            }).join('');
+        }
+        const Mallar = window.TjanstUtforandeMallar;
+        const catalogCards = Mallar && Mallar.listCatalogCards
+            ? Mallar.listCatalogCards(this.utforandeState)
+            : [];
+        const open = API.filterOpenSuggestions(
+            API.suggestTjansterFromProfil(this.byraProfil || {}),
+            catalogCards,
+            this.risks || [],
+            this._profilTjanstForslagDismissed || [],
+            Mallar && Mallar.tjanstNamesMatch ? Mallar.tjanstNamesMatch.bind(Mallar) : null
+        );
+        if (forslagWrap) forslagWrap.hidden = open.length === 0;
+        if (empty) empty.hidden = answered.length > 0 || open.length > 0;
+        if (forslagHost) {
+            forslagHost.innerHTML = open.map((s) => `
+                <article class="byra-profil-forslag-card" data-forslag-id="${this.esc(s.id)}">
+                    <div class="byra-profil-forslag-main">
+                        <h4>${this.esc(s.namn)}</h4>
+                        <p class="byra-profil-forslag-meta">${this.esc(s.triggerLabel || '')}</p>
+                        <p class="byra-profil-forslag-why">${this.esc(s.why || '')}</p>
+                    </div>
+                    <div class="byra-profil-forslag-actions">
+                        <button type="button" class="btn btn-primary btn-sm" data-profil-tjanst-accept="${this.esc(s.id)}">Acceptera</button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-profil-tjanst-dismiss="${this.esc(s.id)}">Avfärda</button>
+                    </div>
+                </article>`).join('');
+            forslagHost.querySelectorAll('[data-profil-tjanst-accept]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-profil-tjanst-accept');
+                    const row = open.find((s) => s.id === id);
+                    if (row) this.acceptProfilTjanstSuggestion(row);
+                });
+            });
+            forslagHost.querySelectorAll('[data-profil-tjanst-dismiss]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-profil-tjanst-dismiss');
+                    this.dismissProfilTjanstSuggestion(id);
+                });
+            });
+        }
+    }
+
+    dismissProfilTjanstSuggestion(id) {
+        if (!id) return;
+        const list = Array.isArray(this._profilTjanstForslagDismissed)
+            ? this._profilTjanstForslagDismissed.slice()
+            : [];
+        if (!list.includes(id)) list.push(id);
+        this._profilTjanstForslagDismissed = list;
+        this.persistDismissedProfilTjanstSuggestions();
+        this.renderByraProfilTjanstKaskad();
+    }
+
+    acceptProfilTjanstSuggestion(suggestion) {
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!Mallar || !suggestion) return;
+        const namn = String(suggestion.namn || '').trim();
+        if (!namn) return;
+
+        let mallId = String(suggestion.mallId || '').trim();
+        let next = Mallar.parseState(this.utforandeState);
+        if (!next.katalogVal) next.katalogVal = 'egna';
+
+        if (mallId && Mallar.templateById(mallId)) {
+            next.excludedMallIds = (next.excludedMallIds || []).filter((x) => x !== mallId);
+            next = Mallar.upsertEntry(next, mallId, { aktiv: true });
+        } else {
+            const added = Mallar.addCustomService(next, namn);
+            next = added.state;
+            mallId = added.id;
+        }
+
+        this.utforandeState = next;
+        this.renderUtforandeKatalog();
+        this.renderByraProfilTjanstKaskad();
+        this.scheduleUtforandeSave();
+        this.showNotification(`«${namn}» tillagd från byråprofilen.`, 'success');
+        if (mallId) {
+            this.openTjanstAnalysFromCard(mallId, namn);
+        }
+    }
+
 
     findUtforandeMallIdForNamn(namn) {
         const Mallar = window.TjanstUtforandeMallar;
@@ -245,6 +377,7 @@ class RiskAssessmentManager {
                         this.showNotification('Tom katalog — skapa egna tjänster när ni vill.', 'success');
                     }
                     this.renderUtforandeKatalog();
+                    this.renderByraProfilTjanstKaskad();
                     this.scheduleUtforandeSave();
                 });
             });
@@ -2664,7 +2797,7 @@ class RiskAssessmentManager {
         if (modalId === 'tjanst-modal') this.resetModal();
     }
 
-    // ---- Byråprofil för AI ----
+    // ---- Byråprofil för AI + Från byråprofilen ----
     buildByraProfilFromApiFields(f) {
         if (!f || typeof f !== 'object') return {};
         return {
@@ -2676,7 +2809,14 @@ class RiskAssessmentManager {
             leveranssatt: f.leveranssatt ?? '',
             geografiskMarknad: f.geografiskMarknad ?? '',
             antalAnstallda: f.antalAnstallda ?? '',
-            typAvByra: f.bransch ?? ''
+            typAvByra: f.bransch ?? '',
+            betalningsuppdrag: f.betalningsuppdrag ?? '',
+            bolagsbildningAtKund: f.bolagsbildningAtKund ?? '',
+            styrelseEllerNomineeRoller: f.styrelseEllerNomineeRoller ?? '',
+            satePostadress: f.satePostadress ?? '',
+            fullmaktBolagsverket: f.fullmaktBolagsverket ?? '',
+            ombudSkatteprocesser: f.ombudSkatteprocesser ?? '',
+            generalfullmaktMyndighet: f.generalfullmaktMyndighet ?? ''
         };
     }
 
