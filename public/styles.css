@@ -20961,6 +20961,11 @@ a.byra-profil-chip:hover {
 .kalender-chip--pagande { border-left-color: var(--warning, #b07414); background: color-mix(in srgb, var(--warning, #b07414) 12%, white); }
 .kalender-chip--planerad { border-left-color: var(--accent, #13505c); }
 .kalender-chip--sen { border-left-color: var(--error, #b42318); background: color-mix(in srgb, var(--error, #b42318) 10%, white); }
+.kalender-chip--google { border-left-color: #1a73e8; background: color-mix(in srgb, #1a73e8 10%, white); }
+.kalender-block--google { border-left: 3px solid #1a73e8; background: color-mix(in srgb, #1a73e8 14%, white); }
+.kalender-side-item--google { border-left-color: #1a73e8; }
+.kalender-detail-status--google { color: #174ea6; background: color-mix(in srgb, #1a73e8 12%, white); }
+
 .kalender-chip-typ {
     flex: 0 0 auto;
     font-weight: 700;
@@ -21713,3 +21718,6 @@ body.kalender-detail-open { overflow: hidden; }
   .tid-card { flex-direction: column; }
   .tid-card-actions { flex-direction: row; flex-wrap: wrap; }
 }
+
+.kalender-dot--google { background: #1a73e8; }
+.uppdragboard-filters .kalender-gcal { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.5rem; }
