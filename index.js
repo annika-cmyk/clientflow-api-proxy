@@ -81,6 +81,9 @@ const { SCHEMA_FIELDS: OVRIGA_RISK_SCHEMA_FIELDS, applyOvrigExtraAirtableFields,
 const { yearlyRunsThroughHorizon } = require('./lib/yearly-uppdrag-runs');
 const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag-runs');
 const UppdragTyp = require('./public/js/uppdrag-typ');
+const {
+  nextSelectWriteFallback
+} = require('./lib/airtable-select-write-fallback');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const TjanstTfTackning = require('./public/js/tjanst-tf-tackning');
 const AmlKalla = require('./public/js/aml-kalla');
@@ -11985,10 +11988,17 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
       if (startIso) runFields['Startdatum'] = startIso;
       if (grundRutin) runFields['Rutin'] = grundRutin;
       if (uppdragAnsvarig) runFields['Ansvarig'] = uppdragAnsvarig;
+      // Eget uppdrag / Engång saknas ofta i äldre Uppdragskörningar.Typ – typecast
+      // (eller droppa Typ) så körningen skapas trots saknade select-val.
+      const preferTypecast =
+        UppdragTyp.isEgetUppdragTyp(typ) ||
+        String(freq || '').trim() === 'Engång';
       await airtablePostRecordWithFieldFallback(
         uppdragRunsUrl,
         runFields,
-        { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+        { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+        12,
+        { typecast: preferTypecast }
       );
       existing.set(runKey, { id: null, fields: { 'Run Key': runKey, Startdatum: startIso } });
       created += 1;
@@ -17481,8 +17491,11 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
       // userData.id är ett Airtable record ID ("recXXX") — hoppa över det
     }
     
-    // Lägg till Name (användarens namn) - endast om det finns
-    if (userData.name && userData.name.trim() !== '') {
+    // Lägg till Name – tillåten override (t.ex. mejl → uppgift till handläggare), annars skaparen
+    const nameOverride = String(noteData.name || noteData.Name || noteData.ansvarig || '').trim();
+    if (nameOverride) {
+      airtableFields['Name'] = nameOverride;
+    } else if (userData.name && userData.name.trim() !== '') {
       airtableFields['Name'] = userData.name.trim();
     }
     
@@ -20093,14 +20106,16 @@ function mergeUppdragRecordFields(record, intendedFields = {}) {
   };
 }
 
-async function airtablePostRecordWithFieldFallback(url, fields, headers, maxRetries = 12) {
+async function airtablePostRecordWithFieldFallback(url, fields, headers, maxRetries = 12, opts = {}) {
   const payload = { ...(fields || {}) };
   const dropped = [];
   let lastErr = null;
+  let useTypecast = !!(opts && opts.typecast);
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const res = await axios.post(url, { fields: payload }, { headers });
-      return { record: res.data, dropped };
+      const body = useTypecast ? { fields: payload, typecast: true } : { fields: payload };
+      const res = await axios.post(url, body, { headers });
+      return { record: res.data, dropped, typecast: useTypecast };
     } catch (e) {
       lastErr = e;
       const msg = e.response?.data?.error?.message || e.message || '';
@@ -20110,17 +20125,21 @@ async function airtablePostRecordWithFieldFallback(url, fields, headers, maxRetr
         dropped.push(unknown[1]);
         continue;
       }
-      if (/INVALID_(?:CELL|MULTIPLE)_VALUE/i.test(msg) || /Cannot parse value for field/i.test(msg)) {
-        if (Object.prototype.hasOwnProperty.call(payload, 'Typ')) {
-          delete payload.Typ;
-          dropped.push('Typ');
-          continue;
-        }
-        if (Object.prototype.hasOwnProperty.call(payload, 'Status')) {
-          delete payload.Status;
-          dropped.push('Status');
-          continue;
-        }
+      // Saknade singleSelect-val (t.ex. Typ=Eget uppdrag): typecast först, annars droppa fältet
+      // så körningen ändå skapas (UI kan visa typ från förälder-uppdraget).
+      const next = nextSelectWriteFallback({
+        message: msg,
+        usedTypecast: useTypecast,
+        fields: payload
+      });
+      if (next.action === 'retry_typecast') {
+        useTypecast = true;
+        continue;
+      }
+      if (next.action === 'drop_field' && next.field && Object.prototype.hasOwnProperty.call(payload, next.field)) {
+        delete payload[next.field];
+        dropped.push(next.field);
+        continue;
       }
       break;
     }
@@ -20748,6 +20767,51 @@ async function ensureUppdragFrekvensChoices(airtableToken, baseId, tableMeta) {
   }
 }
 
+/**
+ * Skapa saknade singleSelect-val på Uppdragskörningar via typecast
+ * (Meta API saknar ofta schema.bases:write i PAT).
+ */
+async function seedUppdragRunsSelectChoicesViaTypecast(airtableToken, baseId, fieldName, missingNames) {
+  const missing = (missingNames || []).map((x) => String(x || '').trim()).filter(Boolean);
+  if (!missing.length) return { ok: true, updated: false };
+  const tableId = await resolveUppdragRunsTableId(airtableToken, baseId);
+  if (!tableId) return { ok: false, reason: 'Uppdragskörningar saknas' };
+  const listUrl = `https://api.airtable.com/v0/${baseId}/${tableId}`;
+  const headers = { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' };
+  const listRes = await axios.get(listUrl, {
+    headers: { Authorization: `Bearer ${airtableToken}` },
+    params: { maxRecords: 1, fields: [fieldName] },
+    timeout: 10000
+  });
+  const sample = (listRes.data.records || [])[0];
+  if (!sample?.id) return { ok: false, reason: `Ingen körning att typecasta ${fieldName} mot`, missing };
+  const prev = sample.fields?.[fieldName];
+  for (const name of missing) {
+    // eslint-disable-next-line no-await-in-loop
+    await axios.patch(
+      `${listUrl}/${sample.id}`,
+      { fields: { [fieldName]: name }, typecast: true },
+      { headers, timeout: 10000 }
+    );
+  }
+  if (prev != null && prev !== '') {
+    await axios.patch(
+      `${listUrl}/${sample.id}`,
+      { fields: { [fieldName]: prev }, typecast: true },
+      { headers, timeout: 10000 }
+    );
+  } else {
+    try {
+      await axios.patch(
+        `${listUrl}/${sample.id}`,
+        { fields: { [fieldName]: null } },
+        { headers, timeout: 10000 }
+      );
+    } catch (_) {}
+  }
+  return { ok: true, updated: true, added: missing, via: 'typecast' };
+}
+
 async function ensureUppdragRunsTypChoices(airtableToken, baseId, tableMeta) {
   try {
     const t = tableMeta || await getUppdragRunsTableMeta(airtableToken, baseId);
@@ -20761,18 +20825,31 @@ async function ensureUppdragRunsTypChoices(airtableToken, baseId, tableMeta) {
     if (!missing.length) return { ok: true, updated: false };
 
     const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${typField.id}`;
-    const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
-    await axios.patch(patchUrl, {
-      name: 'Typ',
-      type: 'singleSelect',
-      options: { choices }
-    }, {
-      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
-      timeout: 10000
-    });
-    return { ok: true, updated: true, added: missing };
+    const choices = buildSelectChoicesPreservingIds(typField.options?.choices || [], desired);
+    try {
+      await axios.patch(patchUrl, {
+        name: 'Typ',
+        type: 'singleSelect',
+        options: { choices }
+      }, {
+        headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+      return { ok: true, updated: true, added: missing };
+    } catch (metaErr) {
+      const seeded = await seedUppdragRunsSelectChoicesViaTypecast(airtableToken, baseId, 'Typ', missing);
+      if (seeded && seeded.ok) return { ok: true, updated: true, added: missing, via: 'typecast' };
+      const msg = metaErr.response?.data?.error?.message || metaErr.message;
+      return { ok: false, reason: (seeded && seeded.reason) || msg || 'Kunde inte uppdatera typ-val' };
+    }
   } catch (e) {
     const msg = e.response?.data?.error?.message || e.message;
+    // Sista utväg: typecast även om meta-läsning failade
+    try {
+      const desired = UPPDRAG_TYP_CHOICES.map(c => c.name);
+      const seeded = await seedUppdragRunsSelectChoicesViaTypecast(airtableToken, baseId, 'Typ', desired);
+      if (seeded && seeded.ok) return { ok: true, updated: true, added: desired, via: 'typecast' };
+    } catch (_) {}
     return { ok: false, reason: msg || 'Kunde inte uppdatera typ-val' };
   }
 }
