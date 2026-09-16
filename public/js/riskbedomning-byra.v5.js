@@ -3621,15 +3621,34 @@ class RiskAssessmentManager {
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
 
             if (reviewMode) {
+                const underlag = this.readAiExtraUnderlag();
+                if (underlag) {
+                    // Extra underlag: skriv om åtgärder + residualmotivering (samma väg som riskfaktor).
+                    this.applyTjanstAiIfEmpty(befintligt, data);
+                    if (Array.isArray(data.atgarder) && data.atgarder.length) {
+                        this.replaceTjanstListPreservingUser('atgarder', data.atgarder);
+                    }
+                    this.applyTjanstAiMotivering({
+                        motiveringResidual: data.motiveringResidual || data.motivering_residual_risk || ''
+                    }, { onlyEmpty: false, existing: {} });
+                    this.applyTjanstAiScores({
+                        sannolikhetEfter: data.sannolikhetEfter,
+                        konsekvensEfter: data.konsekvensEfter
+                    }, { onlyEmpty: false, existing: {} });
+                }
                 const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
                     ? data.granskning.poster
                     : [];
                 // Alltid lyft kompletta huvudfält till posters för alla sektioner — även tomma
                 // fält och även om modellen bara skickade Översikt i granskning.poster.
-                const poster = Ai.ensureAnalysisPosters('tjanst', befintligt, data, basePoster);
+                const poster = Ai.ensureAnalysisPosters('tjanst', befintligt, data, basePoster, {
+                    preferUnderlagRewrite: !!underlag
+                });
                 const changed = this.paintInlineTjanstAi(poster, befintligt);
-                this.showNotification(changed
-                    ? 'AI har lagt förslag i era kort. Grönt är nytt, överstruket föreslås tas bort. Du ansvarar för vad som sparas.'
+                this.showNotification(changed || underlag
+                    ? (underlag
+                        ? 'AI har skrivit om åtgärder och residual utifrån Extra underlag. Granska och spara.'
+                        : 'AI har lagt förslag i era kort. Grönt är nytt, överstruket föreslås tas bort. Du ansvarar för vad som sparas.')
                     : 'Inga nya förslag skilde sig från era texter.', 'success');
                 // Lyckad AI-analys: klarmarkera utförandefrågor (samma sparväg som Klarmarkera).
                 await this.markTjanstFlikKlar('utforande');

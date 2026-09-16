@@ -2105,14 +2105,31 @@ class RiskFactorsManager {
                 // Tomma flikar (hot, sårbarheter, åtgärd, S×K, motivering) måste ändå fyllas —
                 // annars ser det ut som att AI inte gjort något (användaren står kvar på Frågor).
                 this.applyOvrigAiIfEmpty(prefix, befintligt, data);
+                // Extra underlag: skriv in åtgärd + residualmotivering (och residual-S×K) direkt
+                // så regenerering syns i kortet — inte bara som nästan-identisk Capego-text.
+                if (befintligt.extraUnderlag) {
+                    if (data.atgard) {
+                        const actionEl = document.getElementById(`${prefix}action`);
+                        if (actionEl) actionEl.value = data.atgard;
+                    }
+                    this.applyOvrigAiMotivering(prefix, {
+                        motiveringResidual: data.motiveringResidual || data.motivering_residual_risk || ''
+                    }, { onlyEmpty: false, existing: {} });
+                    if (data.sannolikhetEfter != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, data.sannolikhetEfter);
+                    if (data.konsekvensEfter != null) this.setScoreSelect(`${prefix}konsekvens-efter`, data.konsekvensEfter);
+                }
                 const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
                     ? data.granskning.poster
                     : [];
-                const poster = Ai.ensureAnalysisPosters('ovrig', befintligt, data, basePoster);
+                const poster = Ai.ensureAnalysisPosters('ovrig', befintligt, data, basePoster, {
+                    preferUnderlagRewrite: !!befintligt.extraUnderlag
+                });
                 const changed = this.paintInlineOvrigAi(prefix, poster, befintligt, reviewHost);
                 const tab = this.focusRiskTabAfterAi(mode, data, befintligt);
-                this.showNotification(changed
-                    ? 'AI har fyllt tomma fält och lagt förslag under ifyllda. Granska flikarna, kopiera in ändringar ni vill behålla, och spara.'
+                this.showNotification(changed || befintligt.extraUnderlag
+                    ? (befintligt.extraUnderlag
+                        ? 'AI har skrivit om åtgärd och residual utifrån Extra underlag. Granska flikarna och spara.'
+                        : 'AI har fyllt tomma fält och lagt förslag under ifyllda. Granska flikarna, kopiera in ändringar ni vill behålla, och spara.')
                     : 'AI har fyllt tomma fält (se fliken ' + (tab === 'hot' ? 'Hot' : tab === 'sarbarhet' ? 'Sårbarheter' : 'Översikt') + '). Granska och spara.', 'success');
             } else {
                 this.applyOvrigAiAll(prefix, data);

@@ -44,6 +44,7 @@
 - Hot/sårbarheter/åtgärder ska ha konkret mekanism utifrån byråquiz, utförandefrågor, statistik och kunskapsbas. Hitta luckor och komplettera — men torka inte bort byråns egna konkreta beskrivningar.
 - Poster markerade [Eget] är tillagda av byrån. Behåll dem i dina listor (samma eller likvärdig titel+innehåll), föreslå inte ta-bort för dem, och skapa inte nära dubbletter. Du får komplettera med andra poster.
 - Om EXTRA UNDERLAG FRÅN BYRÅN finns: inkludera det som konkreta hot/modus/sårbarheter/åtgärder när det är AML-relevant.
+- EXTRA UNDERLAG vs EXPANDERA: När EXTRA UNDERLAG FRÅN BYRÅN finns gäller det framför «EXPANDERA FRAMFÖR ATT KORTA NER» för åtgärd/atgarder och motiveringResidual. Skriv OM dessa fält utifrån underlagets fakta. Behåll inte generisk Capego/boksluts-boilerplate och «strö» bara in ett underlagsord (t.ex. Shopify). Underlagsfakta (pris, andrahandsvärde, kanaler, geografi, verksamhetstyp) ska bära texten.
 - Tomma fält: skriv ditt förslag i huvudfälten.
 - Ifyllda fält som skiljer sig från din analys: lägg en post i granskning.poster med andra=true. forslag är valfritt (servern lyfter innehållet från huvudfälten) — prioritera kommentar och andringar[].
 - kommentar: 2–3 meningar om HELHETEN — vad analysen tillför och varför du föreslår ändringar (luckor, TF, S×K, källor, pedagogik). Skriv så att en kollega förstår utan att läsa hela listan.
@@ -146,11 +147,20 @@
     return list.map((item, i) => `${i + 1}. ${lineFn(item)}`).join('\n');
   }
 
-  function formatTjanstExistingBlock(befintligt) {
+  function hasExtraUnderlag(opts) {
+    const o = opts || {};
+    return isFilledText(o.extraUnderlag || o.aiExtraUnderlag);
+  }
+
+  function formatTjanstExistingBlock(befintligt, opts) {
     const o = befintligt || {};
     const keys = filledTjanstKeys(o);
     if (!keys.length) return '';
+    const underlagRewrite = hasExtraUnderlag(opts) || hasExtraUnderlag(o);
     const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys. Gör en komplett egen bedömning av alla fält. Preferera expandera/förtydliga framför att korta ner — behåll konkreta detaljer som redan finns):'];
+    if (underlagRewrite) {
+      parts.push('OBS — EXTRA UNDERLAG FRÅN BYRÅN finns: skriv OM åtgärder (atgarder) och motiveringResidual utifrån det underlaget. Visa inte den gamla åtgärds-/residualtexten som facit att expandera. Capego/boksluts-boilerplate utan underlagsfakta är förbjuden.');
+    }
     const markUser = (item, line) => (isUserAddedItem(item) ? `[Eget] ${line}` : line);
     if (keys.includes('tjanstebeskrivning')) {
       parts.push(`Tjänsten:\n${trimStr(o.tjanstebeskrivning)}`);
@@ -164,8 +174,10 @@
     if (keys.includes('residual')) {
       parts.push(`Residual S×K: sannolikhet ${o.sannolikhetEfter || '–'}, konsekvens ${o.konsekvensEfter || '–'}`);
     }
-    if (keys.includes('motiveringResidual')) {
+    if (keys.includes('motiveringResidual') && !underlagRewrite) {
       parts.push(`Motivering residualrisk:\n${readMotiveringResidual(o)}`);
+    } else if (keys.includes('motiveringResidual') && underlagRewrite) {
+      parts.push('Motivering residualrisk: (utelämnad — skriv ny utifrån EXTRA UNDERLAG)');
     }
     if (keys.includes('hot')) {
       parts.push('Hot:\n' + formatList(o.hot, (h) => {
@@ -178,10 +190,19 @@
         markUser(s, `${s.titel || ''} — ${s.beskrivning || ''}`)
       )));
     }
-    if (keys.includes('atgarder')) {
+    if (keys.includes('atgarder') && !underlagRewrite) {
       parts.push('Åtgärder:\n' + formatList(o.atgarder, (a) => (
         markUser(a, `${a.titel || a.namn || ''} — ${a.beskrivning || ''}`)
       )));
+    } else if (keys.includes('atgarder') && underlagRewrite) {
+      const userOnly = asList(o.atgarder).filter(isUserAddedItem);
+      if (userOnly.length) {
+        parts.push('Åtgärder [Eget] (behåll):\n' + formatList(userOnly, (a) => (
+          markUser(a, `${a.titel || a.namn || ''} — ${a.beskrivning || ''}`)
+        )));
+      } else {
+        parts.push('Åtgärder: (utelämnade — skriv nya utifrån EXTRA UNDERLAG; behåll [Eget] om sådana finns)');
+      }
     }
     const hasUser = ['hot', 'sarbarheter', 'atgarder'].some((key) => (
       asList(o[key]).some(isUserAddedItem)
@@ -192,13 +213,21 @@
     return parts.join('\n\n');
   }
 
-  function formatOvrigExistingBlock(befintligt) {
+  function formatOvrigExistingBlock(befintligt, opts) {
     const o = befintligt || {};
     const keys = filledOvrigKeys(o);
     if (!keys.length) return '';
+    const underlagRewrite = hasExtraUnderlag(opts) || hasExtraUnderlag(o);
     const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys. Gör en komplett egen bedömning av alla fält. Preferera expandera/förtydliga framför att korta ner — behåll konkreta detaljer som redan finns):'];
+    if (underlagRewrite) {
+      parts.push('OBS — EXTRA UNDERLAG FRÅN BYRÅN finns: skriv OM åtgärd (atgard) och motiveringResidual utifrån det underlaget. Visa inte den gamla Capego-/boilerplate-texten som facit att expandera. Underlagsfakta ska bära texten.');
+    }
     if (keys.includes('beskrivning')) parts.push(`Beskrivning:\n${trimStr(o.beskrivning)}`);
-    if (keys.includes('atgard')) parts.push(`Åtgärd:\n${trimStr(o.atgard)}`);
+    if (keys.includes('atgard') && !underlagRewrite) {
+      parts.push(`Åtgärd:\n${trimStr(o.atgard)}`);
+    } else if (keys.includes('atgard') && underlagRewrite) {
+      parts.push('Åtgärd: (utelämnad — skriv ny utifrån EXTRA UNDERLAG)');
+    }
     if (keys.includes('ptTfRelevans')) parts.push(`PT/TF-relevans: ${trimStr(o.ptTfRelevans)}`);
     if (keys.includes('sxk')) {
       parts.push(`Inneboende S×K: sannolikhet ${o.sannolikhet || '–'}, konsekvens ${o.konsekvens || '–'}`);
@@ -209,8 +238,10 @@
     if (keys.includes('residual')) {
       parts.push(`Residual S×K: sannolikhet ${o.sannolikhetEfter || '–'}, konsekvens ${o.konsekvensEfter || '–'}`);
     }
-    if (keys.includes('motiveringResidual')) {
+    if (keys.includes('motiveringResidual') && !underlagRewrite) {
       parts.push(`Motivering residualrisk:\n${readMotiveringResidual(o)}`);
+    } else if (keys.includes('motiveringResidual') && underlagRewrite) {
+      parts.push('Motivering residualrisk: (utelämnad — skriv ny utifrån EXTRA UNDERLAG)');
     }
     const markUser = (item, line) => (isUserAddedItem(item) ? `[Eget] ${line}` : line);
     if (keys.includes('hot')) {
@@ -948,15 +979,24 @@
     });
   }
 
-  function ensureAnalysisPosters(kind, befintligt, generated, posters) {
+  function ensureAnalysisPosters(kind, befintligt, generated, posters, opts) {
     const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
     const list = Array.isArray(posters) ? posters.slice() : [];
+    const underlagRewrite = !!(opts && opts.preferUnderlagRewrite)
+      || hasExtraUnderlag(opts)
+      || hasExtraUnderlag(befintligt);
+    const underlagFields = kind === 'ovrig'
+      ? new Set(['atgard', 'motiveringResidual', 'residual'])
+      : new Set(['atgarder', 'motiveringResidual', 'residual']);
     Object.keys(catalog).forEach((key) => {
       const current = currentValueFor(key, befintligt);
       let forslag = generatedValueFor(key, generated);
+      const allowShorter = underlagRewrite && underlagFields.has(key);
       if (key === 'hot' || key === 'sarbarheter' || key === 'atgarder') {
-        forslag = preferRicherListItems(current, forslag);
-      } else if (typeof current === 'string' && typeof forslag === 'string' && isWeakerShortening(current, forslag)) {
+        if (!allowShorter) {
+          forslag = preferRicherListItems(current, forslag);
+        }
+      } else if (!allowShorter && typeof current === 'string' && typeof forslag === 'string' && isWeakerShortening(current, forslag)) {
         return;
       }
       // Lyft förslag även för tomma fält så banner/flikar listar alla sektioner
@@ -970,7 +1010,9 @@
         kommentar: (existing && existing.kommentar)
           || (empty
             ? 'Fältet var tomt — AI:s förslag efter en samlad analys av hela tjänsten.'
-            : 'AI:s eget förslag efter en samlad analys. Jämför med nuvarande text.'),
+            : (allowShorter
+              ? 'AI har skrivit om fältet utifrån Extra underlag. Jämför med nuvarande text.'
+              : 'AI:s eget förslag efter en samlad analys. Jämför med nuvarande text.')),
         andra: true,
         forslag
       });

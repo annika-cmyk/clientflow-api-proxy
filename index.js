@@ -25661,7 +25661,9 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
   const hasKlientmedelskonto = TjanstUtforandeMallar.hasKlientmedelskonto(utforandeState);
 
   const reviewMode = AiFaltGranskning.hasExistingTjanstContent(befintligt);
-  const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt);
+  const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt, {
+    extraUnderlag: extraUnderlagText
+  });
   const katalogBlock = RiskanalysTjanstKatalog.formatPromptBlock(namn, undefined, { hasKlientmedelskonto });
   const byraAnalysVector = resolveByraAnalysVectorStoreId();
   const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
@@ -25876,7 +25878,9 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     });
     granskningPoster = RiskanalysTjanstKatalog.filterKlientmedelGranskning(granskningPoster, hasKlientmedelskonto);
     if (reviewMode) {
-      granskningPoster = AiFaltGranskning.ensureAnalysisPosters('tjanst', befintligt, tjanstAiPayload, granskningPoster);
+      granskningPoster = AiFaltGranskning.ensureAnalysisPosters('tjanst', befintligt, tjanstAiPayload, granskningPoster, {
+        preferUnderlagRewrite: !!extraUnderlagText
+      });
       granskningPoster = RiskanalysTjanstKatalog.filterKlientmedelGranskning(granskningPoster, hasKlientmedelskonto);
     }
     const userDataTjanst = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
@@ -25933,7 +25937,9 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   const inherentIn = RiskSkala.assessRisk(befintligt.sannolikhet, befintligt.konsekvens);
   const residualIn = RiskSkala.assessRisk(befintligt.sannolikhetEfter, befintligt.konsekvensEfter);
   const reviewMode = AiFaltGranskning.hasExistingOvrigContent(befintligt);
-  const existingBlock = AiFaltGranskning.formatOvrigExistingBlock(befintligt);
+  const existingBlock = AiFaltGranskning.formatOvrigExistingBlock(befintligt, {
+    extraUnderlag: extraUnderlagText
+  });
   const byraAnalysVector = resolveByraAnalysVectorStoreId();
   const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
   const prompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
@@ -26060,7 +26066,9 @@ Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nä
       ? AiFaltGranskning.normalizeGranskning(result.granskning, 'ovrig', befintligt)
       : [];
     if (reviewMode) {
-      granskningPoster = AiFaltGranskning.ensureAnalysisPosters('ovrig', befintligt, faktorAiPayload, granskningPoster);
+      granskningPoster = AiFaltGranskning.ensureAnalysisPosters('ovrig', befintligt, faktorAiPayload, granskningPoster, {
+        preferUnderlagRewrite: !!extraUnderlagText
+      });
     }
     const userDataFaktor = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
     const faktorAiLog = await auditHooks.logAiGenerated({
