@@ -16336,7 +16336,7 @@ app.get('/api/risk-kundantal', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Användare hittades inte' });
     }
     if (!statistikRiskbedomning.canBuildForUser(userData)) {
-      return res.json({ riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} });
+      return res.json({ riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {}, hogriskbransch: {}, hogriskbranschAny: 0 });
     }
     const records = kundDold.filterAktivaKunder(
       await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)

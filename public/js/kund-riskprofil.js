@@ -956,6 +956,29 @@ function collectResidualItems(kund) {
     return /h[öo]griskbransch/i.test(trimStr(namn));
   }
 
+  /**
+   * Extraherar branschetikett från en riskfaktors namn, t.ex.
+   * "Kunder i högriskbransch: Smycken/antikviteter" → "Smycken/antikviteter"
+   * "Byrån har kunder inom högriskbranschen Smycken/antikviteter" → samma
+   * Generisk mall ("Kunden verkar i en högriskbransch") → "*" (valfri högrisk).
+   */
+  function hogriskBranschLabelFromRiskNamn(namn) {
+    var s = trimStr(namn);
+    if (!isHogriskBranschNamn(s)) return '';
+    if (/^kunden verkar i en h[öo]griskbransch$/i.test(s)) return '*';
+    if (/^andel kunder i h[öo]griskbransch$/i.test(s)) return '*';
+    var m = s.match(/^kunder i h[öo]griskbransch:\s*(.+)$/i);
+    if (m) return trimStr(m[1].replace(/\s*[·•].*$/, ''));
+    m = s.match(/h[öo]griskbranschen\s+(.+)$/i);
+    if (m) return trimStr(m[1].replace(/\s*[·•].*$/, '').replace(/\s*\([^)]*\)\s*$/, ''));
+    m = s.match(/h[öo]griskbransch[:\s]+(.+)$/i);
+    if (m) {
+      var rest = trimStr(m[1].replace(/\s*[·•].*$/, ''));
+      if (rest && !/^kunder$/i.test(rest)) return rest;
+    }
+    return '*';
+  }
+
   function hogriskBranschVal(fields) {
     var raw = fields && fields['Kunden verkar i en högriskbransch'];
     var list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
@@ -1164,6 +1187,7 @@ function collectResidualItems(kund) {
     itemsFromTjanstRecords: itemsFromTjanstRecords,
     itemsFromRiskRecords: itemsFromRiskRecords,
     isHogriskBranschNamn: isHogriskBranschNamn,
+    hogriskBranschLabelFromRiskNamn: hogriskBranschLabelFromRiskNamn,
     hogriskBranschVal: hogriskBranschVal,
     hasHogriskBranschVal: hasHogriskBranschVal,
     findHogriskBranschRecords: findHogriskBranschRecords,

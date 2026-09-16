@@ -16,7 +16,7 @@ class RiskFactorsManager {
         this.userData = null;
         this.userByraIds = [];
         this.pageScope = (document.body && document.body.dataset.riskPageScope) || 'ovriga';
-        this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
+        this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {}, hogriskbransch: {}, hogriskbranschAny: 0 };
         this.byraProfil = null;
         this.riskFactorCatalogVersion = 1;
         this._profilForslagDismissed = this.readDismissedProfilSuggestions();
@@ -555,7 +555,7 @@ class RiskFactorsManager {
     }
 
     async loadKundantal() {
-        this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
+        this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {}, hogriskbransch: {}, hogriskbranschAny: 0 };
         try {
             const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-kundantal`);
             if (!res.ok) return;
@@ -564,7 +564,9 @@ class RiskFactorsManager {
                 riskfaktorer: data.riskfaktorer || {},
                 tjanster: data.tjanster || {},
                 varningsflaggor: data.varningsflaggor || {},
-                risksankande: data.risksankande || {}
+                risksankande: data.risksankande || {},
+                hogriskbransch: data.hogriskbransch || {},
+                hogriskbranschAny: Number(data.hogriskbranschAny) || 0
             };
         } catch (err) {
             console.warn('Kunde inte ladda kundantal:', err);
@@ -582,6 +584,34 @@ class RiskFactorsManager {
             ? KP.canonicalRiskhojandeLabel(key)
             : key;
         return map[canon] || 0;
+    }
+
+    /** Kundantal för riskkort: länkad id-träff, annars högriskbransch-etikett från namnet. */
+    kundAntalForRisk(risk) {
+        const byId = this.kundAntalFor('riskfaktorer', risk && risk.id);
+        if (byId > 0) return byId;
+        const namn = (risk && risk.fields && (risk.fields.Riskfaktor || risk.fields['Riskfaktor'])) || '';
+        const KP = window.KundRiskprofil;
+        if (!KP || typeof KP.isHogriskBranschNamn !== 'function' || !KP.isHogriskBranschNamn(namn)) {
+            return byId;
+        }
+        const label = typeof KP.hogriskBranschLabelFromRiskNamn === 'function'
+            ? KP.hogriskBranschLabelFromRiskNamn(namn)
+            : '';
+        if (!label) return byId;
+        if (label === '*') return Number(this.kundAntalMaps?.hogriskbranschAny) || 0;
+        const map = (this.kundAntalMaps && this.kundAntalMaps.hogriskbransch) || {};
+        if (map[label] != null) return map[label];
+        const fold = (s) => String(s || '')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+        const target = fold(label);
+        for (const [k, v] of Object.entries(map)) {
+            if (fold(k) === target) return v;
+        }
+        return byId;
     }
 
     renderKundCountBadge(n) {
@@ -1290,7 +1320,7 @@ class RiskFactorsManager {
         const progress = (window.RiskSkala && RiskSkala.tjanstResaProgress)
             ? RiskSkala.tjanstResaProgress(scored.klarmarkeradeFlikar)
             : { doneCount: 0, total: 7, complete: false };
-        const kundBadge = this.renderKundCountBadge(this.kundAntalFor('riskfaktorer', risk.id));
+        const kundBadge = this.renderKundCountBadge(this.kundAntalForRisk(risk));
         const nameSectionHtml = hasName
             ? `${this.esc(riskFactor).replace(/\n/g, '<br>')}${scored.ptTfRelevans ? ` · ${this.esc(scored.ptTfRelevans)}` : ''}`
             : `<em>Namn saknas</em>${scored.ptTfRelevans ? ` · ${this.esc(scored.ptTfRelevans)}` : ''} — öppna <strong>Byt namn</strong> i menyn eller <strong>Redigera</strong> för att sätta namnet.`;
@@ -2605,7 +2635,8 @@ modeFromModalId(modalId) {
         const fields = risk.fields;
         
         // Populate form fields
-        document.getElementById('edit-record-id').value = recordId;
+        const recordIdEl = document.getElementById('edit-record-id');
+        if (recordIdEl) recordIdEl.value = recordId;
         const typRaw = fields['Typ av riskfaktor'] || '';
         const typSelect = document.getElementById('edit-risk-type');
         const typValue = (window.RiskDimensioner && RiskDimensioner.airtableTypValue)
@@ -2618,8 +2649,10 @@ modeFromModalId(modalId) {
         const scored = this.scoredRisk(fields);
         const nameEl = document.getElementById('edit-risk-factor');
         if (nameEl) nameEl.value = fields['Riskfaktor'] || '';
-        document.getElementById('edit-description').value = fields['Beskrivning'] || '';
-        document.getElementById('edit-action').value = fields['Åtgjärd'] || fields['Åtgärd'] || '';
+        const descEl = document.getElementById('edit-description');
+        if (descEl) descEl.value = fields['Beskrivning'] || '';
+        const actionEl = document.getElementById('edit-action');
+        if (actionEl) actionEl.value = fields['Åtgjärd'] || fields['Åtgärd'] || '';
         const pt = document.getElementById('edit-pt-tf');
         if (pt) pt.value = scored.ptTfRelevans || '';
         this.setScoreSelect('edit-sannolikhet', scored.sannolikhet);
@@ -2638,8 +2671,13 @@ modeFromModalId(modalId) {
         if (underlag) underlag.value = fields['AI-extra underlag'] || '';
         this.setKlarmarkeradeFlikar('edit', scored.klarmarkeradeFlikar || []);
         this.setRiskTab('edit-risk-modal', 'utforande');
-        document.getElementById('edit-risk-modal').style.display = 'flex';
-
+        const modal = document.getElementById('edit-risk-modal');
+        if (modal) modal.style.display = 'flex';
+        if (!recordIdEl) {
+            console.error('edit-record-id saknas i modalen — kan inte spara redigering.');
+            this.showNotification('Redigeringsformuläret saknar post-id. Ladda om sidan och försök igen.', 'error');
+            return;
+        }
         const focusName = opts.focusName === true || !String(fields['Riskfaktor'] || '').trim();
         if (focusName && nameEl && typeof nameEl.focus === 'function') {
             setTimeout(() => {
