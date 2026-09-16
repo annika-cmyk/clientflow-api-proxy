@@ -674,6 +674,30 @@
       return { record, displayName: namn };
     }
 
+    /** Sätt mejlstatus «uppgift skapad» och spara länk mejl ↔ körning/uppdrag. */
+    function markUppgiftSkapadFromMejl(messageId, { runId, uppdragId }) {
+      const mid = String(messageId || '').trim();
+      if (!mid) return;
+      try {
+        const hs =
+          global.MejlHandleStatus && MejlHandleStatus.createApi
+            ? MejlHandleStatus.createApi()
+            : null;
+        if (hs) hs.set(mid, hs.TASK_CREATED || 'task_created');
+      } catch (_) {}
+      try {
+        const linkApi =
+          global.MejlTaskLink && MejlTaskLink.createApi ? MejlTaskLink.createApi() : null;
+        if (linkApi) {
+          linkApi.link({
+            messageId: mid,
+            runId: runId || '',
+            uppdragId: uppdragId || ''
+          });
+        }
+      } catch (_) {}
+    }
+
     async function createUppgiftFromMejl(customerId, root, message, customerMeta) {
       const text = String((root.querySelector('#mejl-uppgift-text') || {}).value || '').trim();
       const ansvarig = String((root.querySelector('#mejl-uppgift-ansvarig') || {}).value || '').trim();
@@ -842,6 +866,7 @@
                   uppdragName ||
                   match.id;
               }
+              markUppgiftSkapadFromMejl(id, { runId, uppdragId });
             } catch (err) {
               showToast((err && err.message) || 'Kunde inte skapa uppgift', 'error');
               return;
@@ -936,13 +961,13 @@
                   attachmentIds: saveAtts ? selectedAtts : []
                 }];
               } else {
-                showToast('Uppgift skapad, men ingen körning/uppdrag att koppla mejlet till.', 'info');
+                showToast('Uppgift skapad, men ingen körning/uppdrag att koppla mejlet till. Mejlet har status Uppgift skapad.', 'info');
                 closeModal();
                 if (onDone) await onDone();
                 return;
               }
             } else {
-              showToast('Uppgift skapad (Mina uppgifter + kalender).', 'success');
+              showToast('Uppgift skapad (Mina uppgifter + kalender). Mejlet har status Uppgift skapad.', 'success');
               closeModal();
               if (onDone) await onDone();
               return;

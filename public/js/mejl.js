@@ -474,11 +474,15 @@
           const cid = resolveMessageCustomerId(m);
           const customerLink = customerNameLinkHtml(cid, customer);
           const sender = fromDisplayName(m);
+          const handleStatus =
+            handleStatusApi && !isSharedListId(m.id) ? handleStatusApi.get(m.id) : '';
           const handleCls =
-            handleStatusApi && !isSharedListId(m.id)
-              ? handleStatusApi.listItemClass(handleStatusApi.get(m.id))
-              : '';
+            handleStatusApi && handleStatus ? handleStatusApi.listItemClass(handleStatus) : '';
           const handleClass = handleCls ? ` ${handleCls}` : '';
+          const statusBadge =
+            handleStatusApi && handleStatus && typeof handleStatusApi.badgeHtml === 'function'
+              ? handleStatusApi.badgeHtml(handleStatus)
+              : '';
           const sharedBadge =
             m.source === 'shared' || folder === 'shared'
               ? `<span class="mejl-item-shared-badge"><i class="fas fa-share-alt" aria-hidden="true"></i> Delat med dig</span>`
@@ -517,7 +521,7 @@
         </div>
         <div class="mejl-item-from">${esc(sender)}</div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
-        ${sharedBadge}
+        ${statusBadge}${sharedBadge}
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
       </div>
     `;
@@ -1838,10 +1842,27 @@
   if (els.folderSent) els.folderSent.addEventListener('click', () => onFolderClick('sent'));
   if (els.folderShared) els.folderShared.addEventListener('click', () => onFolderClick('shared'));
 
+  async function openDeepLinkedMessage(messageId, wantReply) {
+    const mid = String(messageId || '').trim();
+    if (!mid) return;
+    try {
+      await openMessage(mid);
+      if (wantReply) {
+        const replyBtn = document.getElementById('mejl-reply-btn');
+        if (replyBtn) replyBtn.click();
+      }
+    } catch (err) {
+      console.warn('mejl deep-link:', err);
+      showToast('Kunde inte öppna mejlet från länken.', 'error');
+    }
+  }
+
   async function boot() {
     try {
       const params = new URLSearchParams(window.location.search);
       const presetCustomer = params.get('customerId') || '';
+      const deepMessageId = params.get('messageId') || '';
+      const wantReply = params.get('reply') === '1';
       if (params.get('panel') === 'settings') showMejlPanel('settings');
       if (params.get('gmail') === 'connected') {
         showToast('Gmail är kopplad.', 'success');
@@ -1881,6 +1902,15 @@
       try {
         await loadInbox();
         setFolderUi();
+        if (deepMessageId) {
+          history.replaceState(
+            {},
+            '',
+            'mejl.html' +
+              (presetCustomer ? `?customerId=${encodeURIComponent(presetCustomer)}` : '')
+          );
+          await openDeepLinkedMessage(deepMessageId, wantReply);
+        }
       } catch (err) {
         console.warn('mejl boot loadInbox:', err);
         showInboxFailure(
