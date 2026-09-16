@@ -406,7 +406,7 @@ class RiskFactorsManager {
                 const href = section && Koppling.enkateHref
                     ? Koppling.enkateHref(section)
                     : 'byra-profil-enkate.html';
-                return `<a class="byra-profil-chip${cls}" href="${this.esc(href)}" title="${this.esc(row.label)} — öppna i byråprofilen"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></a>`;
+                return `<a class="byra-profil-chip${cls}" href="${this.esc(href)}" data-profil-key="${this.esc(row.key)}" title="${this.esc(row.label)} — öppna i byråprofilen"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></a>`;
             }).join('');
         }
         const open = API.filterOpenSuggestions(
@@ -454,7 +454,8 @@ class RiskFactorsManager {
         const Koppling = window.ByraProfilAnalysKoppling;
         const links = [
             { section: 'intern', label: 'Intern profil' },
-            { section: 'distribution', label: 'Distributionskanaler' }
+            { section: 'distribution', label: 'Distributionskanaler' },
+            { section: 'geografi', label: 'Geografi' }
         ];
         host.innerHTML = links.map((row) => {
             const href = Koppling && Koppling.enkateHref
@@ -474,6 +475,7 @@ class RiskFactorsManager {
         const key = fold(typ);
         if (key.indexOf('verksamhet') !== -1) return 'verksamhet';
         if (key.indexOf('distribution') !== -1 || key.indexOf('distrubution') !== -1) return 'distribution';
+        if (key.indexOf('geograf') !== -1) return 'geografi';
         return '';
     }
 
@@ -491,9 +493,23 @@ class RiskFactorsManager {
 
     highlightAnalysisFokus(fokus) {
         if (!fokus) return;
-        document.querySelectorAll('[data-risk-fokus].is-fokus-target').forEach((el) => {
+        document.querySelectorAll('[data-risk-fokus].is-fokus-target, .byra-profil-chip.is-fokus-target').forEach((el) => {
             el.classList.remove('is-fokus-target');
         });
+        if (fokus === 'geografi') {
+            const chip = document.querySelector('.byra-profil-chip[data-profil-key="geografiskMarknad"]');
+            const kaskad = document.getElementById('byra-profil-kaskad');
+            if (chip) chip.classList.add('is-fokus-target');
+            const target = chip || kaskad;
+            if (target && typeof target.scrollIntoView === 'function') {
+                setTimeout(() => {
+                    try {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    } catch (_) { /* ignore */ }
+                }, 80);
+            }
+            return;
+        }
         const group = document.querySelector(`.risk-group[data-risk-fokus="${fokus}"]`);
         const forslag = [...document.querySelectorAll(`.byra-profil-forslag-card[data-risk-fokus="${fokus}"]`)];
         const target = group || forslag[0] || document.getElementById('byra-profil-kaskad');

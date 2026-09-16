@@ -1650,6 +1650,10 @@
       requestedSection = '';
     }
     if (requestedSection) {
+      var Koppling = window.ByraProfilAnalysKoppling;
+      if (Koppling && typeof Koppling.canonicalSectionId === 'function') {
+        requestedSection = Koppling.canonicalSectionId(requestedSection);
+      }
       for (var ri = 0; ri < schema.sections.length; ri++) {
         if (String((schema.sections[ri] && schema.sections[ri].id) || '').toLowerCase() === requestedSection) {
           stepIdx = ri;
