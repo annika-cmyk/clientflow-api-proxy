@@ -118,7 +118,8 @@ const {
   extractResponsesText,
   extractResponsesUsage,
   conversationIdFromResponse,
-  isResponsesConversationId
+  isResponsesConversationId,
+  assignAiRunDebugOut
 } = require('./lib/openai-assistant-run');
 const {
   recordAiUsage,
@@ -1434,19 +1435,12 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     promptCacheKey: opts.promptCacheKey
   });
 
-  const fillDebugOut = (patch) => {
-    const debugOut = opts.debugOut && typeof opts.debugOut === 'object' ? opts.debugOut : null;
-    if (!debugOut) return;
-    Object.assign(debugOut, {
-      model: body.model,
-      temperature: body.temperature,
-      hasFileSearch: !!(body.tools && body.tools.length),
-      instructions: body.instructions || '',
-      prompt: userContent == null ? '' : String(userContent),
-      conversationId: conversationId || null,
-      ...patch
-    });
-  };
+  const fillDebugOut = (patch) => assignAiRunDebugOut(opts.debugOut, {
+    body,
+    userContent,
+    conversationId,
+    ...patch
+  });
   fillDebugOut({ status: 'start', rawResponse: '', rawResponseJson: null });
 
   let data;
@@ -1492,11 +1486,21 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
         });
       } catch (e2) {
         updateAiDebugEvent(debugId, { status: 'error_response' });
+        fillDebugOut({
+          status: 'error_response',
+          rawResponseJson: e2.response && e2.response.data != null ? e2.response.data : null,
+          error: e2.message || 'response'
+        });
         logOpenAiUsage(opts, null, 'error', startedAt, e2.message || 'response');
         throw formatOpenAIAssistantError(e2, 'OpenAI responses');
       }
     } else {
       updateAiDebugEvent(debugId, { status: 'error_response' });
+      fillDebugOut({
+        status: 'error_response',
+        rawResponseJson: e.response && e.response.data != null ? e.response.data : null,
+        error: e.message || 'response'
+      });
       logOpenAiUsage(opts, null, isOpenAIRateLimitError(e) ? 'rate_limit' : 'error', startedAt, e.message || 'response');
       throw formatOpenAIAssistantError(e, 'OpenAI responses');
     }
@@ -1506,14 +1510,27 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     updateAiDebugEvent(debugId, { status: `response_${data.status}` });
     const errMsg = (data.error && data.error.message) || data.incomplete_details && data.incomplete_details.reason
       || `Status: ${data.status}`;
+    fillDebugOut({
+      status: `response_${data.status}`,
+      rawResponse: extractResponsesText(data) || '',
+      rawResponseJson: data,
+      error: errMsg
+    });
     logOpenAiUsage(opts, extractResponsesUsage(data), 'incomplete', startedAt, errMsg);
     throw new Error(errMsg);
   }
 
   const fromConv = conversationIdFromResponse(data);
   if (threadIdOut && fromConv) threadIdOut.value = fromConv;
+  if (fromConv) conversationId = fromConv;
 
   const text = extractResponsesText(data);
+  fillDebugOut({
+    status: text ? 'completed' : 'empty',
+    rawResponse: text || '',
+    rawResponseJson: data,
+    conversationId
+  });
   updateAiDebugEvent(debugId, { status: text ? 'completed' : 'empty' });
   logOpenAiUsage(opts, extractResponsesUsage(data), text ? 'ok' : 'empty', startedAt);
   return text;

@@ -462,7 +462,7 @@ document.addEventListener('DOMContentLoaded', function() {
         componentLoader.loadComponent('sidebar', sidebarContainer);
         if (!document.querySelector('script[src*="ai-chat.js"]')) {
             const s = document.createElement('script');
-            s.src = 'js/ai-chat.js?v=2.4';
+            s.src = 'js/ai-chat.js?v=2.5';
             s.async = false;
             document.body.appendChild(s);
         }
