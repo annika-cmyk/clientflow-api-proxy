@@ -20849,16 +20849,20 @@ a.byra-profil-chip:hover {
 
 .kalender-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
-    gap: 1.25rem;
-    margin-top: 1rem;
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+    gap: 1rem;
+    margin-top: 0.5rem;
+    align-items: stretch;
+    min-height: min(72vh, 880px);
 }
 .kalender-grid-wrap {
     background: #fff;
     border: 1px solid var(--border, var(--line));
     border-radius: 12px;
     overflow: hidden;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 .kalender-weekdays {
     display: grid;
@@ -20877,6 +20881,7 @@ a.byra-profil-chip:hover {
 .kalender-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
+    flex: 1 1 auto;
 }
 .kalender-grid--week {
     grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -20885,7 +20890,7 @@ a.byra-profil-chip:hover {
     grid-template-columns: 1fr;
 }
 .kalender-cell {
-    min-height: 7.5rem;
+    min-height: 9rem;
     border-right: 1px solid var(--border, var(--line));
     border-bottom: 1px solid var(--border, var(--line));
     padding: 0.35rem;
@@ -20898,7 +20903,7 @@ a.byra-profil-chip:hover {
 .kalender-cell--week {
     min-height: 14rem;
 }
-.kalender-cell--empty { background: #f8fafb; min-height: 7.5rem; }
+.kalender-cell--empty { background: #f8fafb; min-height: 9rem; }
 .kalender-cell.is-today {
     background: color-mix(in srgb, var(--accent, #13505c) 6%, white);
 }
@@ -21255,8 +21260,9 @@ a.byra-profil-chip:hover {
         position: static;
         max-height: none;
     }
-    .kalender-cell { min-height: 5.5rem; }
-    .kalender-cell--week { min-height: 10rem; }
+    .kalender-layout { min-height: 0; }
+    .kalender-cell { min-height: 6.5rem; }
+    .kalender-cell--week { min-height: 11.5rem; }
 }
 @media (max-width: 720px) {
     .kalender-grid--week {
@@ -21272,7 +21278,7 @@ a.byra-profil-chip:hover {
 }
 @media (max-width: 640px) {
     .kalender-chip-typ { display: none; }
-    .kalender-cell { min-height: 4.5rem; padding: 0.25rem; }
+    .kalender-cell { min-height: 5.25rem; padding: 0.25rem; }
     .kalender-weekdays span { font-size: 0.65rem; padding: 0.4rem 0.15rem; }
     .kalender-view-toggle {
         margin-left: 0;
@@ -21307,13 +21313,15 @@ body.kalender-detail-open { overflow: hidden; }
 .kalender-grid--timed {
     display: block;
     overflow: auto;
-    max-height: min(70vh, 820px);
+    flex: 1 1 auto;
+    max-height: min(78vh, 960px);
+    min-height: min(62vh, 720px);
 }
 .kalender-timed-wrap {
     display: grid;
     grid-template-columns: 3.25rem minmax(0, 1fr);
     grid-template-rows: auto auto auto;
-    min-width: 640px;
+    min-width: 720px;
 }
 .kalender-grid--day .kalender-timed-wrap { min-width: 0; }
 .kalender-timed-corner {
