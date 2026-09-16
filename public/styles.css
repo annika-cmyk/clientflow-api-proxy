@@ -20952,7 +20952,11 @@ a.byra-profil-chip:hover {
 .kalender-chip--planerad { border-left-color: var(--accent, #13505c); }
 .kalender-chip--sen { border-left-color: var(--error, #b42318); background: color-mix(in srgb, var(--error, #b42318) 10%, white); }
 .kalender-chip--google { border-left-color: #1a73e8; background: color-mix(in srgb, #1a73e8 10%, white); }
-.kalender-block--google { border-left: 3px solid #1a73e8; background: color-mix(in srgb, #1a73e8 14%, white); }
+.kalender-block--google {
+    border-color: color-mix(in srgb, #1a73e8 30%, #fff);
+    border-left: 3px solid #1a73e8;
+    background: color-mix(in srgb, #1a73e8 12%, #fff);
+}
 .kalender-side-item--google { border-left-color: #1a73e8; }
 .kalender-detail-status--google { color: #174ea6; background: color-mix(in srgb, #1a73e8 12%, white); }
 
@@ -21445,27 +21449,40 @@ body.kalender-detail-open { overflow: hidden; }
     position: absolute;
     left: 0.2rem;
     right: 0.2rem;
-    border-radius: 6px;
+    box-sizing: border-box;
+    border-radius: 7px;
+    border: 1px solid color-mix(in srgb, var(--accent, #13505c) 22%, #fff);
     border-left: 3px solid var(--accent, #13505c);
-    background: color-mix(in srgb, var(--accent, #13505c) 14%, white);
-    box-shadow: 0 1px 2px rgb(15 23 42 / 8%);
+    background: color-mix(in srgb, var(--accent, #13505c) 11%, #fff);
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 90%),
+      0 1px 3px rgb(15 23 42 / 12%);
     overflow: hidden;
     z-index: 1;
     min-height: 1.1rem;
 }
+.kalender-block:hover {
+    z-index: 4;
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 95%),
+      0 2px 6px rgb(15 23 42 / 16%);
+}
 .kalender-block--klar {
+    border-color: color-mix(in srgb, var(--success, #1f7a4d) 28%, #fff);
     border-left-color: var(--success, #1f7a4d);
-    background: color-mix(in srgb, var(--success, #1f7a4d) 14%, white);
+    background: color-mix(in srgb, var(--success, #1f7a4d) 12%, #fff);
 }
 .kalender-block--pagande {
+    border-color: color-mix(in srgb, var(--warning, #b07414) 28%, #fff);
     border-left-color: var(--warning, #b07414);
-    background: color-mix(in srgb, var(--warning, #b07414) 14%, white);
+    background: color-mix(in srgb, var(--warning, #b07414) 12%, #fff);
 }
 .kalender-block--sen {
+    border-color: color-mix(in srgb, var(--error, #b42318) 28%, #fff);
     border-left-color: var(--error, #b42318);
-    background: color-mix(in srgb, var(--error, #b42318) 12%, white);
+    background: color-mix(in srgb, var(--error, #b42318) 10%, #fff);
 }
-.kalender-block.is-resizing { z-index: 3; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #13505c) 35%, transparent); }
+.kalender-block.is-resizing { z-index: 5; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #13505c) 35%, transparent); }
 .kalender-block-main {
     display: flex;
     flex-direction: column;
