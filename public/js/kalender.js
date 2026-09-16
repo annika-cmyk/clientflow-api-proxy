@@ -47,7 +47,12 @@
     modeOpen: document.getElementById('kal-mode-open'),
     sideLabel: document.getElementById('kal-side-label'),
     typeTabs: Array.from(document.querySelectorAll('[data-kal-typ]')),
-    viewTabs: Array.from(document.querySelectorAll('[data-kal-view]'))
+    viewTabs: Array.from(document.querySelectorAll('[data-kal-view]')),
+    gcalWrap: document.getElementById('kal-gcal'),
+    gcalToggle: document.getElementById('kal-gcal-toggle'),
+    gcalLabel: document.getElementById('kal-gcal-label'),
+    gcalConnect: document.getElementById('kal-gcal-connect'),
+    gcalSync: document.getElementById('kal-gcal-sync')
   };
 
   const LONE = 'Löneuppdrag';
@@ -71,6 +76,10 @@
   let saveToastTimer = null;
   /** Nyckel för öppnad detaljpanel – synkas efter drag/resize av tidblock. */
   let openDetailKey = null;
+  let gcalStatus = null;
+  /** Händelser hämtade från Google Calendar (source: google). */
+  let googleEvents = [];
+  let gcalPullSeq = 0;
 
   function show(node, on) { if (node) node.style.display = on ? '' : 'none'; }
   function esc(s) {
@@ -157,7 +166,7 @@
 
   function buildEvents() {
     // Endast riktiga Uppdragskörningar — inte föräldra-uppdrag / historik / syntetiska perioder.
-    return KE.buildEventsFromRuns({
+    const cf = KE.buildEventsFromRuns({
       records,
       runRecords,
       range: KV.visibleRange(view, focus),
@@ -169,6 +178,11 @@
           KV.inVisibleRangeForEvent(deadline, scheduledStart, range)
       }
     });
+    return cf.concat(Array.isArray(googleEvents) ? googleEvents : []);
+  }
+
+  function isGoogleEvent(ev) {
+    return !!(ev && (ev.source === 'google' || String(ev.key || '').startsWith('gcal:')));
   }
 
   function searchMatch(rec) {
@@ -200,6 +214,12 @@
 
   function filtered() {
     return events.filter((ev) => {
+      if (isGoogleEvent(ev)) {
+        if (activeType !== 'Alla') return false;
+        if (!eventVisibleInMode(ev)) return false;
+        if (!searchMatch(ev.record)) return false;
+        return true;
+      }
       if (!eventVisibleInMode(ev)) return false;
       if (!typeMatch(ev.typ)) return false;
       if (!searchMatch(ev.record)) return false;
@@ -220,8 +240,8 @@
       const ta = sa ? sa.startMin : 9999;
       const tb = sb ? sb.startMin : 9999;
       if (ta !== tb) return ta - tb;
-      const an = String(a.record?.fields?.['Kundnamn'] || '').toLowerCase();
-      const bn = String(b.record?.fields?.['Kundnamn'] || '').toLowerCase();
+      const an = String(a.record?.fields?.['Kundnamn'] || a.summary || '').toLowerCase();
+      const bn = String(b.record?.fields?.['Kundnamn'] || b.summary || '').toLowerCase();
       return an.localeCompare(bn, 'sv');
     });
   }
@@ -474,6 +494,17 @@
   }
 
   function chip(ev) {
+    if (isGoogleEvent(ev)) {
+      const name = String(ev.summary || ev.record?.fields?.Kundnamn || 'Google');
+      const sched = scheduleOf(ev);
+      const timeBit = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : (ev.allDay ? 'Heldag · ' : '');
+      const title = `${timeBit}${name} · Google`;
+      return `<button type="button" class="kalender-chip kalender-chip--google" data-key="${esc(ev.key)}" title="${esc(title)}">
+        <span class="kalender-chip-typ">GCal</span>
+        <span class="kalender-chip-name">${esc(name)}</span>
+        ${sched ? `<span class="kalender-chip-time">${esc(KV.fmtTimeLabel(sched.startMin))}</span>` : ''}
+      </button>`;
+    }
     const f = ev.record?.fields || {};
     const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
     const st = statusOf(ev);
@@ -581,6 +612,21 @@
   }
 
   function timedBlockHtml(ev) {
+    if (isGoogleEvent(ev)) {
+      const name = String(ev.summary || ev.record?.fields?.Kundnamn || 'Google');
+      const sched = scheduleOf(ev);
+      if (!sched) return '';
+      const layout = KV.blockLayout(sched.startMin, sched.endMin);
+      return `<div class="kalender-block kalender-block--google" data-key="${esc(ev.key)}" data-timed="1"
+        style="top:${layout.topPct}%;height:${layout.heightPct}%;"
+        title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name} · Google`)}">
+        <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}">
+          <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
+          <span class="kalender-block-name">${esc(name)}</span>
+          <span class="kalender-block-typ">GCal</span>
+        </button>
+      </div>`;
+    }
     const f = ev.record?.fields || {};
     const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
     const st = statusOf(ev);
@@ -878,6 +924,22 @@
     }
     let last = '';
     el.sideList.innerHTML = list.map((ev) => {
+      if (isGoogleEvent(ev)) {
+        const name = String(ev.summary || 'Google');
+        const place = placeDateOf(ev);
+        const head = place !== last ? `<div class="kalender-side-date">${esc(fmtDate(place))}</div>` : '';
+        last = place;
+        const sched = scheduleOf(ev);
+        const timeMeta = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : (ev.allDay ? 'Heldag · ' : '');
+        return `${head}
+          <button type="button" class="kalender-side-item kalender-side-item--google" data-key="${esc(ev.key)}">
+            <span class="kalender-side-main">
+              <span class="kalender-side-name">${esc(name)}</span>
+              <span class="kalender-side-meta">${esc(timeMeta)}Google-kalender</span>
+            </span>
+            <span class="kalender-side-status">Google</span>
+          </button>`;
+      }
       const f = ev.record?.fields || {};
       const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
       const st = statusOf(ev);
@@ -906,6 +968,41 @@
     const ev = byKey.get(String(key || '')) || (group || []).find((x) => x.key === key);
     if (!ev || !el.detail) return;
     openDetailKey = String(ev.key || key || '');
+
+    if (isGoogleEvent(ev)) {
+      const name = String(ev.summary || 'Google-händelse');
+      const sched = scheduleOf(ev);
+      const blockLabel = sched
+        ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`
+        : (ev.allDay ? 'Heldag' : '—');
+      const siblings = Array.isArray(group) && group.length > 1 ? group : null;
+      if (el.detailTitle) el.detailTitle.textContent = name;
+      el.detailBody.innerHTML = `
+        <div class="kalender-detail-status kalender-detail-status--google">Google-kalender</div>
+        <dl class="kalender-detail-dl">
+          <div><dt>Titel</dt><dd>${esc(name)}</dd></div>
+          <div><dt>Datum</dt><dd>${esc(toDate(ev.deadline) || '—')}</dd></div>
+          <div><dt>Tid</dt><dd>${esc(blockLabel)}</dd></div>
+          ${ev.location ? `<div><dt>Plats</dt><dd>${esc(ev.location)}</dd></div>` : ''}
+          ${ev.description ? `<div><dt>Beskrivning</dt><dd class="kalender-detail-desc">${esc(ev.description).slice(0, 800)}</dd></div>` : ''}
+        </dl>
+        <div class="kalender-detail-actions">
+          ${ev.htmlLink ? `<a class="btn btn-ghost btn-sm" href="${esc(ev.htmlLink)}" target="_blank" rel="noopener noreferrer"><i class="fab fa-google"></i> Öppna i Google</a>` : ''}
+        </div>
+        ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
+          ${siblings.map((s) => {
+            const label = isGoogleEvent(s) ? (s.summary || 'Google') : String(s.record?.fields?.Kundnamn || s.key);
+            return `<button type="button" class="kalender-side-item" data-key="${esc(s.key)}"><span class="kalender-side-name">${esc(label)}</span></button>`;
+          }).join('')}
+        </div>` : ''}`;
+      el.detail.hidden = false;
+      document.body.classList.add('kalender-detail-open');
+      el.detailBody.querySelectorAll('[data-key]').forEach((btn) => {
+        btn.addEventListener('click', () => openDetail(btn.getAttribute('data-key')));
+      });
+      return;
+    }
+
     const f = ev.record?.fields || {};
     const kundId = String(f['Kund ID'] || '').trim();
     const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
@@ -1021,7 +1118,7 @@
     KV.saveStoredView(view);
     focus = keep;
     syncUi();
-    render();
+    renderWithGooglePull();
   }
 
   function setEventMode(next) {
@@ -1050,6 +1147,230 @@
     });
   }
 
+  function renderGcalUi() {
+    if (!el.gcalWrap) return;
+    el.gcalWrap.hidden = false;
+    const st = gcalStatus || {};
+    const connected = !!st.connected;
+    const hasScope = !!st.hasCalendarScope;
+    const enabled = !!st.syncEnabled;
+    const needsReconnect = !!st.needsReconnect || (connected && !hasScope);
+
+    if (el.gcalLabel) {
+      if (!st.configured) el.gcalLabel.textContent = 'Google (saknas)';
+      else if (!connected) el.gcalLabel.textContent = 'Google-kalender';
+      else if (needsReconnect) el.gcalLabel.textContent = 'Koppla om';
+      else if (enabled) el.gcalLabel.textContent = 'Google: på';
+      else el.gcalLabel.textContent = 'Google: av';
+    }
+    if (el.gcalToggle) {
+      el.gcalToggle.classList.toggle('is-active', enabled && !needsReconnect);
+      el.gcalToggle.disabled = !st.configured || !connected || needsReconnect;
+      el.gcalToggle.title = needsReconnect
+        ? (st.reconnectHint || 'Koppla om Gmail för kalenderbehörighet')
+        : 'Visa Google-händelser här och skicka tidblock till Google';
+    }
+    if (el.gcalConnect) {
+      const showConnect = !(st.configured && connected && !needsReconnect);
+      el.gcalConnect.hidden = !showConnect;
+      el.gcalConnect.innerHTML = needsReconnect
+        ? '<i class="fas fa-link"></i> Koppla om'
+        : '<i class="fas fa-link"></i> Koppla';
+    }
+    if (el.gcalSync) {
+      el.gcalSync.hidden = !(enabled && connected && hasScope);
+    }
+  }
+
+  function gcalPullEnabled() {
+    const st = gcalStatus || {};
+    return !!(st.syncEnabled && st.connected && st.hasCalendarScope && !st.needsReconnect);
+  }
+
+  async function pullGoogleEvents(opts = {}) {
+    const quiet = !!opts.quiet;
+    if (!gcalPullEnabled()) {
+      googleEvents = [];
+      return { skipped: true, events: [] };
+    }
+    const seq = ++gcalPullSeq;
+    const range = KV.visibleRange(view, focus);
+    try {
+      const qs = new URLSearchParams({
+        timeMin: range.start,
+        timeMax: range.end
+      });
+      const res = await fetch(`${baseUrl}/api/google-calendar/events?${qs}`, authOpts());
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.needsReconnect) {
+          gcalStatus = { ...gcalStatus, needsReconnect: true, hasCalendarScope: false };
+          renderGcalUi();
+        }
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      if (seq !== gcalPullSeq) return data;
+      googleEvents = Array.isArray(data.events) ? data.events : [];
+      return data;
+    } catch (err) {
+      console.warn('Kalender Google-pull:', err.message);
+      if (!quiet) showSaveToast(err.message || 'Kunde inte hämta Google-händelser', true);
+      return { error: err.message, events: [] };
+    }
+  }
+
+  async function renderWithGooglePull(opts = {}) {
+    render();
+    if (!gcalPullEnabled()) return;
+    const data = await pullGoogleEvents({ quiet: opts.quiet !== false });
+    if (data && !data.error) render();
+  }
+
+  async function loadGcalStatus() {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return;
+    try {
+      const res = await fetch(`${baseUrl}/api/google-calendar/status`, authOpts());
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      gcalStatus = data;
+    } catch (err) {
+      console.warn('Kalender Google-status:', err.message);
+      gcalStatus = { configured: false, connected: false, syncEnabled: false };
+    }
+    renderGcalUi();
+    if (gcalPullEnabled()) {
+      pullGoogleEvents({ quiet: true }).then(() => render());
+    } else {
+      googleEvents = [];
+    }
+  }
+
+  async function connectGcal() {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/gmail/connect?redirect=0&returnTo=${encodeURIComponent('kalender.html')}`,
+        authOpts()
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        showSaveToast(data.error || 'Kunde inte starta Google-koppling', true);
+        return;
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      showSaveToast(err.message || 'Kunde inte koppla Google', true);
+    }
+  }
+
+  async function toggleGcalSync() {
+    if (!gcalStatus || !gcalStatus.connected || gcalStatus.needsReconnect) {
+      return connectGcal();
+    }
+    const next = !gcalStatus.syncEnabled;
+    try {
+      const res = await fetch(`${baseUrl}/api/google-calendar/sync-enabled`, {
+        method: 'POST',
+        ...authOpts(),
+        headers: {
+          ...(authOpts().headers || {}),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ enabled: next })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.needsReconnect || data.code === 'GMAIL_INSUFFICIENT_SCOPE') {
+          showSaveToast(data.error || 'Koppla om Gmail för kalenderbehörighet', true);
+          gcalStatus = { ...gcalStatus, needsReconnect: true, hasCalendarScope: false };
+          renderGcalUi();
+          return;
+        }
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      gcalStatus = { ...gcalStatus, syncEnabled: next };
+      renderGcalUi();
+      showSaveToast(next ? 'Google-kalender på – synkar båda håll' : 'Google-kalender av');
+      if (next) {
+        await syncVisibleRunsToGcal({ alsoPull: true });
+      } else {
+        googleEvents = [];
+        render();
+      }
+    } catch (err) {
+      showSaveToast(err.message || 'Kunde inte spara inställning', true);
+    }
+  }
+
+  function scheduledItemsForGcal() {
+    return events
+      .filter((ev) => {
+        const sched = scheduleOf(ev);
+        return sched && ev.runRec && ev.runRec.id;
+      })
+      .map((ev) => {
+        const sched = scheduleOf(ev);
+        const f = ev.record?.fields || {};
+        const name = String(f['Kundnamn'] || f['Namn'] || '').trim();
+        const typ = String(ev.typ || '').trim();
+        const period = String(ev.periodLabel || '').trim();
+        return {
+          runId: ev.runRec.id,
+          title: ['ClientFlow', typ, period, name].filter(Boolean).join(' · '),
+          description: [
+            name ? `Kund: ${name}` : '',
+            ev.deadline ? `Deadline: ${ev.deadline}` : ''
+          ].filter(Boolean).join('\n'),
+          start: sched.start,
+          end: sched.end
+        };
+      });
+  }
+
+  async function syncVisibleRunsToGcal(opts = {}) {
+    const alsoPull = opts.alsoPull !== false;
+    const items = scheduledItemsForGcal();
+    let pushMsg = '';
+    try {
+      if (items.length) {
+        const res = await fetch(`${baseUrl}/api/google-calendar/sync-runs`, {
+          method: 'POST',
+          ...authOpts(),
+          headers: {
+            ...(authOpts().headers || {}),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ items })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (data.needsReconnect) {
+            gcalStatus = { ...gcalStatus, needsReconnect: true, hasCalendarScope: false };
+            renderGcalUi();
+          }
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        if (data.skipped) {
+          showSaveToast('Google-sync är av');
+          return;
+        }
+        pushMsg = `Skickade ${data.pushed || 0}` + (data.errors ? ` (${data.errors} fel)` : '');
+      } else {
+        pushMsg = 'Inga tidblock att skicka';
+      }
+      let pullMsg = '';
+      if (alsoPull) {
+        const pulled = await pullGoogleEvents({ quiet: true });
+        if (pulled && !pulled.error && !pulled.skipped) {
+          pullMsg = `, hämtade ${pulled.pulled != null ? pulled.pulled : (pulled.events || []).length}`;
+          render();
+        }
+      }
+      showSaveToast(`${pushMsg}${pullMsg} · Google`);
+    } catch (err) {
+      showSaveToast(err.message || 'Kunde inte synka med Google', true);
+    }
+  }
+
   async function load() {
     if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       show(el.loading, false);
@@ -1075,6 +1396,9 @@
       render();
       show(el.loading, false);
       show(el.content, true);
+      if (gcalPullEnabled()) {
+        pullGoogleEvents({ quiet: true }).then(() => render());
+      }
     } catch (err) {
       console.error('Kalender:', err);
       if (el.loading) {
@@ -1087,15 +1411,15 @@
 
   if (el.prev) el.prev.addEventListener('click', () => {
     focus = KV.shiftFocus(view, focus, -1);
-    render();
+    renderWithGooglePull();
   });
   if (el.next) el.next.addEventListener('click', () => {
     focus = KV.shiftFocus(view, focus, 1);
-    render();
+    renderWithGooglePull();
   });
   if (el.today) el.today.addEventListener('click', () => {
     focus = KV.goToday(view, new Date());
-    render();
+    renderWithGooglePull();
   });
   el.viewTabs.forEach((tab) => {
     tab.addEventListener('click', () => setView(tab.getAttribute('data-kal-view')));
@@ -1150,6 +1474,22 @@
     });
   }
 
+  if (el.gcalToggle) el.gcalToggle.addEventListener('click', () => toggleGcalSync());
+  if (el.gcalConnect) el.gcalConnect.addEventListener('click', () => connectGcal());
+  if (el.gcalSync) el.gcalSync.addEventListener('click', () => syncVisibleRunsToGcal());
+
+  // OAuth-återkomst från Google
+  try {
+    const qs = new URLSearchParams(window.location.search || '');
+    if (qs.get('gmail') === 'connected') {
+      showSaveToast('Google kopplad – du kan slå på kalendersync');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (qs.get('gmail') === 'error') {
+      showSaveToast(qs.get('reason') || 'Google-koppling misslyckades', true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch (_) { /* ignore */ }
+
   syncUi();
   syncViewChrome();
 
@@ -1158,6 +1498,7 @@
   function init() {
     const user = window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser();
     if (user) {
+      loadGcalStatus();
       load();
       return;
     }
@@ -1168,6 +1509,7 @@
     const go = () => {
       if (settled) return;
       settled = true;
+      loadGcalStatus();
       load();
     };
     window.addEventListener('clientflow:authReady', go, { once: true });
