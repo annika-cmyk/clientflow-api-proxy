@@ -2925,7 +2925,18 @@ const mejlExtras = createMejlExtras({
 
 const motesbokning = createMotesbokning({
   authenticateToken,
-  getAirtableUser
+  getAirtableUser,
+  onMeetingBooked: async (invite) => {
+    try {
+      const creatorEmail = String(invite?.createdBy || '').trim();
+      if (!creatorEmail) return;
+      const creator = await getAirtableUser(creatorEmail);
+      if (!creator) return;
+      await gmailIntegration.pushMeetingForUser(creator, invite);
+    } catch (err) {
+      console.warn('google-calendar meeting hook:', err.message);
+    }
+  }
 });
 
 const tidregistrering = createTidregistrering({
@@ -21464,6 +21475,33 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
         dropped: patched.dropped
       });
     }
+
+    // Best-effort: push till användarens Google-kalender om sync är på
+    try {
+      const outFields = patched.record?.fields || {};
+      const startIso = hasStart
+        ? startVal
+        : (outFields['Planerad start'] != null ? outFields['Planerad start'] : f['Planerad start']) || null;
+      const endIso = hasEnd
+        ? endVal
+        : (outFields['Planerad slut'] != null ? outFields['Planerad slut'] : f['Planerad slut']) || null;
+      const typ = String(outFields['Typ'] || f['Typ'] || '').trim();
+      const period = String(outFields['Period Label'] || f['Period Label'] || outFields['PeriodKey'] || f['PeriodKey'] || '').trim();
+      const titleParts = ['ClientFlow', typ, period].filter(Boolean);
+      await gmailIntegration.pushRunScheduleForUser(userData, {
+        runId: id,
+        title: titleParts.join(' · '),
+        description: [
+          f['Kund ID'] ? `Kund-ID: ${f['Kund ID']}` : '',
+          (outFields['Deadline'] || f['Deadline']) ? `Deadline: ${outFields['Deadline'] || f['Deadline']}` : ''
+        ].filter(Boolean).join('\n'),
+        start: startIso && endIso ? startIso : null,
+        end: startIso && endIso ? endIso : null
+      });
+    } catch (syncErr) {
+      console.warn('google-calendar schedule hook:', syncErr.message);
+    }
+
     return res.json({ record: patched.record });
   } catch (error) {
     console.error('❌ PATCH /api/uppdrag/runs/:runId/schedule:', error.response?.data || error.message);
