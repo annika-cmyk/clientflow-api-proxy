@@ -216,6 +216,7 @@ class RiskFactorsManager {
         this.applyFilters();
         this.bindMotiveringProposeButtons();
         this.renderByraProfilKaskad();
+        this.applyAnalysisFokusFromUrl();
         if (document.getElementById('riskhoj-katalog-list')) {
             this.setupRiskhojandeKatalog();
         }
@@ -387,17 +388,25 @@ class RiskFactorsManager {
         }
         root.hidden = false;
         this.renderCatalogVersion();
+        this.renderByraProfilKaskadLinks();
         const chips = document.getElementById('byra-profil-kaskad-chips');
         const forslagHost = document.getElementById('byra-profil-kaskad-forslag');
         const forslagWrap = document.getElementById('byra-profil-kaskad-forslag-wrap');
         const empty = document.getElementById('byra-profil-kaskad-empty');
         const summary = API.buildProfilSummary(this.byraProfil || {});
         const answered = summary.filter((r) => r.answered);
+        const Koppling = window.ByraProfilAnalysKoppling;
         if (chips) {
             chips.innerHTML = summary.map((row) => {
                 const val = row.answered ? this.esc(row.value) : '–';
                 const cls = row.answered ? '' : ' is-empty';
-                return `<span class="byra-profil-chip${cls}" title="${this.esc(row.label)}"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></span>`;
+                const section = Koppling && Koppling.enkateSectionForFieldKey
+                    ? Koppling.enkateSectionForFieldKey(row.key)
+                    : '';
+                const href = section && Koppling.enkateHref
+                    ? Koppling.enkateHref(section)
+                    : 'byra-profil-enkate.html';
+                return `<a class="byra-profil-chip${cls}" href="${this.esc(href)}" title="${this.esc(row.label)} — öppna i byråprofilen"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></a>`;
             }).join('');
         }
         const open = API.filterOpenSuggestions(
@@ -408,8 +417,10 @@ class RiskFactorsManager {
         if (forslagWrap) forslagWrap.hidden = open.length === 0;
         if (empty) empty.hidden = answered.length > 0 || open.length > 0;
         if (forslagHost) {
-            forslagHost.innerHTML = open.map((s) => `
-                <article class="byra-profil-forslag-card" data-forslag-id="${this.esc(s.id)}">
+            forslagHost.innerHTML = open.map((s) => {
+                const fokus = this.fokusIdForRiskTyp(s.typ) || '';
+                return `
+                <article class="byra-profil-forslag-card" data-forslag-id="${this.esc(s.id)}" data-risk-fokus="${this.esc(fokus)}">
                     <div class="byra-profil-forslag-main">
                         <h4>${this.esc(s.riskfaktor)}</h4>
                         <p class="byra-profil-forslag-meta">${this.esc(s.typ)} · ${this.esc(s.triggerLabel || '')}</p>
@@ -419,8 +430,8 @@ class RiskFactorsManager {
                         <button type="button" class="btn btn-primary btn-sm" data-profil-accept="${this.esc(s.id)}">Acceptera</button>
                         <button type="button" class="btn btn-ghost btn-sm" data-profil-dismiss="${this.esc(s.id)}">Avfärda</button>
                     </div>
-                </article>
-            `).join('');
+                </article>`;
+            }).join('');
             forslagHost.querySelectorAll('[data-profil-accept]').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     const id = btn.getAttribute('data-profil-accept');
@@ -434,6 +445,66 @@ class RiskFactorsManager {
                     this.dismissProfilSuggestion(id);
                 });
             });
+        }
+    }
+
+    renderByraProfilKaskadLinks() {
+        const host = document.getElementById('byra-profil-kaskad-links');
+        if (!host || this.isKundriskerPage()) return;
+        const Koppling = window.ByraProfilAnalysKoppling;
+        const links = [
+            { section: 'intern', label: 'Intern profil' },
+            { section: 'distribution', label: 'Distributionskanaler' }
+        ];
+        host.innerHTML = links.map((row) => {
+            const href = Koppling && Koppling.enkateHref
+                ? Koppling.enkateHref(row.section)
+                : (`byra-profil-enkate.html?section=${encodeURIComponent(row.section)}`);
+            return `<a class="btn btn-secondary btn-sm" href="${this.esc(href)}">${this.esc(row.label)}</a>`;
+        }).join('');
+    }
+
+    fokusIdForRiskTyp(typ) {
+        const RD = window.RiskDimensioner;
+        if (RD && typeof RD.dimensionOfTyp === 'function') {
+            const dim = RD.dimensionOfTyp(typ);
+            if (dim && (dim.id === 'verksamhet' || dim.id === 'distribution')) return dim.id;
+        }
+        const fold = (v) => String(v || '').trim().toLowerCase().normalize('NFC');
+        const key = fold(typ);
+        if (key.indexOf('verksamhet') !== -1) return 'verksamhet';
+        if (key.indexOf('distribution') !== -1 || key.indexOf('distrubution') !== -1) return 'distribution';
+        return '';
+    }
+
+    applyAnalysisFokusFromUrl() {
+        if (this.isKundriskerPage()) return;
+        if (this._analysisFokusApplied) return;
+        const Koppling = window.ByraProfilAnalysKoppling;
+        const fokus = Koppling && Koppling.fokusFromUrlSearch
+            ? Koppling.fokusFromUrlSearch(window.location.search)
+            : '';
+        if (!fokus || !(Koppling && Koppling.isKnownFokus && Koppling.isKnownFokus(fokus))) return;
+        this._analysisFokusApplied = true;
+        this.highlightAnalysisFokus(fokus);
+    }
+
+    highlightAnalysisFokus(fokus) {
+        if (!fokus) return;
+        document.querySelectorAll('[data-risk-fokus].is-fokus-target').forEach((el) => {
+            el.classList.remove('is-fokus-target');
+        });
+        const group = document.querySelector(`.risk-group[data-risk-fokus="${fokus}"]`);
+        const forslag = [...document.querySelectorAll(`.byra-profil-forslag-card[data-risk-fokus="${fokus}"]`)];
+        const target = group || forslag[0] || document.getElementById('byra-profil-kaskad');
+        if (group) group.classList.add('is-fokus-target');
+        forslag.forEach((el) => el.classList.add('is-fokus-target'));
+        if (target && typeof target.scrollIntoView === 'function') {
+            setTimeout(() => {
+                try {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } catch (_) { /* ignore */ }
+            }, 80);
         }
     }
 
@@ -924,9 +995,11 @@ class RiskFactorsManager {
             const risksInGroup = groupedRisks[riskType];
             const riskItems = buildRiskItems(risksInGroup);
             const isGeo = !!(Geo && Geo.isGeoTyp && Geo.isGeoTyp(riskType));
+            const fokus = this.fokusIdForRiskTyp(riskType);
+            const fokusAttr = fokus ? ` data-risk-fokus="${this.esc(fokus)}" id="risk-group-${this.esc(fokus)}"` : '';
 
             return `
-                <div class="risk-group${isGeo ? ' risk-group--geografiska' : ''}">
+                <div class="risk-group${isGeo ? ' risk-group--geografiska' : ''}"${fokusAttr}>
                     <div class="risk-group-header">
                         <h3>${this.esc(this.displayGroupLabel(riskType))}</h3>
                     </div>

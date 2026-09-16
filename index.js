@@ -14178,7 +14178,8 @@ app.get('/api/byra/profil-schema', authenticateToken, (req, res) => {
     sections: ByraProfilFields.BYRA_PROFIL_SECTIONS,
     fields: ByraProfilFields.BYRA_PROFIL_FIELDS.map(({ airtable, existing, ...rest }) => rest),
     commonKundBranscher: ByraProfilFields.COMMON_KUND_BRANSCHER,
-    clientflowSections: ByraProfilFranClientflow.SECTION_FIELD_KEYS
+    clientflowSections: ByraProfilFranClientflow.SECTION_FIELD_KEYS,
+    analysisTargets: ByraProfilFields.PROFIL_SECTION_ANALYSIS_TARGETS
   });
 });
 

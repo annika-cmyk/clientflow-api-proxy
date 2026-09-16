@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260913namn">
+    <link rel="stylesheet" href="styles.css?v=20260916koppling">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body data-risk-page-scope="ovriga">
@@ -82,7 +82,10 @@
                                     Riskfaktorkatalog version <span id="byra-profil-katalogversion-nr">1</span>
                                 </p>
                             </div>
-                            <a class="btn btn-secondary btn-sm" href="byra-profil-enkate.html">Öppna byråprofil</a>
+                            <div class="byra-profil-kaskad-links" id="byra-profil-kaskad-links">
+                                <a class="btn btn-secondary btn-sm" href="byra-profil-enkate.html?section=intern">Intern profil</a>
+                                <a class="btn btn-secondary btn-sm" href="byra-profil-enkate.html?section=distribution">Distributionskanaler</a>
+                            </div>
                         </div>
                         <div id="byra-profil-kaskad-chips" class="byra-profil-kaskad-chips" aria-live="polite"></div>
                         <div id="byra-profil-kaskad-forslag-wrap" class="byra-profil-kaskad-forslag-wrap" hidden>
@@ -686,6 +689,7 @@
     <script src="js/ai-falt-granskning.js?v=15" defer></script>
     <script src="js/eu-hogrisk-lander.js?v=5" defer></script>
     <script src="js/byra-profil-risk-forslag.js?v=1" defer></script>
-    <script src="js/ovriga-riskfaktorer.js?v=51" defer></script>
+    <script src="js/byra-profil-analys-koppling.js?v=1" defer></script>
+    <script src="js/ovriga-riskfaktorer.js?v=52" defer></script>
 </body>
 </html>
