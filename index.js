@@ -101,7 +101,12 @@ const {
   friendlyAirtableRateLimitMessage
 } = require('./lib/airtable-retry');
 const { REDOVISNINGSBYRA_AI_RULES } = require('./lib/redovisningsbyra-ai-kontext');
-const { formatOvrigRiskfaktorSubjectBlock } = require('./lib/ai-ovrig-riskfaktor-prompt');
+const {
+  formatOvrigRiskfaktorSubjectBlock,
+  formatOvrigExtraUnderlagBlock,
+  readOvrigExtraUnderlag,
+  OVRIG_EXTRA_UNDERLAG_AI_RULES
+} = require('./lib/ai-ovrig-riskfaktor-prompt');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
   resolveAssistantVectorStoreId,
@@ -25923,6 +25928,8 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   } catch (_) { /* profil är valfritt underlag */ }
 
   const befintligt = req.body?.befintligt || {};
+  const extraUnderlagText = readOvrigExtraUnderlag(req.body);
+  const extraUnderlagBlock = formatOvrigExtraUnderlagBlock(extraUnderlagText);
   const inherentIn = RiskSkala.assessRisk(befintligt.sannolikhet, befintligt.konsekvens);
   const residualIn = RiskSkala.assessRisk(befintligt.sannolikhetEfter, befintligt.konsekvensEfter);
   const reviewMode = AiFaltGranskning.hasExistingOvrigContent(befintligt);
@@ -25938,13 +25945,14 @@ Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns risk
 ${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}
 ${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
 ${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
-${existingBlock ? `\n${existingBlock}\n` : ''}
+${existingBlock ? `\n${existingBlock}\n` : ''}${extraUnderlagBlock ? `\n${extraUnderlagBlock}\n` : ''}
 Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder. Skriv inte in byrån i beskrivningen.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 ${AiTjanstAnalys.PEDAGOGISK_ANALYS_AI_RULES}
 ${AtgardKonkret.AI_RULES}
 ${AiFaltGranskning.MOTIVERING_AI_RULES}
+${OVRIG_EXTRA_UNDERLAG_AI_RULES}
 ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
@@ -25955,9 +25963,9 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning.",
-  "motiveringResidual": "2-4 meningar: hur åtgärderna sänkt S och/eller K.",
-  "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. Inte Inför/öka/bör.",
+  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning (branschens generella risk; sänk inte inneboende p.g.a. kundspecifika mildrande detaljer).",
+  "motiveringResidual": "2-4 meningar: hur åtgärderna OCH konkreta fakta från extra underlag (om finns) sänkt S och/eller K — inte bara «strikta kontroller».",
+  "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. När extra underlag finns: använd dess konkreta fakta (pris, andrahandsvärde, kanaler m.m.). Inte Inför/öka/bör. Inte Capego-boilerplate utan underlagsfakta.",
   "hot": [ { "titel": "Kort hot-titel", "beskrivning": "Hur riskfaktorn kan utnyttjas (PT/TF).", "kalla": "valfri källa" } ],
   "sarbarheter": [ { "titel": "Kort sårbarhetstitel", "beskrivning": "Varför byrån kan vara exponerad." } ]${reviewMode ? `,
   "granskning": {

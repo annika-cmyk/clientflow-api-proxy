@@ -1966,7 +1966,12 @@ class RiskFactorsManager {
                 method: 'POST',
                 ...opts,
                 headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-                body: JSON.stringify({ riskfaktor, typ, befintligt })
+                body: JSON.stringify({
+                    riskfaktor,
+                    typ,
+                    befintligt,
+                    extraUnderlag: befintligt.extraUnderlag || ''
+                })
             });
             if (requestEpoch !== this._aiSuggestionEpoch) return;
             if (!response.ok) {
