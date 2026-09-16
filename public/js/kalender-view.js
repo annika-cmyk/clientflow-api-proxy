@@ -473,6 +473,28 @@
     return String(h);
   }
 
+  /**
+   * Pixel-offset för «nu»-markör i tidsrutnätet (från trackens topp).
+   * null om tiden ligger utanför [DAY_START, DAY_END].
+   */
+  function nowMarkerOffsetPx(now) {
+    const d = now instanceof Date ? now : new Date();
+    if (Number.isNaN(d.getTime())) return null;
+    const mins = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+    const start = dayStartMinutes();
+    const end = dayEndMinutes();
+    if (mins < start || mins > end) return null;
+    return ((mins - start) / 60) * PX_PER_HOUR;
+  }
+
+  /** Visa nu-markör i given dags kolumn om datumet är idag och tiden i rutnätet. */
+  function shouldShowNowMarker(dayIso, now) {
+    const d = now instanceof Date ? now : new Date();
+    if (Number.isNaN(d.getTime())) return false;
+    if (dateIso(d) !== String(dayIso || '').slice(0, 10)) return false;
+    return nowMarkerOffsetPx(d) != null;
+  }
+
   return {
     VIEWS,
     STORAGE_KEY,
@@ -527,6 +549,8 @@
     isOpenEventInRange,
     placementDateOpen,
     fmtTimeLabel,
-    tidPrefillHours
+    tidPrefillHours,
+    nowMarkerOffsetPx,
+    shouldShowNowMarker
   };
 });
