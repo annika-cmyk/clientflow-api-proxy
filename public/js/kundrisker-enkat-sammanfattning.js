@@ -85,7 +85,14 @@
       if (raw === HOGRISK_NONE) return true;
       return parseCounted(raw).some(function (r) { return r.form && r.count !== ''; });
     }
-    if (field && (field.type === 'bolagsformer' || field.type === 'branscher' || field.key === 'kundernasBranscher')) {
+    if (
+      field &&
+      (field.type === 'bolagsformer' ||
+        field.type === 'branscher' ||
+        field.type === 'risk-fordelning' ||
+        field.key === 'kundernasBranscher' ||
+        field.key === 'kundResidualriskFordelning')
+    ) {
       return parseCounted(raw).some(function (r) { return r.form && String(r.count || '') !== ''; });
     }
     return true;
@@ -96,6 +103,7 @@
     if (key === 'kundernasBranscher' || (field && field.type === 'branscher')) return 'kund-bransch';
     if (key === 'branscherKundstock' || (field && field.type === 'hogrisk-branscher')) return 'hogriskbransch';
     if (key === 'vanligasteBolagsformer' || (field && field.type === 'bolagsformer')) return 'bolagsform';
+    if (key === 'kundResidualriskFordelning' || (field && field.type === 'risk-fordelning')) return 'riskniva';
     if (key === 'pepKunder') return 'pep-sanktion';
     return '';
   }
@@ -103,6 +111,7 @@
   function iconForKey(key) {
     var map = {
       antalKunder: 'fa-users',
+      kundResidualriskFordelning: 'fa-shield-halved',
       vanligasteBolagsformer: 'fa-building',
       kundernasBranscher: 'fa-layer-group',
       branscherKundstock: 'fa-industry',
@@ -218,6 +227,19 @@
         fromClientflow: true
       };
     }
+    if (typ === 'riskniva' && stat.riskniva && typeof stat.riskniva === 'object') {
+      var levels = ['Låg', 'Normal', 'Förhöjd', 'Hög', 'Oacceptabel'];
+      var rows = levels
+        .map(function (namn) {
+          var antal = Number(stat.riskniva[namn]);
+          if (!Number.isFinite(antal) || antal <= 0) return null;
+          return { namn: namn, antal: Math.round(antal) };
+        })
+        .filter(Boolean);
+      if (rows.length) {
+        return { html: namedListChips('riskniva', rows, 'Residualrisk: '), fromClientflow: true };
+      }
+    }
     return null;
   }
 
@@ -275,7 +297,14 @@
       if (raw === HOGRISK_NONE) return HOGRISK_NONE;
       return formatCounted(raw) || raw;
     }
-    if (field && (field.type === 'bolagsformer' || field.type === 'branscher' || field.key === 'kundernasBranscher')) {
+    if (
+      field &&
+      (field.type === 'bolagsformer' ||
+        field.type === 'branscher' ||
+        field.type === 'risk-fordelning' ||
+        field.key === 'kundernasBranscher' ||
+        field.key === 'kundResidualriskFordelning')
+    ) {
       return formatCounted(value) || String(value).trim();
     }
     if (field && field.type === 'percent') {
@@ -399,6 +428,19 @@
 
     if (typeof stat.antalKunder === 'number') {
       p.antalKunder = stat.antalKunder;
+    }
+    if (stat.riskniva && typeof stat.riskniva === 'object') {
+      var riskLevels = ['Låg', 'Normal', 'Förhöjd', 'Hög', 'Oacceptabel'];
+      var riskRows = riskLevels
+        .map(function (namn) {
+          var antal = Number(stat.riskniva[namn]);
+          if (!Number.isFinite(antal) || antal <= 0) return null;
+          return { namn: namn, antal: Math.round(antal) };
+        })
+        .filter(Boolean);
+      if (riskRows.length) {
+        p.kundResidualriskFordelning = formatNamedCounts(riskRows);
+      }
     }
     if (Array.isArray(stat.bolagsform) && stat.bolagsform.length) {
       p.vanligasteBolagsformer = formatNamedCounts(stat.bolagsform);
@@ -593,7 +635,7 @@
   function isInlineEditableField(field) {
     if (!field) return false;
     var t = field.type || '';
-    if (t === 'bolagsformer' || t === 'branscher' || t === 'hogrisk-branscher') return false;
+    if (t === 'bolagsformer' || t === 'branscher' || t === 'hogrisk-branscher' || t === 'risk-fordelning') return false;
     return t === 'select' || t === 'number' || t === 'text' || t === 'percent' || t === 'multiselect';
   }
 
@@ -898,6 +940,10 @@
         }
         if (typ === 'bolagsform' && typeof Modal.fetchKunderForRow === 'function') {
           Modal.fetchKunderForRow('bolagsform', null, btn.getAttribute('data-namn'), btn.getAttribute('data-titel'));
+          return;
+        }
+        if (typ === 'riskniva' && typeof Modal.fetchKunderForRow === 'function') {
+          Modal.fetchKunderForRow('riskniva', null, btn.getAttribute('data-namn'), btn.getAttribute('data-titel'));
           return;
         }
         if (typeof Modal.openBransch === 'function') {

@@ -153,6 +153,10 @@
     return !!(field && (field.type === 'bolagsformer' || field.key === 'vanligasteBolagsformer'));
   }
 
+  function isRiskFordelningField(field) {
+    return !!(field && (field.type === 'risk-fordelning' || field.key === 'kundResidualriskFordelning'));
+  }
+
   function isHogriskAnswered(raw) {
     var text = String(raw || '').trim();
     if (!text) return false;
@@ -163,7 +167,7 @@
   }
 
   function isAnswered(v, field) {
-    if (isBolagsformerField(field)) return isBolagsformerAnswered(v);
+    if (isBolagsformerField(field) || isRiskFordelningField(field)) return isBolagsformerAnswered(v);
     if (field && (field.type === 'branscher' || field.key === 'kundernasBranscher')) {
       return isBolagsformerAnswered(v);
     }
@@ -1265,6 +1269,61 @@
     return wrap;
   }
 
+  function renderRiskFordelning(field) {
+    var wrap = document.createElement('div');
+    wrap.className = 'byra-enkate-bolagsformer byra-enkate-risk-fordelning';
+    var head = document.createElement('div');
+    head.className = 'byra-enkate-bolagsformer-head';
+    head.innerHTML = '<span>Risknivå</span><span>Antal kunder</span>';
+    var list = document.createElement('div');
+    list.className = 'byra-enkate-bolagsformer-list';
+    var parsed = parseBolagsformer(values[field.key]);
+    var selected = {};
+    parsed.forEach(function (r) {
+      selected[String(r.form).toLowerCase()] = r.count;
+    });
+    var opts = (field.choices && field.choices.length)
+      ? field.choices
+      : ['Låg', 'Normal', 'Förhöjd', 'Hög', 'Oacceptabel'];
+
+    function sync() {
+      var rows = [];
+      list.querySelectorAll('.byra-enkate-bolagsformer-row').forEach(function (row) {
+        var level = row.getAttribute('data-level') || '';
+        var num = row.querySelector('input[type="number"]');
+        var count = num ? String(num.value || '').trim() : '';
+        if (!level || count === '') return;
+        rows.push({ form: level, count: count });
+      });
+      values[field.key] = formatBolagsformer(rows);
+      skipped[field.key] = false;
+      updateProgress();
+      updateNav();
+      setStatus('');
+    }
+
+    opts.forEach(function (level) {
+      var id = 'enkate-risk-fordelning-' + String(level).toLowerCase().replace(/[^a-z0-9]+/gi, '-');
+      var count = selected[String(level).toLowerCase()] || '';
+      var row = document.createElement('div');
+      row.className = 'byra-enkate-bolagsformer-row';
+      row.setAttribute('data-level', level);
+      row.innerHTML =
+        '<label for="' + id + '"><span>' + level + '</span></label>' +
+        '<input type="number" class="form-input" id="' + id + '" min="0" step="1" placeholder="Antal" value="' +
+        String(count).replace(/"/g, '&quot;') + '">';
+      list.appendChild(row);
+      row.querySelectorAll('input').forEach(function (el) {
+        el.addEventListener('change', sync);
+        el.addEventListener('input', sync);
+      });
+    });
+
+    wrap.appendChild(head);
+    wrap.appendChild(list);
+    return wrap;
+  }
+
   function sectionSupportsClientflow(sec) {
     var id = String((sec && sec.id) || '').trim().toLowerCase();
     var keys = clientflowSectionKeys[id];
@@ -1305,7 +1364,7 @@
     title.textContent = 'Hämta statistik från Clientflow';
     var help = document.createElement('p');
     help.className = 'byra-enkate-clientflow-help';
-    help.textContent = 'Fyll i antal kunder, bolagsformer, branscher och övriga statistikfrågor utifrån era aktiva kunder. Ni kan justera svaren efteråt.';
+    help.textContent = 'Fyll i antal kunder, residualrisk per nivå, bolagsformer, branscher och övriga statistikfrågor utifrån era aktiva kunder. Ni kan justera svaren efteråt.';
     if (String(sec.id).toLowerCase() === 'geografi') {
       help.textContent = 'Fyll i internationell handel, högriskländer och kunder i utsatta områden utifrån era aktiva kunder. Ni kan justera svaren efteråt.';
     }
@@ -1367,6 +1426,8 @@
       control = renderHogrisk(field);
     } else if (field.key === 'kundernasBranscher' || field.type === 'branscher') {
       control = renderKundBranscher(field);
+    } else if (isRiskFordelningField(field)) {
+      control = renderRiskFordelning(field);
     } else if (field.type === 'multiselect' && field.allowCustom) {
       control = renderMultiselectCustom(field);
     } else if (field.type === 'multiselect') {
@@ -1598,7 +1659,7 @@
     clientflowSectionKeys = schema.clientflowSections && typeof schema.clientflowSections === 'object'
       ? schema.clientflowSections
       : {
-        kundstock: ['antalKunder', 'vanligasteBolagsformer', 'kundernasBranscher', 'branscherKundstock'],
+        kundstock: ['antalKunder', 'kundResidualriskFordelning', 'vanligasteBolagsformer', 'kundernasBranscher', 'branscherKundstock'],
         geografi: ['andelInternationellHandel', 'sanktionslander', 'kunderIUtsattaOmraden']
       };
     schema.fields.forEach(function (f) {
