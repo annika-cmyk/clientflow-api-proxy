@@ -15968,6 +15968,11 @@ h5.ar-subsection-title {
     border: 1.5px solid var(--border, #dcdfe5);
     background: transparent;
     box-sizing: border-box;
+    cursor: pointer;
+}
+.tjanst-tab-dot:hover {
+    border-color: var(--accent, #13505c);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #13505c) 18%, transparent);
 }
 .tjanst-tab-label {
     flex: 1 1 auto;

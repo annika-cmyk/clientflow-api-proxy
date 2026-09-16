@@ -205,7 +205,8 @@
       return (
         '<button type="button" class="tjanst-tab' + (active ? ' is-active' : '') + '" ' +
           tabAttr + '="' + step.id + '" role="tab" aria-selected="' + (active ? 'true' : 'false') + '">' +
-          '<span class="tjanst-tab-dot" aria-hidden="true"></span>' +
+          '<span class="tjanst-tab-dot" data-resa-blob="' + step.id +
+            '" title="Klarmarkera" aria-hidden="true"></span>' +
           '<span class="tjanst-tab-label">' + esc(step.label) + '</span>' +
           (step.ai
             ? '<span class="tjanst-tab-ai" data-ai-for="' + step.id + '" hidden title="AI-förslag" aria-label="AI-förslag">' +
@@ -220,6 +221,32 @@
         '<div class="tjanst-tabs-steps">' + steps + '</div>' +
       '</nav>'
     );
+  }
+
+  /**
+   * Bind Din resa-tabbar: klick på bloben klarmarkerar steget; klick på etiketten byter flik.
+   * @param {ParentNode} root
+   * @param {{ tabAttr: string, onNavigate: function(string): void, onToggleKlar: function(string): void }} opts
+   */
+  function bindResaTabClicks(root, opts) {
+    if (!root || !opts || !opts.tabAttr) return;
+    var tabAttr = opts.tabAttr;
+    var selector = '.tjanst-tab[' + tabAttr + ']';
+    root.querySelectorAll(selector).forEach(function (tab) {
+      if (tab.dataset.resaBlobBound === '1') return;
+      tab.dataset.resaBlobBound = '1';
+      tab.addEventListener('click', function (e) {
+        var id = tab.getAttribute(tabAttr);
+        if (!id) return;
+        var blob = e.target && e.target.closest ? e.target.closest('[data-resa-blob]') : null;
+        if (blob && tab.contains(blob)) {
+          e.preventDefault();
+          if (typeof opts.onToggleKlar === 'function') opts.onToggleKlar(id);
+          return;
+        }
+        if (typeof opts.onNavigate === 'function') opts.onNavigate(id);
+      });
+    });
   }
 
   function renderDynListPanel(cfg, panelId, opts) {
@@ -743,7 +770,8 @@
     renderPageModals: renderPageModals,
     buildTjanstConfig: buildTjanstConfig,
     buildRiskConfig: buildRiskConfig,
-    mountPageModals: mountPageModals
+    mountPageModals: mountPageModals,
+    bindResaTabClicks: bindResaTabClicks
   };
 
   if (typeof module !== 'undefined' && module.exports) {

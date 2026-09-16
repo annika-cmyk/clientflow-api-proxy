@@ -1422,9 +1422,20 @@ class RiskAssessmentManager {
             });
         });
 
-        document.querySelectorAll('.tjanst-tab').forEach((tab) => {
-            tab.addEventListener('click', () => this.setTjanstTab(tab.getAttribute('data-tjanst-tab')));
-        });
+        if (window.AnalyskortMall && AnalyskortMall.bindResaTabClicks) {
+            AnalyskortMall.bindResaTabClicks(document.getElementById('tjanst-modal') || document, {
+                tabAttr: 'data-tjanst-tab',
+                onNavigate: (id) => this.setTjanstTab(id),
+                onToggleKlar: (id) => {
+                    this.setTjanstTab(id);
+                    this.toggleKlarmarkering(id);
+                }
+            });
+        } else {
+            document.querySelectorAll('.tjanst-tab[data-tjanst-tab]').forEach((tab) => {
+                tab.addEventListener('click', () => this.setTjanstTab(tab.getAttribute('data-tjanst-tab')));
+            });
+        }
         document.getElementById('tjanst-klarmarkera-btn')?.addEventListener('click', () => this.toggleKlarmarkering());
         this.bindTjanstTextareaAutosize();
 
@@ -1972,13 +1983,15 @@ class RiskAssessmentManager {
     }
 
     syncTjanstTabDoneState() {
-        document.querySelectorAll('.tjanst-tab').forEach((tab) => {
+        document.querySelectorAll('.tjanst-tab[data-tjanst-tab]').forEach((tab) => {
             const id = tab.getAttribute('data-tjanst-tab');
             const done = this.klarmarkeradeFlikar.has(id);
             tab.classList.toggle('is-done', done);
             tab.setAttribute('aria-label', done
                 ? `${tab.querySelector('.tjanst-tab-label')?.textContent || id} (klar)`
                 : (tab.querySelector('.tjanst-tab-label')?.textContent || id));
+            const blob = tab.querySelector('[data-resa-blob]');
+            if (blob) blob.title = done ? 'Ta bort klarmarkering' : 'Klarmarkera';
         });
         this.syncTjanstResaProgress();
     }
@@ -2007,9 +2020,9 @@ class RiskAssessmentManager {
             : `<i class="fas fa-check" aria-hidden="true"></i> ${progress.doneCount}/${progress.total} delar klara`;
     }
 
-    async toggleKlarmarkering() {
+    async toggleKlarmarkering(flikId) {
         if (this._klarSaveInFlight) return;
-        const id = this._activeTjanstTab || 'utforande';
+        const id = flikId || this._activeTjanstTab || 'utforande';
         const turningOn = !this.klarmarkeradeFlikar.has(id);
         if (turningOn) {
             await this.markTjanstFlikKlar(id);
