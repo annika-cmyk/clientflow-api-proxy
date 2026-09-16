@@ -624,6 +624,9 @@ class RiskAssessmentManager {
 
     /** Circular progress for Din resa klarmarkering (0% empty → partial arc → 100% teal check). */
     renderUtforandeProgressIcon(progress) {
+        if (window.AnalyskortMall && AnalyskortMall.renderProgressIcon) {
+            return AnalyskortMall.renderProgressIcon(progress);
+        }
         const done = Number(progress && progress.doneCount) || 0;
         const total = Number(progress && progress.total) || 7;
         const complete = !!(progress && progress.complete);
@@ -658,6 +661,14 @@ class RiskAssessmentManager {
         const progress = (window.RiskSkala && RiskSkala.tjanstResaProgress)
             ? RiskSkala.tjanstResaProgress(scored.klarmarkeradeFlikar)
             : { doneCount: 0, total: 7, complete: false };
+        if (window.AnalyskortMall && AnalyskortMall.renderRiskMeta) {
+            return AnalyskortMall.renderRiskMeta({
+                badges,
+                progress,
+                riskLevelClass: this.getRiskLevelClass(riskLevel),
+                residualClass: residualLevel ? this.getRiskLevelClass(residualLevel) : ''
+            });
+        }
         const klarHtml = progress.complete
             ? '<span class="tjanst-mall-klar-badge is-complete" title="Alla analysdelar är klarmarkerade"><i class="fas fa-check" aria-hidden="true"></i> Klar</span>'
             : (progress.doneCount > 0
@@ -736,11 +747,49 @@ class RiskAssessmentManager {
         const aktivBtn = `<button type="button" class="risk-row-menu-item tjanst-mall-aktiv-menu" data-utforande-aktiv-toggle role="menuitemcheckbox" aria-checked="${aktiv ? 'true' : 'false'}" ${lockedInactive ? 'disabled' : ''} title="${this.esc(toggleLabel)}" aria-label="${this.esc(toggleLabel)}"><span class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" aria-hidden="true"><span class="tjanst-mall-switch-ui${aktiv ? ' is-on' : ''}"></span></span>${aktiv ? 'Inaktivera' : 'Aktivera'}</button>`;
         const resaComplete = !!(progress.complete || (RiskSkalaApi && RiskSkalaApi.isTjanstResaComplete
             && RiskSkalaApi.isTjanstResaComplete(scored.klarmarkeradeFlikar)));
+        const Mall = window.AnalyskortMall;
+        if (Mall && Mall.renderCard) {
+            const scoredForMeta = existing && RiskSkalaApi && RiskSkalaApi.readTjanstRisk
+                ? (RiskSkalaApi.readTjanstRisk(existing.fields || {}) || {})
+                : {};
+            const riskLevel = scoredForMeta.level || '';
+            const residualLevel = scoredForMeta.residualLevel || '';
+            const badges = (RiskSkalaApi && RiskSkalaApi.listBadgeLabels)
+                ? RiskSkalaApi.listBadgeLabels(scoredForMeta)
+                : { inneboende: '', residual: '' };
+            return Mall.renderCard({
+                title: template.name,
+                description: template.description || '',
+                aktiv,
+                progress: Object.assign({}, progress, { complete: resaComplete || progress.complete }),
+                rowRiskClass,
+                hasAnalysis: !!existing,
+                badges,
+                riskLevelClass: riskLevel ? this.getRiskLevelClass(riskLevel) : '',
+                residualClass: residualLevel ? this.getRiskLevelClass(residualLevel) : '',
+                overviewHtml: existing ? overviewHtml : '',
+                emptyBodyHtml: existing ? '' : (
+                    `<div class="tjanst-mall-empty">
+                    <p>${isCustom
+                        ? 'Egen tjänst sparas som utkast. Öppna redigeringen, fyll i mini-analysen och spara som aktuell innan du aktiverar.'
+                        : 'Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.'}</p>
+                    <div class="tjanst-mall-choice">
+                        <button type="button" class="btn btn-primary" data-open-analys data-open-analys-ai>Låt AI skapa ett utkast</button>
+                        <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
+                    </div>
+                </div>`
+                ),
+                draftBadgeHtml: draftBadge,
+                menuHtml: `${editBtn}${aktivBtn}${deleteBtn}`,
+                toolbarRightHtml: kundCount > 0 ? this.renderKundCountBadge(kundCount) : '',
+                dataAttrsHtml: ` data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}" data-analyskort-kind="tjanst"`
+            });
+        }
         const overviewAttrs = existing
             ? ' data-has-overview tabindex="0" aria-expanded="false"'
             : '';
         return `
-            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}${resaComplete ? ' is-resa-complete' : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}"${overviewAttrs}>
+            <article class="analyskort tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}${resaComplete ? ' is-resa-complete' : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}"${overviewAttrs}>
                 <div class="tjanst-mall-top">
                     <div class="tjanst-mall-identity">
                         ${progressIcon}
@@ -3767,5 +3816,8 @@ function closeModal(modalId) {
 
 document.addEventListener('DOMContentLoaded', () => {
     console.info('[ClientFlow] riskbedomning-byra v5 laddad – S×K och residualrisk.');
+    if (window.AnalyskortMall && AnalyskortMall.mountPageModals) {
+        AnalyskortMall.mountPageModals(document, 'tjanst');
+    }
     window.riskManager = new RiskAssessmentManager();
 });

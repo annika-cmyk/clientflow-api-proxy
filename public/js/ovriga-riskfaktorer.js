@@ -1224,13 +1224,13 @@ class RiskFactorsManager {
         const listSection = document.querySelector('.risk-assessment-section')
             || document.getElementById('risk-list');
         let card = recordId
-            ? document.querySelector(`.risk-item[data-record-id="${recordId}"]`)
+            ? document.querySelector(`.analyskort[data-record-id="${recordId}"], .risk-item[data-record-id="${recordId}"]`)
             : null;
         if (!card && riskName) {
             const fold = (v) => String(v || '').trim().toLowerCase().normalize('NFC').replace(/\s+/g, ' ');
             const want = fold(riskName);
-            card = [...document.querySelectorAll('.risk-item')].find((el) => {
-                const title = el.querySelector('.risk-task-name');
+            card = [...document.querySelectorAll('.analyskort, .risk-item')].find((el) => {
+                const title = el.querySelector('.tjanst-mall-title-btn, .risk-task-name');
                 return title && fold(title.textContent).indexOf(want) === 0;
             }) || null;
         }
@@ -1240,7 +1240,12 @@ class RiskFactorsManager {
         }
         if (card) {
             card.classList.add('risk-item--just-saved');
-            if (!card.classList.contains('expanded')) {
+            if (card.classList.contains('analyskort')) {
+                const overview = card.querySelector('.tjanst-mall-overview');
+                if (overview && overview.hasAttribute('hidden')) {
+                    this.toggleAnalyskortOverview(card);
+                }
+            } else if (!card.classList.contains('expanded')) {
                 const header = card.querySelector('.risk-item-header');
                 if (header) {
                     try { this.toggleRiskItem(header); } catch (_) { /* ignore */ }
@@ -1267,7 +1272,6 @@ class RiskFactorsManager {
             residualTitle: ''
         };
         const isChecked = risk.fields['Aktuell'] === true;
-        const riskType = risk.fields['Typ av riskfaktor'] || 'Namnlös riskfaktor';
         const riskFactor = String(risk.fields['Riskfaktor'] || '').trim();
         const hasName = !!riskFactor;
         const titleHtml = hasName
@@ -1283,10 +1287,82 @@ class RiskFactorsManager {
         const tfTag = (window.RiskSkala && RiskSkala.isTfRelevant(scored.ptTfRelevans))
             ? '<span class="pt-tf-tag">TF</span>'
             : '';
+        const progress = (window.RiskSkala && RiskSkala.tjanstResaProgress)
+            ? RiskSkala.tjanstResaProgress(scored.klarmarkeradeFlikar)
+            : { doneCount: 0, total: 7, complete: false };
+        const kundBadge = this.renderKundCountBadge(this.kundAntalFor('riskfaktorer', risk.id));
         const nameSectionHtml = hasName
             ? `${this.esc(riskFactor).replace(/\n/g, '<br>')}${scored.ptTfRelevans ? ` · ${this.esc(scored.ptTfRelevans)}` : ''}`
             : `<em>Namn saknas</em>${scored.ptTfRelevans ? ` · ${this.esc(scored.ptTfRelevans)}` : ''} — öppna <strong>Byt namn</strong> i menyn eller <strong>Redigera</strong> för att sätta namnet.`;
-        
+
+        const overviewHtml = `
+            <div class="tjanst-mall-summary">
+                <section class="tjanst-mall-summary-block tjanst-ov-section">
+                    <h5 class="tjanst-mall-summary-heading">Riskfaktor</h5>
+                    <p class="tjanst-mall-summary-text">${nameSectionHtml}</p>
+                </section>
+                <section class="tjanst-mall-summary-block tjanst-ov-section">
+                    <h5 class="tjanst-mall-summary-heading">Beskrivning</h5>
+                    <p class="tjanst-mall-summary-text">${this.formatDescription(risk.fields['Beskrivning'] || '')}</p>
+                </section>
+                ${this.renderMotiveringSections(scored, { keys: ['inneboende'] })}
+                <section class="tjanst-mall-summary-block tjanst-ov-section">
+                    <h5 class="tjanst-mall-summary-heading">Hur hanteras risken?</h5>
+                    <p class="tjanst-mall-summary-text">${this.formatDescription(risk.fields['Åtgjärd'] || risk.fields['Åtgärd'] || '')}</p>
+                </section>
+                ${this.renderMotiveringSections(scored, { keys: ['residual'] })}
+                <div class="risk-item-footer tjanst-mall-footer">
+                    <button class="btn btn-secondary btn-sm edit-risk" data-record-id="${risk.id}">
+                        <i class="fas fa-edit"></i>
+                        Redigera
+                    </button>
+                    <button class="btn ${isChecked ? 'btn-secondary' : 'btn-success'} btn-sm mark-complete" data-record-id="${risk.id}">
+                        <i class="fas fa-${isChecked ? 'eye-slash' : 'check'}"></i>
+                        ${isChecked ? 'Inaktivera' : 'Aktivera'}
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const menuHtml = `
+            <button type="button" class="risk-row-menu-item tjanst-mall-edit edit-risk" role="menuitem" data-record-id="${risk.id}">
+                <i class="fas fa-edit" aria-hidden="true"></i> Redigera
+            </button>
+            <button type="button" class="risk-row-menu-item rename-risk" role="menuitem" data-record-id="${risk.id}">
+                <i class="fas fa-pen" aria-hidden="true"></i> Byt namn
+            </button>
+            <button type="button" class="risk-row-menu-item mark-complete" role="menuitem" data-record-id="${risk.id}">
+                <i class="fas fa-${isChecked ? 'eye-slash' : 'check'}" aria-hidden="true"></i>
+                ${isChecked ? 'Inaktivera' : 'Aktivera'}
+            </button>
+            <button type="button" class="risk-row-menu-item is-danger delete-risk" role="menuitem" data-record-id="${risk.id}">
+                <i class="fas fa-trash" aria-hidden="true"></i> Ta bort
+            </button>
+        `;
+
+        const Mall = window.AnalyskortMall;
+        if (Mall && Mall.renderCard) {
+            return Mall.renderCard({
+                titleHtml: `${titleHtml} ${tfTag} ${motWarn}`,
+                description: this.displayGroupLabel(this.groupRiskTyp(risk)),
+                aktiv: isChecked,
+                progress,
+                rowRiskClass,
+                hasAnalysis: true,
+                badges,
+                riskLevelClass,
+                residualClass,
+                overviewHtml,
+                menuHtml,
+                toolbarRightHtml: kundBadge + (approvalDate
+                    ? `<span class="tjanst-mall-status">Godkänd: ${this.esc(approvalDate)}</span>`
+                    : ''),
+                extraCardClass: 'risk-item' + (hasName ? '' : ' risk-item--missing-name'),
+                dataAttrsHtml: ` data-record-id="${this.esc(risk.id)}" data-analyskort-kind="riskfaktor"`
+            });
+        }
+
+        // Fallback: äldre risk-item-layout om mallen saknas
         return `
             <div class="risk-item ${rowRiskClass} ${isChecked ? '' : 'inactive'}${hasName ? '' : ' risk-item--missing-name'}" data-record-id="${risk.id}">
                 <div class="risk-item-header" onclick="riskManager.toggleRiskItem(this)">
@@ -1299,7 +1375,7 @@ class RiskFactorsManager {
                             <div class="risk-meta-info">
                                 <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
                                 ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
-                                ${this.renderKundCountBadge(this.kundAntalFor('riskfaktorer', risk.id))}
+                                ${kundBadge}
                                 ${approvalDate ? `<span>Godkänd: ${approvalDate}</span>` : ''}
                             </div>
                         </div>
@@ -1309,62 +1385,38 @@ class RiskFactorsManager {
                             <button type="button" class="risk-row-menu-btn" data-risk-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="Fler åtgärder" onclick="event.stopPropagation()">
                                 <i class="fas fa-ellipsis" aria-hidden="true"></i>
                             </button>
-                            <div class="risk-row-menu-panel" hidden role="menu">
-                                <button type="button" class="risk-row-menu-item rename-risk" role="menuitem" data-record-id="${risk.id}" onclick="event.stopPropagation()">
-                                    <i class="fas fa-pen" aria-hidden="true"></i>
-                                    Byt namn
-                                </button>
-                                <button type="button" class="risk-row-menu-item is-danger delete-risk" role="menuitem" data-record-id="${risk.id}" onclick="event.stopPropagation()">
-                                    <i class="fas fa-trash" aria-hidden="true"></i>
-                                    Ta bort
-                                </button>
-                            </div>
+                            <div class="risk-row-menu-panel" hidden role="menu">${menuHtml}</div>
                         </div>
                         <button class="expand-toggle" onclick="event.stopPropagation(); riskManager.toggleRiskItem(this.closest('.risk-item-header'))">
                             <i class="fas fa-chevron-down"></i>
                         </button>
                     </div>
                 </div>
-                
-                <div class="risk-item-content">
-                    <div class="risk-content-section">
-                        <h5><i class="fas fa-exclamation-triangle"></i> Riskfaktor</h5>
-                        <p class="risk-content-text">
-                            ${nameSectionHtml}
-                        </p>
-                    </div>
-                    
-                    <div class="risk-content-section">
-                        <h5><i class="fas fa-file-lines"></i> Riskfaktorn</h5>
-                        <p class="risk-content-text">
-                            ${this.formatDescription(risk.fields['Beskrivning'] || '')}
-                        </p>
-                    </div>
-
-                    ${this.renderMotiveringSections(scored, { keys: ['inneboende'] })}
-                    
-                    <div class="risk-content-section">
-                        <h5><i class="fas fa-list-check"></i> Hur hanteras risken?</h5>
-                        <p class="risk-content-text">
-                            ${this.formatDescription(risk.fields['Åtgjärd'] || risk.fields['Åtgärd'] || '')}
-                        </p>
-                    </div>
-
-                    ${this.renderMotiveringSections(scored, { keys: ['residual'] })}
-                    
-                    <div class="risk-item-footer">
-                        <button class="btn btn-secondary btn-sm edit-risk" data-record-id="${risk.id}">
-                            <i class="fas fa-edit"></i>
-                            Redigera
-                        </button>
-                        <button class="btn ${isChecked ? 'btn-secondary' : 'btn-success'} btn-sm mark-complete" data-record-id="${risk.id}">
-                            <i class="fas fa-${isChecked ? 'eye-slash' : 'check'}"></i>
-                            ${isChecked ? 'Inaktivera' : 'Aktivera'}
-                        </button>
-                    </div>
-                </div>
+                <div class="risk-item-content">${overviewHtml}</div>
             </div>
         `;
+    }
+
+    /** Expandera/kollapsa översikt — samma beteende som tjänste-analyskort. */
+    toggleAnalyskortOverview(cardEl) {
+        const overview = cardEl && cardEl.querySelector('.tjanst-mall-overview');
+        if (!overview) {
+            // Legacy risk-item
+            if (cardEl && cardEl.classList.contains('risk-item')) {
+                this.toggleRiskItem(cardEl.querySelector('.risk-item-header') || cardEl);
+            }
+            return;
+        }
+        const open = overview.hasAttribute('hidden');
+        if (open) {
+            overview.removeAttribute('hidden');
+            cardEl.classList.add('is-overview-open', 'expanded');
+            cardEl.setAttribute('aria-expanded', 'true');
+        } else {
+            overview.setAttribute('hidden', '');
+            cardEl.classList.remove('is-overview-open', 'expanded');
+            cardEl.setAttribute('aria-expanded', 'false');
+        }
     }
 
     esc(text) {
@@ -1433,6 +1485,8 @@ class RiskFactorsManager {
         // Edit buttons
         document.querySelectorAll('.edit-risk').forEach(button => {
             button.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const recordId = e.target.closest('.edit-risk').dataset.recordId;
                 this.openEditModal(recordId);
             });
@@ -1441,6 +1495,8 @@ class RiskFactorsManager {
         // Rename via ⋯-menu — öppnar samma modal med fokus på namnfältet
         document.querySelectorAll('.rename-risk').forEach(button => {
             button.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const recordId = e.target.closest('.rename-risk').dataset.recordId;
                 this.closeAllRiskRowMenus();
                 this.openEditModal(recordId, { focusName: true });
@@ -1450,6 +1506,8 @@ class RiskFactorsManager {
         // Mark complete buttons
         document.querySelectorAll('.mark-complete').forEach(button => {
             button.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const recordId = e.target.closest('.mark-complete').dataset.recordId;
                 this.markAsComplete(recordId);
             });
@@ -1458,12 +1516,43 @@ class RiskFactorsManager {
         // Delete buttons
         document.querySelectorAll('.delete-risk').forEach(button => {
             button.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const recordId = e.target.closest('.delete-risk').dataset.recordId;
                 this.deleteRisk(recordId);
             });
         });
 
-        this.setupRiskRowMenus(document.getElementById('risk-list'));
+        const listRoot = document.getElementById('risk-list');
+        this.setupRiskRowMenus(listRoot);
+        this.bindAnalyskortOverviewClicks(listRoot);
+    }
+
+    bindAnalyskortOverviewClicks(root) {
+        if (!root) return;
+        root.querySelectorAll('.analyskort.tjanst-mall-card[data-has-overview]').forEach((cardEl) => {
+            if (cardEl.dataset.overviewBound === '1') return;
+            cardEl.dataset.overviewBound = '1';
+            cardEl.addEventListener('click', (e) => {
+                if (this.analyskortClickShouldIgnore(e)) return;
+                this.toggleAnalyskortOverview(cardEl);
+            });
+            cardEl.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                if (e.target !== cardEl) return;
+                e.preventDefault();
+                this.toggleAnalyskortOverview(cardEl);
+            });
+        });
+    }
+
+    analyskortClickShouldIgnore(e) {
+        const el = e.target;
+        if (!el || !el.closest) return true;
+        if (el.closest('.risk-row-menu')) return true;
+        if (el.closest('.tjanst-mall-body')) return true;
+        if (el.closest('a, button, input, select, textarea, label')) return true;
+        return false;
     }
 
     setupRiskRowMenus(root) {
@@ -3135,5 +3224,11 @@ function closeModal(modalId) {
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    const pageKind = (document.body && document.body.dataset.riskPageScope) === 'kundrisker'
+        ? 'kundrisker'
+        : 'ovriga';
+    if (window.AnalyskortMall && AnalyskortMall.mountPageModals) {
+        AnalyskortMall.mountPageModals(document, pageKind);
+    }
     window.riskManager = new RiskFactorsManager();
 });
