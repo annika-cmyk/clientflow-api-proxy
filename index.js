@@ -25718,16 +25718,16 @@ KÄLLOR ATT UTGÅ FRÅN:
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-4 korta stycken om tjänstens omfattning och vad byrån gör. Inga kontroller, rutiner, åtgärder, residualrisk, bemanning eller allmän byråfakta.",
+  "beskrivning": "4-7 meningar / 2-4 korta stycken om tjänstens omfattning och vad byrån gör, i klarspråk. Inga kontroller, rutiner, åtgärder, residualrisk, bemanning eller allmän byråfakta.",
   "sannolikhet": 3,
   "konsekvens": 4,
   "sannolikhetEfter": 3,
   "konsekvensEfter": 3,
-  "motiveringInneboende": "2-4 meningar: varför sannolikhet X (dimensionsord) och varför konsekvens Y (dimensionsord). Skilj bekräftat / tjänstetypiskt / saknas. Undervärdera inte när exponeringen är konkret.",
-  "motiveringResidual": "2-4 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera i efterhand» är reaktiv.",
-  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "2-4 meningar steg för steg: vilken uppgift/faktura/betalning/ansökan som kan vara felaktig; hur tjänsten ger in, flyttar eller legitimerar pengar; byråns roll; om det avser PT, TF eller båda. Inga vaga «kan användas för att tvätta pengar».", "kalla": ""  // valfritt; lämna tomt om ni inte har en konkret källa } ],
-  "sarbarheter": [ { "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
-  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
+  "motiveringInneboende": "4-8 meningar: varför sannolikhet X (dimensionsord) och varför konsekvens Y (dimensionsord). Förklara mekanismen i klarspråk. Skilj bekräftat / tjänstetypiskt / saknas. Undervärdera inte när exponeringen är konkret.",
+  "motiveringResidual": "4-8 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K — nämn vad som dokumenteras. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera i efterhand» är reaktiv.",
+  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "3-6 meningar steg för steg: vilken uppgift/faktura/betalning/ansökan som kan vara felaktig; hur tjänsten ger in, flyttar eller legitimerar pengar; byråns roll; om det avser PT, TF eller båda. Inga vaga «kan användas för att tvätta pengar».", "kalla": ""  // valfritt; lämna tomt om ni inte har en konkret källa } ],
+  "sarbarheter": [ { "titel": "Kort titel, max 5 ord", "beskrivning": "3-5 meningar i klarspråk om varför byrån kan vara exponerad." } ],
+  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "3-6 meningar: VAD kontrolleras, VEM, NÄR, VAR dokumenteras, VARFÖR det minskar PT/TF. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
   "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"]${reviewMode ? `,
   "granskning": {
     "poster": [
@@ -25963,17 +25963,17 @@ ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` :
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-4 meningar om just den namngivna riskfaktorn och dess inneboende risk. Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
+  "beskrivning": "4-7 meningar om just den namngivna riskfaktorn och dess inneboende risk i klarspråk (AML för dummies). Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
   "ptTfRelevans": "PT, TF eller Båda",
   "sannolikhet": 1,
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning (branschens generella risk; sänk inte inneboende p.g.a. kundspecifika mildrande detaljer).",
-  "motiveringResidual": "2-4 meningar: hur åtgärderna OCH konkreta fakta från extra underlag (om finns) sänkt S och/eller K — inte bara «strikta kontroller».",
-  "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. När extra underlag finns: använd dess konkreta fakta (pris, andrahandsvärde, kanaler m.m.). Inte Inför/öka/bör. Inte Capego-boilerplate utan underlagsfakta.",
-  "hot": [ { "titel": "Kort hot-titel", "beskrivning": "Hur riskfaktorn kan utnyttjas (PT/TF).", "kalla": "valfri källa" } ],
-  "sarbarheter": [ { "titel": "Kort sårbarhetstitel", "beskrivning": "Varför byrån kan vara exponerad." } ]${reviewMode ? `,
+  "motiveringInneboende": "4-8 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning (branschens generella risk; sänk inte inneboende p.g.a. kundspecifika mildrande detaljer). Förklara mekanismen i klarspråk.",
+  "motiveringResidual": "4-8 meningar: hur åtgärderna OCH konkreta fakta från extra underlag (om finns) sänkt S och/eller K — inte bara «strikta kontroller». Koppla till dokumenterade kontroller.",
+  "atgard": "4-8 meningar eller flera kontroller: VAD kontrolleras, VEM, NÄR, VAR det dokumenteras, VARFÖR det minskar PT/TF. När extra underlag finns: använd dess fakta. Inte Inför/öka/bör. Inte Capego-boilerplate utan underlagsfakta.",
+  "hot": [ { "titel": "Kort hot-titel", "beskrivning": "3-6 meningar: hur riskfaktorn kan utnyttjas steg för steg (PT/TF), i klarspråk.", "kalla": "valfri källa" } ],
+  "sarbarheter": [ { "titel": "Kort sårbarhetstitel", "beskrivning": "3-5 meningar: varför byrån kan vara exponerad och vad medarbetaren ska tänka på." } ]${reviewMode ? `,
   "granskning": {
     "poster": [
       { "falt": "beskrivning|atgard|ptTfRelevans|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
