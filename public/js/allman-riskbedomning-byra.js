@@ -22,7 +22,8 @@
     { id: 'fld-ar-kunder', key: 'kunder' },
     { id: 'fld-ar-distribution', key: 'distribution' },
     { id: 'fld-ar-geografi', key: 'geografi' },
-    { id: 'fld-ar-verksamhet', key: 'verksamhet' }
+    { id: 'fld-ar-verksamhet', key: 'verksamhet' },
+    { id: 'fld-ar-historik', key: 'historik' }
   ];
 
   const LANSSTYRELSEN_INFOTEXT = {
