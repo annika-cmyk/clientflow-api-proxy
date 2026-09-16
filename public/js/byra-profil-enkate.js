@@ -1389,6 +1389,42 @@
     return card;
   }
 
+  function renderAnalysisBridge(sec) {
+    var Koppling = window.ByraProfilAnalysKoppling;
+    var target = null;
+    if (Koppling && typeof Koppling.targetForSection === 'function') {
+      target = Koppling.targetForSection(sec && sec.id);
+    } else if (schema.analysisTargets && sec && sec.id) {
+      target = schema.analysisTargets[sec.id] || null;
+    }
+    if (!target) return null;
+    var href =
+      (Koppling && typeof Koppling.analysisHref === 'function' && Koppling.analysisHref(sec.id)) ||
+      (target.fokus
+        ? target.pageHref + '?fokus=' + encodeURIComponent(target.fokus)
+        : target.pageHref);
+    var wrap = document.createElement('aside');
+    wrap.className = 'byra-enkate-analysis-bridge';
+    wrap.setAttribute('aria-label', 'Koppling till analys');
+    var text = document.createElement('div');
+    text.className = 'byra-enkate-analysis-bridge-text';
+    var title = document.createElement('p');
+    title.className = 'byra-enkate-analysis-bridge-title';
+    title.textContent = 'Kopplas till ' + (target.shortLabel || target.pageTitle || 'analys');
+    var hint = document.createElement('p');
+    hint.className = 'byra-enkate-analysis-bridge-hint';
+    hint.textContent = target.hint || '';
+    text.appendChild(title);
+    if (target.hint) text.appendChild(hint);
+    var link = document.createElement('a');
+    link.className = 'btn btn-secondary byra-enkate-analysis-bridge-cta';
+    link.href = href;
+    link.textContent = target.ctaLabel || ('Öppna ' + (target.pageTitle || 'analys'));
+    wrap.appendChild(text);
+    wrap.appendChild(link);
+    return wrap;
+  }
+
   function renderStep() {
     var sec = schema.sections[stepIdx];
     if (!sec || !ui.fields) return;
@@ -1396,6 +1432,8 @@
     if (ui.sectionTitle) ui.sectionTitle.textContent = sec.title || '';
     if (ui.sectionSub) ui.sectionSub.textContent = sec.subtitle || '';
     ui.fields.innerHTML = '';
+    var bridge = renderAnalysisBridge(sec);
+    if (bridge) ui.fields.appendChild(bridge);
     if (sectionSupportsClientflow(sec)) {
       ui.fields.appendChild(renderClientflowBanner(sec));
     }
