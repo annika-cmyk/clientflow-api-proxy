@@ -20802,6 +20802,16 @@ a.byra-profil-chip:hover {
     font-size: 0.95rem;
     max-width: 42rem;
 }
+.kalender-gcal {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+}
+.kalender-gcal .btn.is-active {
+    color: var(--accent, #13505c);
+    font-weight: 600;
+}
 .kalender-view-toggle {
     display: inline-flex;
     flex-wrap: wrap;

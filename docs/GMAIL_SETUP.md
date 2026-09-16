@@ -8,7 +8,7 @@ Koppla användarens Gmail till ClientFlow för att:
 ## Google Cloud-setup
 
 1. Skapa projekt i [Google Cloud Console](https://console.cloud.google.com/)
-2. Aktivera **Gmail API**
+2. Aktivera **Gmail API** och **Google Calendar API**
 3. Konfigurera OAuth-consent screen (External eller Internal för Workspace)
 4. Skapa OAuth-klient (typ **Web application**)
 5. Lägg till **Authorized redirect URI** (måste matcha `GOOGLE_GMAIL_REDIRECT_URI` exakt):
@@ -16,6 +16,19 @@ Koppla användarens Gmail till ClientFlow för att:
    - Ev. alias utan www om ni använder det i OAuth: `https://app.clientflow.se/api/gmail/oauth/callback`
    - Lokal: `http://localhost:3001/api/gmail/oauth/callback`
 6. Kopiera **Client ID** och **Client Secret**
+
+OAuth-scopes som begärs: Gmail (läsa/skicka/etiketter) + `calendar.events` (skapa/uppdatera händelser i användarens primära kalender).
+
+## Google-kalender (envägs från ClientFlow)
+
+När Gmail är kopplad med kalenderbehörighet:
+
+1. Öppna **Kalender**
+2. Klicka **Koppla** om du saknar kalenderscope (annars räcker befintlig Gmail-koppling efter omkoppling)
+3. Slå på **Google: på** – planerade tidblock sparas då till din Google-kalender
+4. **Synka** skickar synliga tidblock i vyn; bokade möten pushas när kunden bokar
+
+**Begränsningar (v1):** bara ClientFlow → Google (inte vice versa). Deadlines utan avsatt tidblock synkas inte. Google-händelser som du redigerar i Google skrivs inte tillbaka till ClientFlow.
 
 ## Render-miljövariabler
 
