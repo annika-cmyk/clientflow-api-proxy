@@ -919,34 +919,24 @@
     });
   }
 
+  /** Sidopanel (Deadlines/Öppna): bara ClientFlow-körningar — inte Google-händelser. */
+  function sidePanelEvents(list) {
+    return (list || []).filter((ev) => !isGoogleEvent(ev));
+  }
+
   function renderSide(list) {
     if (!el.sideList) return;
+    const items = sidePanelEvents(list);
     if (el.sideLabel) el.sideLabel.textContent = eventMode === 'open' ? 'Öppna' : 'Deadlines';
-    if (el.sideCount) el.sideCount.textContent = list.length ? `(${list.length})` : '';
+    if (el.sideCount) el.sideCount.textContent = items.length ? `(${items.length})` : '';
     const emptyWhen = KV.rangeEmptyLabel(view);
     const emptyNoun = eventMode === 'open' ? 'öppna körningar' : 'deadlines';
-    if (!list.length) {
+    if (!items.length) {
       el.sideList.innerHTML = `<p class="kalender-side-empty">Inga ${esc(emptyNoun)} ${esc(emptyWhen)} med aktuella filter.</p>`;
       return;
     }
     let last = '';
-    el.sideList.innerHTML = list.map((ev) => {
-      if (isGoogleEvent(ev)) {
-        const name = String(ev.summary || 'Google');
-        const place = placeDateOf(ev);
-        const head = place !== last ? `<div class="kalender-side-date">${esc(fmtDate(place))}</div>` : '';
-        last = place;
-        const sched = scheduleOf(ev);
-        const timeMeta = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : (ev.allDay ? 'Heldag · ' : '');
-        return `${head}
-          <button type="button" class="kalender-side-item kalender-side-item--google" data-key="${esc(ev.key)}">
-            <span class="kalender-side-main">
-              <span class="kalender-side-name">${esc(name)}</span>
-              <span class="kalender-side-meta">${esc(timeMeta)}Google-kalender</span>
-            </span>
-            <span class="kalender-side-status">Google</span>
-          </button>`;
-      }
+    el.sideList.innerHTML = items.map((ev) => {
       const f = ev.record?.fields || {};
       const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
       const st = statusOf(ev);
