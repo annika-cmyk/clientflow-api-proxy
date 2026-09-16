@@ -47,12 +47,7 @@
     modeOpen: document.getElementById('kal-mode-open'),
     sideLabel: document.getElementById('kal-side-label'),
     typeTabs: Array.from(document.querySelectorAll('[data-kal-typ]')),
-    viewTabs: Array.from(document.querySelectorAll('[data-kal-view]')),
-    gcalWrap: document.getElementById('kal-gcal'),
-    gcalToggle: document.getElementById('kal-gcal-toggle'),
-    gcalLabel: document.getElementById('kal-gcal-label'),
-    gcalConnect: document.getElementById('kal-gcal-connect'),
-    gcalSync: document.getElementById('kal-gcal-sync')
+    viewTabs: Array.from(document.querySelectorAll('[data-kal-view]'))
   };
 
   const LONE = 'Löneuppdrag';
@@ -76,7 +71,6 @@
   let saveToastTimer = null;
   /** Nyckel för öppnad detaljpanel – synkas efter drag/resize av tidblock. */
   let openDetailKey = null;
-  let gcalStatus = null;
 
   function show(node, on) { if (node) node.style.display = on ? '' : 'none'; }
   function esc(s) {
@@ -1056,165 +1050,6 @@
     });
   }
 
-  function renderGcalUi() {
-    if (!el.gcalWrap) return;
-    el.gcalWrap.hidden = false;
-    const st = gcalStatus || {};
-    const connected = !!st.connected;
-    const hasScope = !!st.hasCalendarScope;
-    const enabled = !!st.syncEnabled;
-    const needsReconnect = !!st.needsReconnect || (connected && !hasScope);
-
-    if (el.gcalLabel) {
-      if (!st.configured) el.gcalLabel.textContent = 'Google (saknas)';
-      else if (!connected) el.gcalLabel.textContent = 'Google-kalender';
-      else if (needsReconnect) el.gcalLabel.textContent = 'Koppla om';
-      else if (enabled) el.gcalLabel.textContent = 'Google: på';
-      else el.gcalLabel.textContent = 'Google: av';
-    }
-    if (el.gcalToggle) {
-      el.gcalToggle.classList.toggle('is-active', enabled && !needsReconnect);
-      el.gcalToggle.disabled = !st.configured || !connected || needsReconnect;
-      el.gcalToggle.title = needsReconnect
-        ? (st.reconnectHint || 'Koppla om Gmail för kalenderbehörighet')
-        : 'Skicka planerade tidblock och bokade möten till din Google-kalender';
-    }
-    if (el.gcalConnect) {
-      const showConnect = !(st.configured && connected && !needsReconnect);
-      el.gcalConnect.hidden = !showConnect;
-      el.gcalConnect.innerHTML = needsReconnect
-        ? '<i class="fas fa-link"></i> Koppla om'
-        : '<i class="fas fa-link"></i> Koppla';
-    }
-    if (el.gcalSync) {
-      el.gcalSync.hidden = !(enabled && connected && hasScope);
-    }
-  }
-
-  async function loadGcalStatus() {
-    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return;
-    try {
-      const res = await fetch(`${baseUrl}/api/google-calendar/status`, authOpts());
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      gcalStatus = data;
-    } catch (err) {
-      console.warn('Kalender Google-status:', err.message);
-      gcalStatus = { configured: false, connected: false, syncEnabled: false };
-    }
-    renderGcalUi();
-  }
-
-  async function connectGcal() {
-    try {
-      const res = await fetch(
-        `${baseUrl}/api/gmail/connect?redirect=0&returnTo=${encodeURIComponent('kalender.html')}`,
-        authOpts()
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.url) {
-        showSaveToast(data.error || 'Kunde inte starta Google-koppling', true);
-        return;
-      }
-      window.location.href = data.url;
-    } catch (err) {
-      showSaveToast(err.message || 'Kunde inte koppla Google', true);
-    }
-  }
-
-  async function toggleGcalSync() {
-    if (!gcalStatus || !gcalStatus.connected || gcalStatus.needsReconnect) {
-      return connectGcal();
-    }
-    const next = !gcalStatus.syncEnabled;
-    try {
-      const res = await fetch(`${baseUrl}/api/google-calendar/sync-enabled`, {
-        method: 'POST',
-        ...authOpts(),
-        headers: {
-          ...(authOpts().headers || {}),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ enabled: next })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data.needsReconnect || data.code === 'GMAIL_INSUFFICIENT_SCOPE') {
-          showSaveToast(data.error || 'Koppla om Gmail för kalenderbehörighet', true);
-          gcalStatus = { ...gcalStatus, needsReconnect: true, hasCalendarScope: false };
-          renderGcalUi();
-          return;
-        }
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-      gcalStatus = { ...gcalStatus, syncEnabled: next };
-      renderGcalUi();
-      showSaveToast(next ? 'Google-kalender på – synkar tidblock' : 'Google-kalender av');
-      if (next) await syncVisibleRunsToGcal();
-    } catch (err) {
-      showSaveToast(err.message || 'Kunde inte spara inställning', true);
-    }
-  }
-
-  function scheduledItemsForGcal() {
-    return events
-      .filter((ev) => {
-        const sched = scheduleOf(ev);
-        return sched && ev.runRec && ev.runRec.id;
-      })
-      .map((ev) => {
-        const sched = scheduleOf(ev);
-        const f = ev.record?.fields || {};
-        const name = String(f['Kundnamn'] || f['Namn'] || '').trim();
-        const typ = String(ev.typ || '').trim();
-        const period = String(ev.periodLabel || '').trim();
-        return {
-          runId: ev.runRec.id,
-          title: ['ClientFlow', typ, period, name].filter(Boolean).join(' · '),
-          description: [
-            name ? `Kund: ${name}` : '',
-            ev.deadline ? `Deadline: ${ev.deadline}` : ''
-          ].filter(Boolean).join('\n'),
-          start: sched.start,
-          end: sched.end
-        };
-      });
-  }
-
-  async function syncVisibleRunsToGcal() {
-    const items = scheduledItemsForGcal();
-    if (!items.length) {
-      showSaveToast('Inga planerade tidblock i vyn att synka');
-      return;
-    }
-    try {
-      const res = await fetch(`${baseUrl}/api/google-calendar/sync-runs`, {
-        method: 'POST',
-        ...authOpts(),
-        headers: {
-          ...(authOpts().headers || {}),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ items })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data.needsReconnect) {
-          gcalStatus = { ...gcalStatus, needsReconnect: true, hasCalendarScope: false };
-          renderGcalUi();
-        }
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-      if (data.skipped) {
-        showSaveToast('Google-sync är av');
-        return;
-      }
-      showSaveToast(`Synkat ${data.pushed || 0} till Google` + (data.errors ? ` (${data.errors} fel)` : ''));
-    } catch (err) {
-      showSaveToast(err.message || 'Kunde inte synka till Google', true);
-    }
-  }
-
   async function load() {
     if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       show(el.loading, false);
@@ -1315,22 +1150,6 @@
     });
   }
 
-  if (el.gcalToggle) el.gcalToggle.addEventListener('click', () => toggleGcalSync());
-  if (el.gcalConnect) el.gcalConnect.addEventListener('click', () => connectGcal());
-  if (el.gcalSync) el.gcalSync.addEventListener('click', () => syncVisibleRunsToGcal());
-
-  // OAuth-återkomst från Google
-  try {
-    const qs = new URLSearchParams(window.location.search || '');
-    if (qs.get('gmail') === 'connected') {
-      showSaveToast('Google kopplad – du kan slå på kalendersync');
-      window.history.replaceState({}, '', window.location.pathname);
-    } else if (qs.get('gmail') === 'error') {
-      showSaveToast(qs.get('reason') || 'Google-koppling misslyckades', true);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  } catch (_) { /* ignore */ }
-
   syncUi();
   syncViewChrome();
 
@@ -1339,7 +1158,6 @@
   function init() {
     const user = window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser();
     if (user) {
-      loadGcalStatus();
       load();
       return;
     }
@@ -1350,7 +1168,6 @@
     const go = () => {
       if (settled) return;
       settled = true;
-      loadGcalStatus();
       load();
     };
     window.addEventListener('clientflow:authReady', go, { once: true });
