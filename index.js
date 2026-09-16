@@ -1428,6 +1428,21 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     temperature: opts.temperature
   });
 
+  const fillDebugOut = (patch) => {
+    const debugOut = opts.debugOut && typeof opts.debugOut === 'object' ? opts.debugOut : null;
+    if (!debugOut) return;
+    Object.assign(debugOut, {
+      model: body.model,
+      temperature: body.temperature,
+      hasFileSearch: !!(body.tools && body.tools.length),
+      instructions: body.instructions || '',
+      prompt: userContent == null ? '' : String(userContent),
+      conversationId: conversationId || null,
+      ...patch
+    });
+  };
+  fillDebugOut({ status: 'start', rawResponse: '', rawResponseJson: null });
+
   let data;
   try {
     const res = await axios.post(`${apiBase}/responses`, body, {
@@ -25981,6 +25996,10 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   }` : ''}
 }
 
+KOMPLETT SVAR (krav): Fyll alltid huvudfälten beskrivning, hot, sarbarheter, atgard, S×K, residual och båda motiveringarna. Hoppa aldrig över hot eller sårbarheter bara för att beskrivning/åtgärd redan finns — alla sektioner ska ha innehåll i samma JSON-svar.
+ANTAL (minst; öka vid högre risk):
+- hot: 2 (Låg/Normal), 3 (Förhöjd+)
+- sarbarheter: 2 (Låg/Normal), 3 (Förhöjd+)
 SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen efter åtgärden.
 ${RiskSkala.sxkScalePromptBlock()}
 Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nämna siffrorna — inte «förhöjd sannolikhet» eller «betydande konsekvens».`;
@@ -26079,7 +26098,7 @@ Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nä
       entityId: req.body?.recordId || riskfaktor || 'riskfaktor',
       fieldChanged: 'Beskrivning',
       aiOutputRaw: faktorAiPayload.beskrivning,
-      extra: { faltSomGenererades: 'beskrivning,sxk,atgard' }
+      extra: { faltSomGenererades: 'beskrivning,hot,sarbarheter,sxk,atgard' }
     });
     res.json({
       ...faktorAiPayload,
