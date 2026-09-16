@@ -113,6 +113,7 @@ const {
   resolveByraAnalysVectorStoreId,
   BYRA_ANALYS_KUNSKAPSBAS_RULES,
   resolveResponsesModel,
+  resolveByraAnalysModel,
   buildResponsesPayload,
   extractResponsesText,
   extractResponsesUsage,
@@ -211,6 +212,7 @@ console.log('  AIRTABLE_TABLE_NAME:', process.env.AIRTABLE_TABLE_NAME ? 'SET' : 
 console.log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET');
   console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET (används inte längre)' : 'NOT SET');
   console.log('  OPENAI_MODEL:', process.env.OPENAI_MODEL || 'gpt-4o');
+  console.log('  OPENAI_BYRA_ANALYS_MODEL:', process.env.OPENAI_BYRA_ANALYS_MODEL || '(samma som OPENAI_MODEL)');
   console.log('  OPENAI_VECTOR_STORE_ID:', process.env.OPENAI_VECTOR_STORE_ID ? 'SET' : 'NOT SET');
   console.log('  OPENAI_VECTOR_STORE_ID_BYRA_S4:', process.env.OPENAI_VECTOR_STORE_ID_BYRA_S4 ? 'SET' : 'NOT SET');
   console.log('  OPENAI_VECTOR_STORE_ID_TJANST:', process.env.OPENAI_VECTOR_STORE_ID_TJANST ? 'SET' : 'NOT SET');
@@ -1262,8 +1264,10 @@ function getAuthHeaderForInternalRequests(req) {
 
 /**
  * All AI i ClientFlow går via OpenAI Responses API (Assistants API stängs 26 aug 2026).
- * Modell: OPENAI_MODEL (standard gpt-4o). File_search bara när rutten skickar vectorStoreId
+ * Modell: OPENAI_MODEL (standard gpt-4o). Byråanalys (tjänst/övrig riskfaktor) kan
+ * överstyra med OPENAI_BYRA_ANALYS_MODEL. File_search bara när rutten skickar vectorStoreId
  * (chatt, sektion 4, byråns tjänster och övriga riskfaktorer). Chattens threadId är conversation-id (conv_...).
+ * Långa statiska instructions + prompt_cache_key förbättrar prompt-cache-träffar.
  */
 function formatOpenAIAssistantError(err, step) {
   const status = err.response && err.response.status;
@@ -1425,7 +1429,9 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     input: userContent,
     vectorStoreId,
     conversationId,
-    temperature: opts.temperature
+    temperature: opts.temperature,
+    maxOutputTokens: opts.maxOutputTokens,
+    promptCacheKey: opts.promptCacheKey
   });
 
   const fillDebugOut = (patch) => {
@@ -1470,7 +1476,9 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
           input: userContent,
           vectorStoreId,
           conversationId,
-          temperature: opts.temperature
+          temperature: opts.temperature,
+          maxOutputTokens: opts.maxOutputTokens,
+          promptCacheKey: opts.promptCacheKey
         });
         const retryRes = await axios.post(`${apiBase}/responses`, retryBody, {
           headers,
@@ -1964,6 +1972,7 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   const userName = (req.user && req.user.name) ? String(req.user.name).trim() : 'Okänd';
   const userByra = (req.user && req.user.byra) ? String(req.user.byra).trim() : '';
   const whoChats = userByra ? `${userName} från ${userByra}` : userName;
+  const debugOut = {};
 
   try {
     const kundContext = await buildAiChatKundContext(customerIdBody, req.user);
@@ -2051,6 +2060,7 @@ Stil:
         instructions: systemContent,
         threadId: threadIdIn || undefined,
         threadIdOut,
+        debugOut,
         vectorStoreId: chatVector,
         maxWaitMs: 120000,
         debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
@@ -2059,17 +2069,47 @@ Stil:
     );
 
     const safeReply = sanitizeChatText(reply || '', 12000);
+    const outThreadId = threadIdOut.value || threadIdIn || null;
+    const debugPayload = {
+      model: debugOut.model || null,
+      temperature: debugOut.temperature ?? null,
+      hasFileSearch: !!debugOut.hasFileSearch,
+      instructions: debugOut.instructions || '',
+      prompt: debugOut.prompt || '',
+      conversationId: debugOut.conversationId || outThreadId || null,
+      status: debugOut.status || null,
+      rawResponse: debugOut.rawResponse || '',
+      rawResponseJsonText: debugOut.rawResponseJsonText || '',
+      error: debugOut.error || null
+    };
     if (!safeReply || looksGarbled(safeReply)) {
       return res.status(502).json({
-        error: 'Chatten fick ett trasigt svar. Försök igen. Om det återkommer: korta ner frågan eller ladda om sidan.'
+        error: 'Chatten fick ett trasigt svar. Försök igen. Om det återkommer: korta ner frågan eller ladda om sidan.',
+        debug: debugPayload
       });
     }
-    const outThreadId = threadIdOut.value || threadIdIn || null;
-    res.json({ reply: safeReply, threadId: outThreadId });
+    res.json({ reply: safeReply, threadId: outThreadId, debug: debugPayload });
   } catch (error) {
     console.error('❌ AI-chat fel:', error.message, error.response && error.response.data);
     const msg = error.response?.data?.error?.message || error.message || 'Okänt fel';
-    res.status(500).json({ error: 'Chatten svarade inte: ' + msg });
+    const hasDebug = !!(debugOut && (debugOut.prompt || debugOut.rawResponseJsonText || debugOut.error));
+    res.status(500).json({
+      error: 'Chatten svarade inte: ' + msg,
+      ...(hasDebug ? {
+        debug: {
+          model: debugOut.model || null,
+          temperature: debugOut.temperature ?? null,
+          hasFileSearch: !!debugOut.hasFileSearch,
+          instructions: debugOut.instructions || '',
+          prompt: debugOut.prompt || '',
+          conversationId: debugOut.conversationId || null,
+          status: debugOut.status || null,
+          rawResponse: debugOut.rawResponse || '',
+          rawResponseJsonText: debugOut.rawResponseJsonText || '',
+          error: debugOut.error || msg
+        }
+      } : {})
+    });
   }
 });
 
@@ -25712,7 +25752,7 @@ ${AiTjanstAnalys.HOT_MODUS_AI_RULES}
 ${AiTjanstAnalys.PEDAGOGISK_ANALYS_AI_RULES}
 ${AtgardKonkret.AI_RULES}
 ${AiFaltGranskning.MOTIVERING_AI_RULES}
-${katalogBlock ? `\n${RiskanalysTjanstKatalog.PROMPT_RULES}\n` : ''}${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
+${RiskanalysTjanstKatalog.PROMPT_RULES}\n${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 BYRÅUNDERLAGET SKA PÅVERKA ANALYSEN:
 Använd bara bekräftade uppgifter som fakta. Saknad information ska märkas, inte fyllas i.
 Skriv inte in bemanning, residualrisk, kontroller eller geografisk kundspridning i fältet Tjänsten. Byråfakta används i motivering och sårbarheter om de är relevanta.
@@ -25817,14 +25857,18 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     return 'PT';
   };
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
+  const byraAnalysModel = resolveByraAnalysModel();
 
   try {
     const aiText = await runOpenAIAssistantRunWithRetry(
       openaiKey,
       userPrompt,
       {
+        model: byraAnalysModel,
         instructions: systemPrompt,
         vectorStoreId: byraAnalysVector,
+        maxOutputTokens: 8192,
+        promptCacheKey: reviewMode ? 'cf-byra-tjanst-rev' : 'cf-byra-tjanst-gen',
         maxWaitMs: 180000,
         pollMs: 1500,
         debugMeta: { route: '/api/ai-byra-tjanst', user: req.user?.email || '' }
@@ -25911,6 +25955,7 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     });
     res.json({
       ...tjanstAiPayload,
+      aiModel: byraAnalysModel,
       granskning: {
         lage: reviewMode ? 'granska' : 'generera',
         poster: granskningPoster
@@ -25957,17 +26002,14 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   });
   const byraAnalysVector = resolveByraAnalysVectorStoreId();
   const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
-  const prompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
+  // Statiska regler i instructions (återanvänds via prompt cache). Variabelt underlag i input.
+  const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
 ${REDOVISNINGSBYRA_AI_RULES}
 
-Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst). Utgå alltid från riskfaktorns benämning — typen är bara kategori.
+Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst). Utgå alltid från riskfaktorns benämning i användarmeddelandet — typen är bara kategori.
 
-${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}
-${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
-${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
-${existingBlock ? `\n${existingBlock}\n` : ''}${extraUnderlagBlock ? `\n${extraUnderlagBlock}\n` : ''}
-Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder. Skriv inte in byrån i beskrivningen.
+Väg in BYRÅPROFIL i användarmeddelandet när du kalibrerar sannolikhet, konsekvens och åtgärder. Skriv inte in byrån i beskrivningen.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 ${AiTjanstAnalys.PEDAGOGISK_ANALYS_AI_RULES}
@@ -26004,6 +26046,12 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
 ${RiskSkala.sxkScalePromptBlock()}
 Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nämna siffrorna — inte «förhöjd sannolikhet» eller «betydande konsekvens».`;
 
+  const userPrompt = `${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}
+${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
+${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
+${existingBlock ? `\n${existingBlock}\n` : ''}${extraUnderlagBlock ? `\n${extraUnderlagBlock}\n` : ''}
+Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.
+
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
     const start = text.indexOf('{');
@@ -26035,16 +26083,18 @@ Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nä
   };
   const normRiskfaktorNiva = (v) => RiskSkala.riskLabelSv(v) || 'Normal';
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
+  const byraAnalysModel = resolveByraAnalysModel();
 
   try {
     const aiText = await runOpenAIAssistantRunWithRetry(
       openaiKey,
-      prompt,
+      userPrompt,
       {
-        instructions: byraAnalysVector
-          ? `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Utgå från riskfaktorns benämning i användarprompten — typen är bara kategori. Använd file_search enligt KUNSKAPSBAS i prompten. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.`
-          : `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Utgå från riskfaktorns benämning i användarprompten — typen är bara kategori. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.`,
+        model: byraAnalysModel,
+        instructions: systemPrompt,
         vectorStoreId: byraAnalysVector,
+        maxOutputTokens: 8192,
+        promptCacheKey: reviewMode ? 'cf-ovrig-riskfaktor-rev' : 'cf-ovrig-riskfaktor-gen',
         maxWaitMs: 180000,
         pollMs: 1500,
         debugMeta: { route: '/api/ai-ovriga-riskfaktor', user: req.user?.email || '' }
@@ -26102,6 +26152,7 @@ Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nä
     });
     res.json({
       ...faktorAiPayload,
+      aiModel: byraAnalysModel,
       granskning: {
         lage: reviewMode ? 'granska' : 'generera',
         poster: granskningPoster
