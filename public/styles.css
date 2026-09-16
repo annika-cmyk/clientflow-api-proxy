@@ -21190,6 +21190,22 @@ a.byra-profil-chip:hover {
 .kalender-detail-header h3 {
     margin: 0;
     font-size: 1.05rem;
+    min-width: 0;
+}
+.kalender-detail-customer-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent, #13505c) 45%, transparent);
+    text-underline-offset: 0.18em;
+    border-radius: 2px;
+}
+.kalender-detail-customer-link:hover {
+    color: var(--accent, #13505c);
+    text-decoration-color: currentColor;
+}
+.kalender-detail-customer-link:focus-visible {
+    outline: 2px solid var(--accent, #13505c);
+    outline-offset: 3px;
 }
 .kalender-detail-body { padding: 1rem; }
 .kalender-detail-status {

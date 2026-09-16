@@ -1025,7 +1025,13 @@
       ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (${sched.hours} t)`
       : 'Ej avsatt — dra i vecko-/dagsvy';
 
-    if (el.detailTitle) el.detailTitle.textContent = name;
+    if (el.detailTitle) {
+      if (kundId) {
+        el.detailTitle.innerHTML = `<a class="kalender-detail-customer-link" href="kundkort.html?id=${encodeURIComponent(kundId)}" title="Öppna kundkort">${esc(name)}</a>`;
+      } else {
+        el.detailTitle.textContent = name;
+      }
+    }
     el.detailBody.innerHTML = `
       <div class="kalender-detail-status kalender-detail-status--${cls}">${esc(statusLabel(st, ev.deadline))}</div>
       <dl class="kalender-detail-dl">
@@ -1037,7 +1043,6 @@
         ${ansvarig ? `<div><dt>Ansvarig</dt><dd>${esc(ansvarig)}</dd></div>` : ''}
       </dl>
       <div class="kalender-detail-actions">
-        ${kundId ? `<a class="btn btn-ghost btn-sm" href="kundkort.html?id=${encodeURIComponent(kundId)}"><i class="fas fa-user"></i> Öppna kundkort</a>` : ''}
         ${canKlarTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tid ${sched && sched.hours > 0 ? '' : 'disabled'}>
           <i class="fas fa-check"></i> Klarmarkera & registrera tid${sched && sched.hours > 0 ? ` (${esc(String(sched.hours))} t)` : ''}
         </button>` : ''}
