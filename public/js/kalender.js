@@ -58,7 +58,7 @@
   let scope = 'byra';
   let activeType = 'Alla';
   let showOpen = true;
-  let showDone = false;
+  let showDone = true;
   let q = '';
   let view = KV.loadStoredView();
   let eventMode = KV.loadStoredEventMode();
@@ -191,7 +191,14 @@
   function eventVisibleInMode(ev) {
     if (eventMode !== 'open') return !!ev.inRange;
     const range = KV.visibleRange(view, focus);
-    return KV.isOpenEventInRange(ev.startDate, ev.deadline, statusOf(ev), range, today());
+    return KV.isOpenEventInRange(
+      ev.startDate,
+      ev.deadline,
+      statusOf(ev),
+      range,
+      today(),
+      ev.scheduledStart
+    );
   }
 
   function placeDateOf(ev) {
@@ -403,6 +410,11 @@
         if (idx >= 0) runRecords[idx] = stData.record;
       }
       applyKlarLocally(ev);
+      // Behåll synlighet: Klara-filtret ska vara på så blocket inte försvinner.
+      if (!showDone) {
+        showDone = true;
+        syncUi();
+      }
       showSaveToast(`Klarmarkerad · ${sched.hours} t registrerad`);
       closeDetail();
       render();

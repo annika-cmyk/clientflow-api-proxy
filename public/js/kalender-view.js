@@ -391,10 +391,17 @@
   /**
    * Öppna-läge: körning syns om den inte är klar och arbetsfönstret överlappar synligt intervall,
    * eller om den är försenad (deadline före idag) och perioden ligger efter deadlinen.
+   * Klara körningar syns om planerad tid eller deadline ligger i synligt intervall
+   * (så klarmarkerade tidblock inte försvinner från kalendern).
    */
-  function isOpenEventInRange(startIso, deadlineIso, status, range, todayIso) {
-    if (isDoneStatus(status)) return false;
+  function isOpenEventInRange(startIso, deadlineIso, status, range, todayIso, scheduledStart) {
     if (!range || !range.start || !range.end) return false;
+    if (isDoneStatus(status)) {
+      const sched = normalizeSchedule(scheduledStart, null);
+      if (sched && inVisibleRange(sched.date, range)) return true;
+      const deadlineDone = String(deadlineIso || '').slice(0, 10);
+      return !!(deadlineDone && inVisibleRange(deadlineDone, range));
+    }
     const start = String(startIso || '').slice(0, 10);
     const deadline = String(deadlineIso || '').slice(0, 10);
     const today = String(todayIso || '').slice(0, 10);
