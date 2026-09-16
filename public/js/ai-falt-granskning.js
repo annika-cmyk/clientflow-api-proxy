@@ -44,8 +44,9 @@
 - Skriv om en post bara när den är vag, saknar AML-mekanism/pedagogik, är felaktig mot underlaget, eller saknar viktiga luckor. En lätt språkputs utan mer värde → andra=false / ingen redigera för den posten (behåll innehållet i huvudlistan).
 - Hot/sårbarheter/åtgärder ska ha konkret mekanism utifrån byråquiz, utförandefrågor, statistik och kunskapsbas. Hitta luckor och komplettera — men torka inte bort byråns egna konkreta beskrivningar.
 - Poster markerade [Eget] är tillagda av byrån. Behåll dem i dina listor (samma eller likvärdig titel+innehåll), föreslå inte ta-bort för dem, och skapa inte nära dubbletter. Du får komplettera med andra poster.
-- Om EXTRA UNDERLAG FRÅN BYRÅN finns: inkludera det som konkreta hot/modus/sårbarheter/åtgärder när det är AML-relevant.
-- EXTRA UNDERLAG vs EXPANDERA: När EXTRA UNDERLAG FRÅN BYRÅN finns gäller det framför «EXPANDERA FRAMFÖR ATT KORTA NER» för åtgärd/atgarder och motiveringResidual. Skriv OM dessa fält utifrån underlagets fakta. Behåll inte generisk Capego/boksluts-boilerplate och «strö» bara in ett underlagsord (t.ex. Shopify). Underlagsfakta (pris, andrahandsvärde, kanaler, geografi, verksamhetstyp) ska bära texten.
+- HOT OCH SÅRBARHETER (alltid vid regenerering): Hoppa ALDRIG över hot eller sarbarheter bara för att beskrivning/åtgärd redan finns. Fyll alltid kompletta listor i huvud-JSON (antal enligt ANTAL-regeln). Ompröva varje sektion uttryckligen. Om innehållet redan är bra efter omprövning: behåll det i huvudfälten och lägg ändå en granskningspost med andra=false och kort kommentar att sektionen omprövats. Om listan är tunn (få poster / korta beskrivningar utan mekanism), saknar pedagogik, eller inte speglar EXTRA UNDERLAG: skriv om/komplettera i huvudfälten och sätt andra=true.
+- Om EXTRA UNDERLAG FRÅN BYRÅN finns: inkludera det som konkreta hot/modus/sårbarheter/åtgärder när det är AML-relevant. Lämna inte hot/sårbarheter oförändrade om underlaget tillför AML-relevanta fakta som saknas där.
+- EXTRA UNDERLAG vs EXPANDERA: När EXTRA UNDERLAG FRÅN BYRÅN finns gäller det framför «EXPANDERA FRAMFÖR ATT KORTA NER» för åtgärd/atgarder, motiveringResidual och (när underlaget är AML-relevant) även hot/sarbarheter. Skriv OM dessa fält utifrån underlagets fakta. Behåll inte generisk Capego/boksluts-boilerplate och «strö» bara in ett underlagsord (t.ex. Shopify). Underlagsfakta (pris, andrahandsvärde, kanaler, geografi, verksamhetstyp) ska bära texten.
 - Tomma fält: skriv ditt förslag i huvudfälten.
 - Ifyllda fält som skiljer sig från din analys: lägg en post i granskning.poster med andra=true. forslag är valfritt (servern lyfter innehållet från huvudfälten) — prioritera kommentar och andringar[].
 - kommentar: 2–3 meningar om HELHETEN — vad analysen tillför och varför du föreslår ändringar (luckor, TF, S×K, källor, pedagogik). Skriv så att en kollega förstår utan att läsa hela listan.
@@ -980,6 +981,52 @@
     });
   }
 
+  /** Tunn lista: få poster eller korta beskrivningar utan AML-mekanism. */
+  function isThinAnalysisList(items) {
+    const list = asList(items).filter((item) => (
+      item && (isFilledText(item.titel || item.namn) || isFilledText(item.beskrivning))
+    ));
+    if (list.length < 2) return true;
+    const descs = list.map((item) => trimStr(item.beskrivning));
+    if (descs.some((d) => d.length < 120)) return true;
+    const total = descs.reduce((n, d) => n + d.length, 0);
+    return total < 280;
+  }
+
+  function listTextBlob(items) {
+    return fold(asList(items).map((item) => (
+      [item && item.titel, item && item.namn, item && item.beskrivning].filter(Boolean).join(' ')
+    )).join(' '));
+  }
+
+  /** True när Extra underlag har konkreta fakta som knappt syns i listan. */
+  function listMissesExtraUnderlag(items, underlag) {
+    const u = trimStr(underlag);
+    if (!u) return false;
+    const words = significantWords(u).filter((w) => w.length > 4);
+    if (words.length < 2) return false;
+    const blob = listTextBlob(items);
+    if (!blob) return true;
+    const hits = words.filter((w) => blob.includes(w)).length;
+    // Kräv minst två underlagsord i listan — en träff (t.ex. «andrahandsvärde») räcker inte.
+    return hits < 2;
+  }
+
+  function readExtraUnderlagText(opts, befintligt) {
+    const fromOpts = trimStr((opts && (opts.extraUnderlag || opts.aiExtraUnderlag)) || '');
+    if (fromOpts) return fromOpts;
+    return trimStr((befintligt && (befintligt.extraUnderlag || befintligt.aiExtraUnderlag)) || '');
+  }
+
+  function needsForcedHotSarbarhetReview(falt, current, opts, befintligt) {
+    if (falt !== 'hot' && falt !== 'sarbarheter') return false;
+    if (isEmptyCurrent(falt, current) || isThinAnalysisList(current)) return true;
+    const underlag = readExtraUnderlagText(opts, befintligt);
+    if (!underlag) return false;
+    if (listMissesExtraUnderlag(current, underlag)) return true;
+    return !!(opts && opts.preferUnderlagRewrite);
+  }
+
   function ensureAnalysisPosters(kind, befintligt, generated, posters, opts) {
     const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
     const list = Array.isArray(posters) ? posters.slice() : [];
@@ -992,7 +1039,9 @@
     Object.keys(catalog).forEach((key) => {
       const current = currentValueFor(key, befintligt);
       let forslag = generatedValueFor(key, generated);
-      const allowShorter = underlagRewrite && underlagFields.has(key);
+      const forceHotSar = needsForcedHotSarbarhetReview(key, current, opts, befintligt);
+      const allowShorter = (underlagRewrite && underlagFields.has(key))
+        || (forceHotSar && underlagRewrite && (key === 'hot' || key === 'sarbarheter'));
       if (key === 'hot' || key === 'sarbarheter' || key === 'atgarder') {
         if (!allowShorter) {
           forslag = preferRicherListItems(current, forslag);
@@ -1002,7 +1051,41 @@
       }
       // Lyft förslag även för tomma fält så banner/flikar listar alla sektioner
       // (inte bara Översikt). Tomma fält visas som AI-förslag i stället för tyst ifyllning.
-      if (!hasForslag(key, forslag) || sameForslag(key, current, forslag)) return;
+      if (!hasForslag(key, forslag)) {
+        if ((key === 'hot' || key === 'sarbarheter') && hasListItems(current)) {
+          const existingEmpty = list.find((item) => item && item.falt === key);
+          if (!existingEmpty || !existingEmpty.andra) {
+            upsertPoster(list, {
+              falt: key,
+              etikett: catalog[key].etikett,
+              kommentar: (existingEmpty && usefulComment(existingEmpty.kommentar))
+                || (forceHotSar
+                  ? 'Sektionen omprövades men AI lämnade ingen ny lista trots tunt innehåll eller Extra underlag — behåll nuvarande och generera om vid behov.'
+                  : 'Omprövade sektionen — innehållet bedöms fortfarande relevant utifrån underlaget.'),
+              andra: false,
+              forslag: []
+            });
+          }
+        }
+        return;
+      }
+      if (sameForslag(key, current, forslag)) {
+        // Hot/sårbarheter: visa uttrycklig omprövning även när innehållet behålls.
+        if ((key === 'hot' || key === 'sarbarheter') && hasListItems(current) && !forceHotSar) {
+          const existingSame = list.find((item) => item && item.falt === key);
+          if (!existingSame || !existingSame.andra) {
+            upsertPoster(list, {
+              falt: key,
+              etikett: catalog[key].etikett,
+              kommentar: (existingSame && usefulComment(existingSame.kommentar))
+                || 'Omprövade sektionen — innehållet bedöms fortfarande relevant utifrån underlaget.',
+              andra: false,
+              forslag: []
+            });
+          }
+        }
+        return;
+      }
       const existing = list.find((item) => item && item.falt === key);
       const empty = isEmptyCurrent(key, current);
       upsertPoster(list, {
@@ -1011,9 +1094,11 @@
         kommentar: (existing && existing.kommentar)
           || (empty
             ? 'Fältet var tomt — AI:s förslag efter en samlad analys av hela tjänsten.'
-            : (allowShorter
-              ? 'AI har skrivit om fältet utifrån Extra underlag. Jämför med nuvarande text.'
-              : 'AI:s eget förslag efter en samlad analys. Jämför med nuvarande text.')),
+            : (forceHotSar
+              ? 'AI har omprövat sektionen — befintligt innehåll var tunt eller speglade inte Extra underlag. Jämför förslaget.'
+              : (allowShorter
+                ? 'AI har skrivit om fältet utifrån Extra underlag. Jämför med nuvarande text.'
+                : 'AI:s eget förslag efter en samlad analys. Jämför med nuvarande text.'))),
         andra: true,
         forslag
       });
@@ -1349,6 +1434,9 @@
     similarKeys,
     isWeakerShortening,
     preferRicherListItems,
+    isThinAnalysisList,
+    listMissesExtraUnderlag,
+    needsForcedHotSarbarhetReview,
     listDiff,
     listDiffHasChanges,
     filterMeaningfulListDiff,
