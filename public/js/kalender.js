@@ -75,6 +75,8 @@
   /** Händelser hämtade från Google Calendar (source: google). */
   let googleEvents = [];
   let gcalPullSeq = 0;
+  /** Uppdaterar «nu»-markören i vecko-/dagsvy (varje minut). */
+  let nowMarkerTimer = null;
 
   function show(node, on) { if (node) node.style.display = on ? '' : 'none'; }
   function esc(s) {
@@ -178,6 +180,36 @@
 
   function isGoogleEvent(ev) {
     return !!(ev && (ev.source === 'google' || String(ev.key || '').startsWith('gcal:')));
+  }
+
+  /** Säker CSS-färg från Google (hex/rgb) — används bara på source:google. */
+  function safeCssColor(raw) {
+    const s = String(raw || '').trim();
+    if (/^#[0-9a-fA-F]{3}$/.test(s) || /^#[0-9a-fA-F]{6}$/.test(s) || /^#[0-9a-fA-F]{8}$/.test(s)) {
+      return s;
+    }
+    const rgb = s.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
+    if (rgb) {
+      const nums = [rgb[1], rgb[2], rgb[3]].map((n) => Math.min(255, Math.max(0, Number(n))));
+      return `rgb(${nums[0]}, ${nums[1]}, ${nums[2]})`;
+    }
+    return '';
+  }
+
+  /** Inline-stil för Google-färger; tom sträng om ingen giltig färg. */
+  function googleColorStyleAttr(ev) {
+    if (!isGoogleEvent(ev)) return '';
+    const bg = safeCssColor(ev.backgroundColor);
+    if (!bg) return '';
+    const fg = safeCssColor(ev.foregroundColor) || '#1d1d1d';
+    return `background-color:${bg};border-left-color:${bg};border-color:${bg};color:${fg}`;
+  }
+
+  function mergeStyleAttr(...parts) {
+    return parts
+      .map((p) => String(p || '').trim().replace(/;+$/, ''))
+      .filter(Boolean)
+      .join(';');
   }
 
   function searchMatch(rec) {
@@ -531,7 +563,8 @@
       const sched = scheduleOf(ev);
       const timeBit = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : (ev.allDay ? 'Heldag · ' : '');
       const title = `${timeBit}${name} · Google`;
-      return `<button type="button" class="kalender-chip kalender-chip--google" data-key="${esc(ev.key)}" title="${esc(title)}">
+      const colorStyle = googleColorStyleAttr(ev);
+      return `<button type="button" class="kalender-chip kalender-chip--google" data-key="${esc(ev.key)}" title="${esc(title)}"${colorStyle ? ` style="${esc(colorStyle)}"` : ''}>
         <span class="kalender-chip-typ">GCal</span>
         <span class="kalender-chip-name">${esc(name)}</span>
         ${sched ? `<span class="kalender-chip-time">${esc(KV.fmtTimeLabel(sched.startMin))}</span>` : ''}
@@ -649,8 +682,9 @@
       const sched = scheduleOf(ev);
       if (!sched) return '';
       const layout = KV.blockLayout(sched.startMin, sched.endMin);
+      const style = mergeStyleAttr(KV.blockPositionStyleAttr(layout), googleColorStyleAttr(ev));
       return `<div class="kalender-block kalender-block--google" data-key="${esc(ev.key)}" data-timed="1"
-        style="${KV.blockPositionStyleAttr(layout)}"
+        style="${esc(style)}"
         title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name} · Google`)}">
         <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}">
           <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
@@ -831,6 +865,51 @@
     });
   }
 
+  function nowMarkerHtml(dayIso) {
+    if (!KV.shouldShowNowMarker(dayIso, new Date())) return '';
+    const top = KV.nowMarkerOffsetPx(new Date());
+    if (top == null) return '';
+    return `<div class="kalender-now-marker" style="top:${top}px" aria-hidden="true">
+      <span class="kalender-now-marker-dot"></span>
+    </div>`;
+  }
+
+  /** Flytta/lägg till/ta bort nu-markör utan full omritning (minut-tick + midnatt). */
+  function syncNowMarker() {
+    if (view !== 'week' && view !== 'day') return;
+    const now = new Date();
+    const todayIso = KV.dateIso(now);
+    const top = KV.nowMarkerOffsetPx(now);
+    const todayTrack = gridEl.querySelector(`.kalender-time-col[data-date="${todayIso}"] .kalender-time-track`);
+    let marker = gridEl.querySelector('.kalender-now-marker');
+
+    if (!todayTrack || top == null) {
+      if (marker) marker.remove();
+      // Midnatt / byte av synlig dag: kolumnens is-today kan vara fel – rita om vid behov
+      const staleToday = gridEl.querySelector('.kalender-time-col.is-today');
+      if (staleToday && staleToday.getAttribute('data-date') !== todayIso) {
+        render();
+      }
+      return;
+    }
+
+    if (!marker) {
+      marker = document.createElement('div');
+      marker.className = 'kalender-now-marker';
+      marker.setAttribute('aria-hidden', 'true');
+      marker.innerHTML = '<span class="kalender-now-marker-dot"></span>';
+      todayTrack.appendChild(marker);
+    } else if (marker.parentElement !== todayTrack) {
+      todayTrack.appendChild(marker);
+    }
+    marker.style.top = `${top}px`;
+  }
+
+  function ensureNowMarkerTimer() {
+    if (nowMarkerTimer != null) return;
+    nowMarkerTimer = setInterval(syncNowMarker, 60000);
+  }
+
   function renderTimedGrid(dayIsos, dayMap, ariaLabel) {
     const t = today();
     const hours = KV.hourLabels();
@@ -860,6 +939,7 @@
         <div class="kalender-time-track" style="height:${trackH}px">
           ${hours.map(() => `<div class="kalender-time-hour" style="height:${KV.PX_PER_HOUR}px"></div>`).join('')}
           ${timed.map(timedBlockHtml).join('')}
+          ${nowMarkerHtml(iso)}
         </div>
       </div>`;
     }).join('');
@@ -882,6 +962,7 @@
 
     bindGridClicks(dayMap);
     bindTimedInteractions();
+    ensureNowMarkerTimer();
 
     gridEl.querySelectorAll('.kalender-untimed[data-date]').forEach((strip) => {
       strip.addEventListener('dragover', (e) => {

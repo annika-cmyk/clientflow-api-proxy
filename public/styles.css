@@ -21413,6 +21413,13 @@ body.kalender-detail-open { overflow: hidden; }
 .kalender-untimed.is-today {
     background: color-mix(in srgb, var(--accent, #13505c) 4%, white);
 }
+.kalender-time-col-head.is-today {
+    background: color-mix(in srgb, var(--accent, #13505c) 10%, var(--muted, #e3eef0));
+}
+.kalender-time-col-head.is-today .kalender-daynum {
+    color: var(--accent, #13505c);
+    font-weight: 700;
+}
 .kalender-time-col-head {
     display: flex;
     align-items: center;
@@ -21449,6 +21456,26 @@ body.kalender-detail-open { overflow: hidden; }
     box-sizing: border-box;
     border-bottom: 1px solid color-mix(in srgb, var(--border, var(--line)) 70%, transparent);
     pointer-events: none;
+}
+/* Google Calendar–inspirerad «nu»-markör i dagens kolumn */
+.kalender-now-marker {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    z-index: 6;
+    pointer-events: none;
+    border-top: 2px solid #d93025;
+}
+.kalender-now-marker-dot {
+    position: absolute;
+    left: -5px;
+    top: -5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d93025;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 85%);
 }
 .kalender-block {
     position: absolute;
