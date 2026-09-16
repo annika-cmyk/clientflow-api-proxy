@@ -416,6 +416,31 @@
         syncUi();
       }
       showSaveToast(`Klarmarkerad · ${sched.hours} t registrerad`);
+
+      // Mejl skapat som uppgift: markera hanterat + fråga om svar i ClientFlow-inkorgen
+      let navigatedToMejl = false;
+      try {
+        const linkApi =
+          window.MejlTaskLink && MejlTaskLink.createApi ? MejlTaskLink.createApi() : null;
+        if (linkApi && typeof linkApi.onKalenderKlar === 'function') {
+          const result = linkApi.onKalenderKlar({
+            runId,
+            uppdragId,
+            confirmFn: (msg) => window.confirm(msg),
+            navigateFn: (url) => {
+              navigatedToMejl = true;
+              window.location.href = url;
+            }
+          });
+          if (result && result.handled && !result.navigated) {
+            showSaveToast('Mejlet markerat som hanterat');
+          }
+        }
+      } catch (linkErr) {
+        console.warn('Kalender mejl-länk:', linkErr);
+      }
+
+      if (navigatedToMejl) return;
       closeDetail();
       render();
     } catch (err) {

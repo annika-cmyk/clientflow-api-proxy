@@ -1,9 +1,11 @@
 /**
- * Mejl hanteringsstatus (hanterat / att hantera) – localStorage per användare + messageId.
+ * Mejl hanteringsstatus (hanterat / att hantera / uppgift skapad)
+ * – localStorage per användare + messageId.
  */
 (function (global) {
   const HANDLED = 'handled';
   const TODO = 'todo';
+  const TASK_CREATED = 'task_created';
   const NONE = '';
 
   function normalizeStatus(value) {
@@ -13,6 +15,14 @@
     if (v === HANDLED || v === 'hanterat') return HANDLED;
     if (v === TODO || v === 'att-hantera' || v === 'att_hantera' || v === 'att hantera') {
       return TODO;
+    }
+    if (
+      v === TASK_CREATED ||
+      v === 'uppgift-skapad' ||
+      v === 'uppgift_skapad' ||
+      v === 'uppgift skapad'
+    ) {
+      return TASK_CREATED;
     }
     return NONE;
   }
@@ -28,6 +38,15 @@
     const s = normalizeStatus(status);
     if (s === HANDLED) return 'is-handled';
     if (s === TODO) return 'is-todo';
+    if (s === TASK_CREATED) return 'is-task-created';
+    return '';
+  }
+
+  function statusLabel(status) {
+    const s = normalizeStatus(status);
+    if (s === HANDLED) return 'Hanterat';
+    if (s === TODO) return 'Att hantera';
+    if (s === TASK_CREATED) return 'Uppgift skapad';
     return '';
   }
 
@@ -96,12 +115,30 @@
     return set(id, next);
   }
 
+  function badgeHtml(status) {
+    const label = statusLabel(status);
+    if (!label) return '';
+    const cls = listItemClass(status);
+    return (
+      '<span class="mejl-item-status-badge' +
+      (cls ? ' ' + cls : '') +
+      '">' +
+      label +
+      '</span>'
+    );
+  }
+
   function toolbarHtml(status) {
     const s = normalizeStatus(status);
     const handledActive = s === HANDLED ? ' is-active is-handled-active' : '';
     const todoActive = s === TODO ? ' is-active is-todo-active' : '';
+    const taskCreatedBadge =
+      s === TASK_CREATED
+        ? '<span class="mejl-item-status-badge is-task-created" aria-live="polite">Uppgift skapad</span>'
+        : '';
     return (
       '<div class="mejl-handle-status-bar" role="group" aria-label="Hanteringsstatus">' +
+      taskCreatedBadge +
       '<button type="button" class="btn btn-secondary btn-sm mejl-handle-status-btn' +
       handledActive +
       '" id="mejl-handled-btn" data-handle-status="handled" aria-pressed="' +
@@ -138,11 +175,14 @@
     return {
       HANDLED,
       TODO,
+      TASK_CREATED,
       NONE,
       get,
       set,
       toggle,
       listItemClass,
+      statusLabel,
+      badgeHtml,
       toolbarHtml,
       bindDetailButtons,
       normalizeStatus
@@ -153,10 +193,12 @@
     createApi,
     HANDLED,
     TODO,
+    TASK_CREATED,
     NONE,
     normalizeStatus,
     toggleStatus,
     listItemClass,
+    statusLabel,
     storageBucketKey
   };
 })(typeof window !== 'undefined' ? window : globalThis);
