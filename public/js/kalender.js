@@ -625,7 +625,7 @@
       if (!sched) return '';
       const layout = KV.blockLayout(sched.startMin, sched.endMin);
       return `<div class="kalender-block kalender-block--google" data-key="${esc(ev.key)}" data-timed="1"
-        style="top:${layout.topPct}%;height:${layout.heightPct}%;"
+        style="${KV.blockPositionStyleAttr(layout)}"
         title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name} · Google`)}">
         <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}">
           <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
@@ -644,7 +644,7 @@
     const canDrag = !!ev.runRec?.id;
     return `<div class="kalender-block kalender-block--${cls}${canDrag ? ' is-draggable' : ''}"
       data-key="${esc(ev.key)}" data-timed="1"
-      style="top:${layout.topPct}%;height:${layout.heightPct}%;"
+      style="${KV.blockPositionStyleAttr(layout)}"
       title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name}`)}">
       <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}" ${canDrag ? 'draggable="true"' : ''}>
         <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
@@ -771,8 +771,9 @@
         const endMin = KV.yToMinutes(y, height) + KV.SNAP_MINUTES;
         const resized = KV.resizeBlock(dragState.startMin, endMin);
         const layout = KV.blockLayout(resized.startMin, resized.endMin);
-        block.style.top = `${layout.topPct}%`;
-        block.style.height = `${layout.heightPct}%`;
+        const pos = KV.blockPositionStyle(layout);
+        block.style.top = pos.top;
+        block.style.height = pos.height;
         const timeEl = block.querySelector('.kalender-block-time');
         if (timeEl) {
           timeEl.textContent = `${KV.fmtTimeLabel(resized.startMin)}–${KV.fmtTimeLabel(resized.endMin)}`;

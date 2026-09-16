@@ -311,6 +311,24 @@
     return { topPct, heightPct, startMin: s, endMin: e };
   }
 
+  /** Visuell lucka mellan tidblock så back-to-back-rutor inte smälter ihop. */
+  const BLOCK_GAP_PX = 3;
+
+  /** CSS top/height för absolutplacerat block (med gap i nederkant). */
+  function blockPositionStyle(layout) {
+    const top = Number(layout && layout.topPct) || 0;
+    const height = Math.max(0, Number(layout && layout.heightPct) || 0);
+    return {
+      top: `${top}%`,
+      height: `max(1.1rem, calc(${height}% - ${BLOCK_GAP_PX}px))`
+    };
+  }
+
+  function blockPositionStyleAttr(layout) {
+    const s = blockPositionStyle(layout);
+    return `top:${s.top};height:${s.height};`;
+  }
+
   /** Y-position → minuter från midnatt, snappat. */
   function yToMinutes(y, columnHeight) {
     const h = Number(columnHeight) || 1;
@@ -492,6 +510,9 @@
     durationMinutes,
     normalizeSchedule,
     blockLayout,
+    BLOCK_GAP_PX,
+    blockPositionStyle,
+    blockPositionStyleAttr,
     yToMinutes,
     moveBlock,
     resizeBlock,
