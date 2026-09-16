@@ -111,6 +111,10 @@ const {
   OVRIG_HARD_PRIORITY_RULES,
   validateOvrigAiPayload
 } = require('./lib/ai-ovrig-riskfaktor-quality');
+const {
+  retrieveOvrigKallaUtdrag,
+  buildOvrigRepairPrompt
+} = require('./lib/ai-vector-retrieve');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
   resolveAssistantVectorStoreId,
@@ -26029,7 +26033,26 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
     extraUnderlag: extraUnderlagText
   });
   const byraAnalysVector = resolveByraAnalysVectorStoreId();
-  const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
+  // Server-side retrieval först — undvik att modellen söker på hela riskfaktormeningen.
+  let kallaRetrieve = { queries: [], excerpts: [], usedFallback: true, block: '' };
+  try {
+    kallaRetrieve = await retrieveOvrigKallaUtdrag({
+      openaiKey,
+      vectorStoreId: byraAnalysVector,
+      riskfaktor,
+      extraUnderlag: extraUnderlagText
+    });
+  } catch (err) {
+    console.warn('AI-övriga-riskfaktor retrieval:', err.message);
+  }
+  const hasKallaUtdrag = !!(kallaRetrieve.block && kallaRetrieve.excerpts && kallaRetrieve.excerpts.length);
+  // När vi har källutdrag: ingen file_search (modellen väljer dåliga queries). Annars behåll vector + regler.
+  const kunskapBasBlock = (!hasKallaUtdrag && byraAnalysVector)
+    ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n`
+    : (hasKallaUtdrag
+      ? '\nKUNSKAPSBAS: Använd KÄLLUTDRAG i användarmeddelandet som primär källa. Hitta inte på vaga rapportnamn.\n'
+      : '');
+  const vectorStoreForRun = hasKallaUtdrag ? null : byraAnalysVector;
   // Statiska regler i instructions (återanvänds via prompt cache). Variabelt underlag i input.
   const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
@@ -26079,7 +26102,7 @@ Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nä
   const userPrompt = `${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}
 ${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
 ${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
-${existingBlock ? `\n${existingBlock}\n` : ''}${extraUnderlagBlock ? `\n${extraUnderlagBlock}\n` : ''}
+${existingBlock ? `\n${existingBlock}\n` : ''}${extraUnderlagBlock ? `\n${extraUnderlagBlock}\n` : ''}${kallaRetrieve.block ? `\n${kallaRetrieve.block}\n` : ''}
 Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
 
   const extractFirstJsonObject = (text) => {
@@ -26147,13 +26170,14 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
   };
 
   try {
-    const runOvrigAi = async (inputPrompt, cacheKey) => runOpenAIAssistantRunWithRetry(
+    const runOvrigAi = async (inputPrompt, cacheKey, opts = {}) => runOpenAIAssistantRunWithRetry(
       openaiKey,
       inputPrompt,
       {
         model: byraAnalysModel,
-        instructions: systemPrompt,
-        vectorStoreId: byraAnalysVector,
+        instructions: opts.instructions || systemPrompt,
+        vectorStoreId: opts.vectorStoreId !== undefined ? opts.vectorStoreId : vectorStoreForRun,
+        temperature: opts.temperature != null ? opts.temperature : 0.25,
         maxOutputTokens: 8192,
         promptCacheKey: cacheKey,
         maxWaitMs: 180000,
@@ -26178,9 +26202,19 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
     });
     if (!quality.ok) {
       console.warn('AI-övriga-riskfaktor kvalitet underkänd:', quality.violations.map((v) => v.id).join(', '));
+      const repairPrompt = buildOvrigRepairPrompt({
+        riskfaktor,
+        typ,
+        extraUnderlag: extraUnderlagText,
+        kallaBlock: kallaRetrieve.block,
+        violations: quality.violations,
+        rejectedPayload: faktorAiPayload
+      });
+      // Kort repair utan gammalt BEFINTLIGT-ankare; ingen file_search.
       aiText = await runOvrigAi(
-        `${userPrompt}\n\n${quality.repairHint}\n`,
-        reviewMode ? 'cf-ovrig-riskfaktor-fix-rev' : 'cf-ovrig-riskfaktor-fix-gen'
+        `${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}\n\n${repairPrompt}\n`,
+        reviewMode ? 'cf-ovrig-riskfaktor-fix-rev' : 'cf-ovrig-riskfaktor-fix-gen',
+        { vectorStoreId: null, temperature: 0.2 }
       );
       result = parseAssistantJson(aiText);
       if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar efter kvalitetsreparation.');
@@ -26222,6 +26256,12 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       quality: {
         ok: quality.ok,
         violations: quality.violations.map((v) => v.id)
+      },
+      retrieval: {
+        queries: kallaRetrieve.queries || [],
+        excerptCount: (kallaRetrieve.excerpts || []).length,
+        usedFallback: !!kallaRetrieve.usedFallback,
+        fileSearchDisabled: !vectorStoreForRun
       },
       granskning: {
         lage: reviewMode ? 'granska' : 'generera',
