@@ -781,55 +781,91 @@
       const ansvarigOpts = userNameOptionsHtml(users, currentUserName, 'Välj handläggare');
       const klientOpts = userNameOptionsHtml(users, defaultKlient, 'Välj klientansvarig');
       const defaultUppgiftText = String((m && (m.subject || m.Subject)) || '').trim();
+      const defaultMode = (runs && runs.length) ? 'korning' : 'dokumentation';
 
       openModal(
         'Koppla mejl / bilagor',
-        '<div class="form-grid">' +
+        '<div class="form-grid mejl-koppla-form">' +
           '<label><input type="checkbox" id="mejl-save-email" checked> Koppla hela mejlet</label>' +
-          '<label><input type="checkbox" id="mejl-save-atts"' + (atts.length ? ' checked' : ' disabled') + '> Koppla bilagor</label>' +
-          '<div><div class="mejl-labels-heading">Välj bilagor</div>' + attChecks + '</div>' +
+          (atts.length
+            ? '<label><input type="checkbox" id="mejl-save-atts"> Koppla bilagor (' +
+              atts.length +
+              ')</label>' +
+              '<div id="mejl-save-atts-list" hidden><div class="mejl-labels-heading">Välj bilagor</div>' +
+              attChecks +
+              '</div>'
+            : '<input type="checkbox" id="mejl-save-atts" hidden disabled>') +
           '<div><label class="mejl-label-edit-label" for="mejl-save-mode">Kopplingsmål</label>' +
           '<select id="mejl-save-mode" class="form-select form-input">' +
-          '<option value="dokumentation">Dokumentation på kunden</option>' +
+          '<option value="dokumentation"' +
+          (defaultMode === 'dokumentation' ? ' selected' : '') +
+          '>Dokumentation på kunden</option>' +
+          '<option value="korning"' +
+          (defaultMode === 'korning' ? ' selected' : '') +
+          '>Uppdragskörning</option>' +
           '<option value="uppdrag">Uppdrag</option>' +
-          '<option value="korning">Uppdragskörning</option>' +
-          '<option value="uppgift">Uppgift (som från anteckningar)</option>' +
-          '<option value="split">Dela upp: mejl→dokumentation, bilagor→uppdrag/körning</option>' +
+          '</select></div>' +
+          '<div id="mejl-save-run-wrap" hidden><label class="mejl-label-edit-label" for="mejl-save-run">Körning</label>' +
+          '<select id="mejl-save-run" class="form-select form-input"><option value="">Välj…</option>' +
+          runOpts +
           '</select></div>' +
           '<div id="mejl-save-uppdrag-wrap" hidden>' +
           '<label class="mejl-label-edit-label" for="mejl-save-uppdrag">Uppdrag</label>' +
           '<select id="mejl-save-uppdrag" class="form-select form-input">' +
           '<option value="">Välj…</option>' +
-          '<option value="__new__">＋ Skapa nytt enstaka uppdrag…</option>' +
           uppdragOpts +
-          '</select>' +
-          '<p class="mejl-hint" style="margin:0.35rem 0 0;">För engångsjobb (t.ex. en lön) som saknar löpande uppdrag — skapa ett enstaka här.</p>' +
-          '</div>' +
-          '<div id="mejl-new-uppdrag-wrap" hidden class="form-grid" style="margin:0; padding:0.65rem 0.75rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">' +
+          '</select></div>' +
+          '<details id="mejl-koppla-advanced" class="mejl-koppla-advanced">' +
+          '<summary>Fler alternativ</summary>' +
+          '<div class="form-grid" style="margin-top:0.5rem;">' +
+          '<label><input type="checkbox" id="mejl-save-split"> Dela upp: mejl→dokumentation, bilagor→körning/uppdrag</label>' +
+          '<div><label class="mejl-label-edit-label" for="mejl-advanced-action">Skapa från mejlet</label>' +
+          '<select id="mejl-advanced-action" class="form-select form-input">' +
+          '<option value="">Ingen (bara koppla)</option>' +
+          '<option value="new-uppdrag">Skapa enstaka uppdrag…</option>' +
+          '<option value="uppgift">Skapa uppgift (Mina uppgifter)…</option>' +
+          '</select></div>' +
+          '<div id="mejl-new-uppdrag-wrap" hidden class="form-grid mejl-koppla-subform">' +
           '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-namn">Namn på uppdrag *</label>' +
           '<input type="text" id="mejl-new-uppdrag-namn" class="form-input" placeholder="t.ex. Lön, Extra bokföring"></div>' +
           '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-klientansvarig">Klientansvarig *</label>' +
-          '<select id="mejl-new-uppdrag-klientansvarig" class="form-select form-input">' + klientOpts + '</select></div>' +
+          '<select id="mejl-new-uppdrag-klientansvarig" class="form-select form-input">' +
+          klientOpts +
+          '</select></div>' +
           '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-ansvarig">Handläggare *</label>' +
-          '<select id="mejl-new-uppdrag-ansvarig" class="form-select form-input">' + ansvarigOpts + '</select></div>' +
+          '<select id="mejl-new-uppdrag-ansvarig" class="form-select form-input">' +
+          ansvarigOpts +
+          '</select></div>' +
           '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-deadline">Deadline *</label>' +
-          '<input type="date" id="mejl-new-uppdrag-deadline" class="form-input" value="' + esc(today) + '"></div>' +
+          '<input type="date" id="mejl-new-uppdrag-deadline" class="form-input" value="' +
+          esc(today) +
+          '"></div>' +
           '<p class="mejl-hint" style="margin:0;">Skapas som Eget uppdrag med frekvens Engång (en körning).</p>' +
           '</div>' +
-          '<div id="mejl-uppgift-wrap" hidden class="form-grid" style="margin:0; padding:0.65rem 0.75rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">' +
+          '<div id="mejl-uppgift-wrap" hidden class="form-grid mejl-koppla-subform">' +
           '<div><label class="mejl-label-edit-label" for="mejl-uppgift-text">Uppgift *</label>' +
-          '<input type="text" id="mejl-uppgift-text" class="form-input" placeholder="Beskriv vad som ska göras…" value="' + esc(defaultUppgiftText) + '"></div>' +
+          '<input type="text" id="mejl-uppgift-text" class="form-input" placeholder="Beskriv vad som ska göras…" value="' +
+          esc(defaultUppgiftText) +
+          '"></div>' +
           '<div><label class="mejl-label-edit-label" for="mejl-uppgift-ansvarig">Handläggare *</label>' +
-          '<select id="mejl-uppgift-ansvarig" class="form-select form-input">' + ansvarigOpts + '</select></div>' +
+          '<select id="mejl-uppgift-ansvarig" class="form-select form-input">' +
+          ansvarigOpts +
+          '</select></div>' +
           '<div><label class="mejl-label-edit-label" for="mejl-uppgift-deadline">Deadline *</label>' +
-          '<input type="date" id="mejl-uppgift-deadline" class="form-input" value="' + esc(today) + '"></div>' +
-          '<p class="mejl-hint" style="margin:0;">Skapas som Att göra på en anteckning (Mina uppgifter) och som engångsuppdrag så du kan sätta tid i kalendern.</p>' +
+          '<input type="date" id="mejl-uppgift-deadline" class="form-input" value="' +
+          esc(today) +
+          '"></div>' +
+          '<p class="mejl-hint" style="margin:0;">Skapas som Att göra (Mina uppgifter) och engångsuppdrag för kalendern.</p>' +
           '</div>' +
-          '<div id="mejl-save-run-wrap" hidden><label class="mejl-label-edit-label" for="mejl-save-run">Körning</label>' +
-          '<select id="mejl-save-run" class="form-select form-input"><option value="">Välj…</option>' + runOpts + '</select></div>' +
+          '</div></details>' +
           '</div>',
         async (root) => {
-          const mode = root.querySelector('#mejl-save-mode').value;
+          const advancedAction = String((root.querySelector('#mejl-advanced-action') || {}).value || '');
+          const splitOn = !!(root.querySelector('#mejl-save-split') || {}).checked;
+          let mode = root.querySelector('#mejl-save-mode').value;
+          if (advancedAction === 'uppgift') mode = 'uppgift';
+          else if (splitOn) mode = 'split';
+          else if (advancedAction === 'new-uppdrag' && mode === 'dokumentation') mode = 'uppdrag';
           const includeEmail = root.querySelector('#mejl-save-email').checked;
           const saveAtts = root.querySelector('#mejl-save-atts').checked;
           const selectedAtts = [...root.querySelectorAll('input[name="att"]:checked')].map((el) => el.value);
@@ -838,13 +874,15 @@
           let uppdragId = (uppdragEl || {}).value || '';
           let runId = (runEl || {}).value || '';
           let uppdragName =
-            uppdragEl && uppdragEl.selectedIndex > 0 && uppdragId !== '__new__'
+            uppdragEl && uppdragEl.selectedIndex > 0 && uppdragId
               ? String(uppdragEl.options[uppdragEl.selectedIndex].textContent || '').trim()
               : '';
           let runName =
             runEl && runEl.selectedIndex > 0
               ? String(runEl.options[runEl.selectedIndex].textContent || '').trim()
               : '';
+
+          if (advancedAction === 'new-uppdrag') uppdragId = '__new__';
 
           if (mode === 'uppgift') {
             try {
@@ -892,7 +930,6 @@
                     uppdragName ||
                     match.id;
                 } else if (mode === 'korning') {
-                  // Engång-uppdrag utan körning ännu — koppla till uppdraget istället
                   showToast('Körning saknas ännu — kopplar till det nya uppdraget.', 'info');
                 }
               }
@@ -1044,22 +1081,30 @@
         'Koppla'
       );
       const modeEl = document.getElementById('mejl-save-mode');
-      const uppdragEl = document.getElementById('mejl-save-uppdrag');
+      const attsEl = document.getElementById('mejl-save-atts');
+      const advancedActionEl = document.getElementById('mejl-advanced-action');
+      const splitEl = document.getElementById('mejl-save-split');
       const sync = () => {
         const mode = modeEl ? modeEl.value : 'dokumentation';
+        const advancedAction = advancedActionEl ? advancedActionEl.value : '';
+        const splitOn = !!(splitEl && splitEl.checked);
+        const effectiveMode = advancedAction === 'uppgift' ? 'uppgift' : splitOn ? 'split' : mode;
         const u = document.getElementById('mejl-save-uppdrag-wrap');
         const r = document.getElementById('mejl-save-run-wrap');
         const neu = document.getElementById('mejl-new-uppdrag-wrap');
         const uppg = document.getElementById('mejl-uppgift-wrap');
-        if (u) u.hidden = !(mode === 'uppdrag' || mode === 'split' || mode === 'korning');
-        if (r) r.hidden = !(mode === 'korning' || mode === 'split');
-        if (mode === 'uppdrag' && r) r.hidden = true;
-        if (uppg) uppg.hidden = mode !== 'uppgift';
-        const creating = !!(u && !u.hidden && uppdragEl && uppdragEl.value === '__new__');
-        if (neu) neu.hidden = !creating;
+        const attsList = document.getElementById('mejl-save-atts-list');
+        if (r) r.hidden = !(effectiveMode === 'korning' || effectiveMode === 'split');
+        if (u) u.hidden = !(effectiveMode === 'uppdrag' || effectiveMode === 'split');
+        if (uppg) uppg.hidden = advancedAction !== 'uppgift';
+        if (neu) neu.hidden = advancedAction !== 'new-uppdrag';
+        if (attsList) attsList.hidden = !(attsEl && attsEl.checked);
+        if (modeEl) modeEl.disabled = advancedAction === 'uppgift';
       };
       if (modeEl) modeEl.addEventListener('change', sync);
-      if (uppdragEl) uppdragEl.addEventListener('change', sync);
+      if (attsEl) attsEl.addEventListener('change', sync);
+      if (advancedActionEl) advancedActionEl.addEventListener('change', sync);
+      if (splitEl) splitEl.addEventListener('change', sync);
       sync();
     }
 

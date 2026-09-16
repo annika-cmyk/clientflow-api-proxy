@@ -552,6 +552,30 @@
       .mejl-modal-actions {
         display: flex; flex-wrap: wrap; gap: 0.45rem; justify-content: flex-end; margin-top: 1rem;
       }
+      .mejl-koppla-advanced {
+        margin-top: 0.25rem;
+        padding: 0.5rem 0.65rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #f8fafc;
+      }
+      .mejl-koppla-advanced > summary {
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #475569;
+        list-style: none;
+      }
+      .mejl-koppla-advanced > summary::-webkit-details-marker { display: none; }
+      .mejl-koppla-advanced > summary::before { content: '▸ '; }
+      .mejl-koppla-advanced[open] > summary::before { content: '▾ '; }
+      .mejl-koppla-subform {
+        margin: 0;
+        padding: 0.55rem 0.65rem;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+      }
       .mejl-mask-hint { font-size: 0.8rem; color: #64748b; margin: 0.35rem 0 0; }
     </style>
 </head>
@@ -752,7 +776,7 @@
     <script src="js/components.js?v=2.2" defer></script>
     <script src="js/mejl-mask-selection.js?v=20260913mask" defer></script>
     <script src="js/uppdrag-typ.js?v=2" defer></script>
-    <script src="js/mejl-archive.js?v=20260916uppgift2" defer></script>
+    <script src="js/mejl-archive.js?v=20260916kopplafix" defer></script>
     <script src="js/mejl-hidden.js?v=1" defer></script>
     <script src="js/mejl-handle-status.js?v=20260916task" defer></script>
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
