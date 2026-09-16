@@ -1080,9 +1080,10 @@
         ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`
         : (ev.allDay ? 'Heldag' : '—');
       const siblings = Array.isArray(group) && group.length > 1 ? group : null;
+      const colorStyle = googleColorStyleAttr(ev);
       if (el.detailTitle) el.detailTitle.textContent = name;
       el.detailBody.innerHTML = `
-        <div class="kalender-detail-status kalender-detail-status--google">Google-kalender</div>
+        <div class="kalender-detail-status kalender-detail-status--google"${colorStyle ? ` style="${esc(colorStyle)}"` : ''}>Google-kalender</div>
         <dl class="kalender-detail-dl">
           <div><dt>Titel</dt><dd>${esc(name)}</dd></div>
           <div><dt>Datum</dt><dd>${esc(toDate(ev.deadline) || '—')}</dd></div>
@@ -1096,7 +1097,8 @@
         ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
           ${siblings.map((s) => {
             const label = isGoogleEvent(s) ? (s.summary || 'Google') : String(s.record?.fields?.Kundnamn || s.key);
-            return `<button type="button" class="kalender-side-item" data-key="${esc(s.key)}"><span class="kalender-side-name">${esc(label)}</span></button>`;
+            const sibStyle = googleColorStyleAttr(s);
+            return `<button type="button" class="kalender-side-item${isGoogleEvent(s) ? ' kalender-side-item--google' : ''}" data-key="${esc(s.key)}"${sibStyle ? ` style="${esc(sibStyle)}"` : ''}><span class="kalender-side-name">${esc(label)}</span></button>`;
           }).join('')}
         </div>` : ''}`;
       el.detail.hidden = false;

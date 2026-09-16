@@ -20962,6 +20962,9 @@ a.byra-profil-chip:hover {
     border-left: 3px solid #1a73e8;
     background: color-mix(in srgb, #1a73e8 12%, #fff);
 }
+.kalender-block--google .kalender-block-main {
+    color: inherit;
+}
 .kalender-side-item--google { border-left-color: #1a73e8; }
 .kalender-detail-status--google { color: #174ea6; background: color-mix(in srgb, #1a73e8 12%, white); }
 
