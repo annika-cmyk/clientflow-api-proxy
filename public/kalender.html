@@ -40,11 +40,14 @@
                             </div>
                         </div>
 
-                        <p class="kalender-lead">Uppdragskörningar på deadline eller avsatt tid. Dra för att flytta, dra i nederkant för att blocka tid (07–20). Registrera tid fyller i den avsatta längden.</p>
+                        <p class="kalender-lead">Uppdragskörningar på deadline eller bland öppna körningar. Dra för att flytta, dra i nederkant för att blocka tid (07–20). Registrera tid fyller i den avsatta längden.</p>
 
                         <div class="uppdragboard-tabs" role="tablist" aria-label="Kalenderfilter">
                             <button type="button" class="uppdragboard-tab" id="kal-scope-mine" title="Visa bara mina uppdrag"><span><i class="fas fa-user"></i> Mina</span></button>
                             <button type="button" class="uppdragboard-tab is-active" id="kal-scope-byra" title="Visa byråns uppdrag"><span><i class="fas fa-building"></i> Byrån</span></button>
+                            <span class="uppdragboard-sep" aria-hidden="true">|</span>
+                            <button type="button" class="uppdragboard-tab is-active" id="kal-mode-deadline" title="Visa körningar på deadline eller avsatt tid"><span><i class="fas fa-calendar"></i> Deadline</span></button>
+                            <button type="button" class="uppdragboard-tab" id="kal-mode-open" title="Visa öppna körningar som går att göra nu i perioden"><span><i class="fas fa-list"></i> Öppna</span></button>
                             <span class="uppdragboard-sep" aria-hidden="true">|</span>
                             <button type="button" class="uppdragboard-tab is-active" data-kal-typ="Alla"><span>Alla</span></button>
                             <button type="button" class="uppdragboard-tab" data-kal-typ="Löneuppdrag"><span>Lön</span></button>
@@ -85,8 +88,8 @@
                         </div>
                         <div class="kalender-grid" id="kal-grid" role="grid" aria-label="Månadskalender"></div>
                     </div>
-                    <aside class="kalender-side" id="kal-side" aria-label="Deadlines i perioden">
-                        <h2 class="kalender-side-title">Deadlines <span id="kal-side-count" class="kalender-side-count"></span></h2>
+                    <aside class="kalender-side" id="kal-side" aria-label="Körningar i perioden">
+                        <h2 class="kalender-side-title"><span id="kal-side-label">Deadlines</span> <span id="kal-side-count" class="kalender-side-count"></span></h2>
                         <div id="kal-side-list" class="kalender-side-list"></div>
                     </aside>
                 </div>
@@ -113,8 +116,8 @@
     <script src="js/lone-period.js?v=1.2" defer></script>
     <script src="js/koring-visibility.js?v=1.1" defer></script>
     <script src="js/uppdrag-typ.js?v=2" defer></script>
-    <script src="js/kalender-view.js?v=2" defer></script>
+    <script src="js/kalender-view.js?v=3" defer></script>
     <script src="js/kalender-events.js?v=1" defer></script>
-    <script src="js/kalender.js?v=5" defer></script>
+    <script src="js/kalender.js?v=6" defer></script>
 </body>
 </html>

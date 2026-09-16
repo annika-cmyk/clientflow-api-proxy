@@ -356,6 +356,86 @@
     return d ? inVisibleRange(d, range) : false;
   }
 
+  const EVENT_MODES = ['deadline', 'open'];
+  const EVENT_MODE_STORAGE_KEY = 'clientflow-kalender-event-mode';
+
+  function normalizeEventMode(raw) {
+    const v = String(raw || '').trim().toLowerCase();
+    if (v === 'open' || v === 'opna' || v === 'öppna') return 'open';
+    return 'deadline';
+  }
+
+  function loadStoredEventMode(storage) {
+    try {
+      const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+      if (!store || !store.getItem) return 'deadline';
+      return normalizeEventMode(store.getItem(EVENT_MODE_STORAGE_KEY));
+    } catch (_) {
+      return 'deadline';
+    }
+  }
+
+  function saveStoredEventMode(mode, storage) {
+    try {
+      const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+      if (!store || !store.setItem) return;
+      store.setItem(EVENT_MODE_STORAGE_KEY, normalizeEventMode(mode));
+    } catch (_) { /* ignore */ }
+  }
+
+  function isDoneStatus(status) {
+    const st = String(status || '').trim();
+    return st === 'Klar' || st === 'Avslutad';
+  }
+
+  /**
+   * Öppna-läge: körning syns om den inte är klar och arbetsfönstret överlappar synligt intervall,
+   * eller om den är försenad (deadline före idag) och perioden ligger efter deadlinen.
+   */
+  function isOpenEventInRange(startIso, deadlineIso, status, range, todayIso) {
+    if (isDoneStatus(status)) return false;
+    if (!range || !range.start || !range.end) return false;
+    const start = String(startIso || '').slice(0, 10);
+    const deadline = String(deadlineIso || '').slice(0, 10);
+    const today = String(todayIso || '').slice(0, 10);
+    if (deadline && today && deadline < today) {
+      return range.end >= deadline;
+    }
+    const winStart = start || deadline;
+    const winEnd = deadline || start;
+    if (!winStart || !winEnd) {
+      return deadline ? inVisibleRange(deadline, range) : false;
+    }
+    return winStart <= range.end && winEnd >= range.start;
+  }
+
+  /**
+   * Placering i Öppna-läge: planerad tid → deadline i intervall → idag → startdatum → första synliga dag.
+   */
+  function placementDateOpen(scheduledStart, deadlineIso, startIso, range, todayIso) {
+    const sched = normalizeSchedule(scheduledStart, null);
+    if (sched && inVisibleRange(sched.date, range)) return sched.date;
+
+    const deadline = String(deadlineIso || '').slice(0, 10);
+    if (deadline && inVisibleRange(deadline, range)) return deadline;
+
+    const today = String(todayIso || '').slice(0, 10);
+    if (today && inVisibleRange(today, range)) {
+      const start = String(startIso || '').slice(0, 10);
+      if (!start || start <= today) return today;
+    }
+
+    const start = String(startIso || '').slice(0, 10);
+    if (start && inVisibleRange(start, range)) return start;
+
+    if (range && range.start && range.end) {
+      if (start && start > range.start && start <= range.end) return start;
+      if (deadline && deadline >= range.start && deadline <= range.end) return deadline;
+      return range.start;
+    }
+    return deadline || start || '';
+  }
+
   function fmtTimeLabel(minutesFromMidnight) {
     const m = clamp(Number(minutesFromMidnight) || 0, 0, 24 * 60 - 1);
     return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
@@ -387,7 +467,6 @@
     isoWeekNumber,
     visibleRange,
     inVisibleRange,
-    inVisibleRangeForEvent,
     periodTitle,
     shiftFocus,
     goToday,
@@ -410,6 +489,15 @@
     moveBlock,
     resizeBlock,
     placementDate,
+    inVisibleRangeForEvent,
+    EVENT_MODES,
+    EVENT_MODE_STORAGE_KEY,
+    normalizeEventMode,
+    loadStoredEventMode,
+    saveStoredEventMode,
+    isDoneStatus,
+    isOpenEventInRange,
+    placementDateOpen,
     fmtTimeLabel,
     tidPrefillHours
   };
