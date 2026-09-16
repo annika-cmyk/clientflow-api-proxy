@@ -14555,6 +14555,66 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border-radius: 10px;
     max-width: 90%;
 }
+.ai-chat-msg__debug {
+    margin-top: 0.45rem;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 8px;
+    background: #f8fafc;
+    overflow: hidden;
+}
+.ai-chat-msg__debug > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    user-select: none;
+}
+.ai-chat-msg__debug > summary::-webkit-details-marker { display: none; }
+.ai-chat-msg__debug > summary::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 0.35rem;
+    transition: transform 0.15s ease;
+}
+.ai-chat-msg__debug[open] > summary::before { transform: rotate(90deg); }
+.ai-chat-msg__debug-body {
+    padding: 0 0.6rem 0.65rem;
+    border-top: 1px solid var(--line, #e2e8f0);
+}
+.ai-chat-msg__debug-meta {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin: 0.5rem 0 0.35rem;
+    word-break: break-word;
+}
+.ai-chat-msg__debug-error {
+    font-size: 0.75rem;
+    color: #b91c1c;
+    margin: 0.35rem 0;
+    word-break: break-word;
+}
+.ai-chat-msg__debug-section { margin-top: 0.45rem; }
+.ai-chat-msg__debug-heading {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 0.2rem;
+}
+.ai-chat-msg__debug-pre {
+    margin: 0;
+    padding: 0.5rem;
+    max-height: 220px;
+    overflow: auto;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 6px;
+}
 .ai-chat-panel__input-wrap {
     display: flex;
     gap: 0.5rem;

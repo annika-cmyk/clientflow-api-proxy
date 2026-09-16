@@ -29,6 +29,11 @@
       if (!Array.isArray(parsed)) return [];
       return parsed
         .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map(m => ({
+          role: m.role,
+          content: m.content,
+          ...(m.debug && typeof m.debug === 'object' ? { debug: m.debug } : {})
+        }))
         .slice(-60);
     } catch (_) {
       return [];
@@ -37,7 +42,31 @@
 
   function saveHistory() {
     try {
-      sessionStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(history.slice(-60)));
+      const slim = history.slice(-60).map((m) => {
+        if (!m || !m.debug) return { role: m.role, content: m.content };
+        const d = m.debug;
+        const trim = (s, n) => {
+          const t = s == null ? '' : String(s);
+          return t.length > n ? t.slice(0, n) + '…' : t;
+        };
+        return {
+          role: m.role,
+          content: m.content,
+          debug: {
+            model: d.model || null,
+            temperature: d.temperature ?? null,
+            hasFileSearch: !!d.hasFileSearch,
+            instructions: trim(d.instructions, 8000),
+            prompt: trim(d.prompt, 12000),
+            conversationId: d.conversationId || null,
+            status: d.status || null,
+            rawResponse: trim(d.rawResponse, 8000),
+            rawResponseJsonText: trim(d.rawResponseJsonText, 20000),
+            error: d.error || null
+          }
+        };
+      });
+      sessionStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(slim));
     } catch (_) {}
   }
 
@@ -60,7 +89,7 @@
     if (!messagesEl) return;
     messagesEl.innerHTML = '';
     for (const m of history) {
-      appendMessage(m.role, m.content);
+      appendMessage(m.role, m.content, m.debug || null);
     }
   }
 
@@ -87,7 +116,7 @@
           <i class="fas fa-times"></i>
         </button>
       </div>
-      <p class="ai-chat-panel__intro">Ställ frågor om ClientFlow, riskbedömningar, KYC och AML (PTL). På kundkort får AI med kundens underlag.</p>
+      <p class="ai-chat-panel__intro">Ställ frågor om ClientFlow, riskbedömningar, KYC och AML (PTL). På kundkort får AI med kundens underlag. Under varje AI-svar kan du öppna exakt prompt och råsvar.</p>
       <div class="ai-chat-panel__messages" id="ai-chat-messages"></div>
       <div class="ai-chat-panel__input-wrap">
         <textarea id="ai-chat-input" class="ai-chat-panel__input" rows="2" placeholder="Skriv till ClientFlow AI..." maxlength="2000"></textarea>
@@ -110,7 +139,6 @@
       }
     });
 
-    // Återställ konversation vid sidbyte/refresh
     history = loadHistory();
     chatThreadId = loadThreadId();
     if (history.length === 0) {
@@ -120,7 +148,50 @@
     renderHistory();
   }
 
-  function appendMessage(role, content) {
+  function escapeHtmlRaw(text) {
+    const p = document.createElement('p');
+    p.textContent = text == null ? '' : String(text);
+    return p.innerHTML;
+  }
+
+  function escapeHtml(text) {
+    return escapeHtmlRaw(text).replace(/\n/g, '<br>');
+  }
+
+  function buildDebugHtml(debug) {
+    if (!debug || typeof debug !== 'object') return '';
+    const metaParts = [];
+    if (debug.model) metaParts.push('Modell: ' + debug.model);
+    if (debug.temperature != null && debug.temperature !== '') metaParts.push('Temp: ' + debug.temperature);
+    if (debug.hasFileSearch) metaParts.push('file_search: ja');
+    if (debug.status) metaParts.push('Status: ' + debug.status);
+    if (debug.conversationId) metaParts.push('Conversation: ' + debug.conversationId);
+    const meta = metaParts.length
+      ? '<div class="ai-chat-msg__debug-meta">' + escapeHtmlRaw(metaParts.join(' · ')) + '</div>'
+      : '';
+    const section = (title, body) => {
+      const t = body == null ? '' : String(body);
+      if (!t.trim()) return '';
+      return '<div class="ai-chat-msg__debug-section"><div class="ai-chat-msg__debug-heading">'
+        + escapeHtmlRaw(title) + '</div><pre class="ai-chat-msg__debug-pre">'
+        + escapeHtmlRaw(t) + '</pre></div>';
+    };
+    const err = debug.error
+      ? '<div class="ai-chat-msg__debug-error">' + escapeHtmlRaw(debug.error) + '</div>'
+      : '';
+    return '<details class="ai-chat-msg__debug">'
+      + '<summary>Visa prompt / råsvar</summary>'
+      + '<div class="ai-chat-msg__debug-body">'
+      + meta
+      + err
+      + section('Instructions (system)', debug.instructions)
+      + section('Prompt (input)', debug.prompt)
+      + section('Råsvar (extraherad text)', debug.rawResponse)
+      + section('Råsvar (JSON)', debug.rawResponseJsonText)
+      + '</div></details>';
+  }
+
+  function appendMessage(role, content, debug) {
     if (!messagesEl) return;
     const div = document.createElement('div');
     div.className = 'ai-chat-msg ai-chat-msg--' + role;
@@ -129,7 +200,8 @@
       ? '<img src="' + annikaAvatarUrl + '" alt="ClientFlow AI" class="ai-chat-msg__avatar" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';"><span class="ai-chat-avatar-fallback ai-chat-msg__avatar-fallback" style="display:none;">CF</span>'
       : '';
     const label = isAnnika ? 'ClientFlow AI' : 'Du';
-    div.innerHTML = '<div class="ai-chat-msg__inner">' + avatarHtml + '<div class="ai-chat-msg__body"><span class="ai-chat-msg__label">' + label + '</span><div class="ai-chat-msg__text">' + escapeHtml(content) + '</div></div></div>';
+    const debugHtml = isAnnika ? buildDebugHtml(debug) : '';
+    div.innerHTML = '<div class="ai-chat-msg__inner">' + avatarHtml + '<div class="ai-chat-msg__body"><span class="ai-chat-msg__label">' + label + '</span><div class="ai-chat-msg__text">' + escapeHtml(content) + '</div>' + debugHtml + '</div></div>';
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
@@ -148,13 +220,6 @@
     }
   }
 
-  function escapeHtml(text) {
-    const p = document.createElement('p');
-    p.textContent = text;
-    return p.innerHTML.replace(/\n/g, '<br>');
-  }
-
-  /** Om användaren är på kundkort: skicka customerId så AI får kundens underlag. */
   function getCurrentCustomerIdForChat() {
     try {
       if (window.customerCardManager && window.customerCardManager.customerId) {
@@ -195,7 +260,7 @@
         ...getAuthOpts(),
         body: JSON.stringify({
           message: text,
-          history: history.slice(0, -1),
+          history: history.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
           threadId: chatThreadId || undefined,
           ...(customerId ? { customerId } : {})
         })
@@ -208,17 +273,21 @@
         const preview = raw.length > 120 ? raw.slice(0, 120) + '…' : raw;
         data = { error: 'Servern svarade inte med JSON (status ' + res.status + '). Kontrollera att API kör på ' + (apiBase || 'servern') + '. Svar: ' + (preview || '(tomt)') };
       }
+      const debug = (data && data.debug && typeof data.debug === 'object') ? data.debug : null;
       if (!res.ok) {
         const msg = (data && (data.error || data.message)) ? (data.error || data.message) : ('HTTP ' + res.status);
-        throw new Error(msg);
+        appendMessage('assistant', 'Kunde inte få svar: ' + msg, debug);
+        history.push({ role: 'assistant', content: 'Kunde inte få svar: ' + msg, ...(debug ? { debug } : {}) });
+        saveHistory();
+        return;
       }
       const reply = (data && data.reply) ? data.reply : 'Inget svar.';
       if (data && data.threadId) {
         chatThreadId = data.threadId;
         saveThreadId(chatThreadId);
       }
-      appendMessage('assistant', reply);
-      history.push({ role: 'assistant', content: reply });
+      appendMessage('assistant', reply, debug);
+      history.push({ role: 'assistant', content: reply, ...(debug ? { debug } : {}) });
       saveHistory();
     } catch (err) {
       const msg = err.message || 'Något gick fel';
