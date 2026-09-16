@@ -289,6 +289,9 @@
       appendMessage('assistant', reply, debug);
       history.push({ role: 'assistant', content: reply, ...(debug ? { debug } : {}) });
       saveHistory();
+      if (debug && window.AiPromptDebug && typeof window.AiPromptDebug.show === 'function') {
+        window.AiPromptDebug.show(debug, { label: 'Chatta med AI', route: '/api/ai-chat' });
+      }
     } catch (err) {
       const msg = err.message || 'Något gick fel';
       appendMessage('assistant', 'Kunde inte få svar: ' + msg);

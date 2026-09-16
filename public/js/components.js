@@ -460,9 +460,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebarContainer = document.querySelector('.sidebar-container');
     if (sidebarContainer) {
         componentLoader.loadComponent('sidebar', sidebarContainer);
+        if (!document.querySelector('script[src*="ai-prompt-debug.js"]')) {
+            const d = document.createElement('script');
+            d.src = 'js/ai-prompt-debug.js?v=1';
+            d.async = false;
+            document.body.appendChild(d);
+        }
         if (!document.querySelector('script[src*="ai-chat.js"]')) {
             const s = document.createElement('script');
-            s.src = 'js/ai-chat.js?v=2.5';
+            s.src = 'js/ai-chat.js?v=2.6';
             s.async = false;
             document.body.appendChild(s);
         }

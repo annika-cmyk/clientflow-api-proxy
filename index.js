@@ -119,7 +119,8 @@ const {
   extractResponsesUsage,
   conversationIdFromResponse,
   isResponsesConversationId,
-  assignAiRunDebugOut
+  assignAiRunDebugOut,
+  toAiRunDebugPayload
 } = require('./lib/openai-assistant-run');
 const {
   recordAiUsage,
@@ -25875,6 +25876,7 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
   };
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
   const byraAnalysModel = resolveByraAnalysModel();
+  const debugOut = {};
 
   try {
     const aiText = await runOpenAIAssistantRunWithRetry(
@@ -25888,6 +25890,7 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
         promptCacheKey: reviewMode ? 'cf-byra-tjanst-rev' : 'cf-byra-tjanst-gen',
         maxWaitMs: 180000,
         pollMs: 1500,
+        debugOut,
         debugMeta: { route: '/api/ai-byra-tjanst', user: req.user?.email || '' }
       },
       { maxAttempts: 3 }
@@ -25977,7 +25980,8 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
         lage: reviewMode ? 'granska' : 'generera',
         poster: granskningPoster
       },
-      auditLogId: tjanstAiLog && tjanstAiLog.id
+      auditLogId: tjanstAiLog && tjanstAiLog.id,
+      debug: toAiRunDebugPayload(debugOut, { route: '/api/ai-byra-tjanst', label: 'Tjänstanalys' })
     });
   } catch (error) {
     const status = error.response?.status || 500;
@@ -25986,7 +25990,10 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     if (status === 429) {
       return res.status(429).json({ error: 'AI är tillfälligt hårt belastad (rate limit). Vänta 10–30 sek och försök igen.' });
     }
-    res.status(status).json({ error: 'Kunde inte generera AI-förslag: ' + msg });
+    res.status(status).json({
+      error: 'Kunde inte generera AI-förslag: ' + msg,
+      debug: toAiRunDebugPayload(debugOut, { route: '/api/ai-byra-tjanst', label: 'Tjänstanalys', error: msg })
+    });
   }
 });
 
@@ -26067,7 +26074,7 @@ Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nä
 ${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
 ${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
 ${existingBlock ? `\n${existingBlock}\n` : ''}${extraUnderlagBlock ? `\n${extraUnderlagBlock}\n` : ''}
-Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.
+Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -26101,6 +26108,7 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.
   const normRiskfaktorNiva = (v) => RiskSkala.riskLabelSv(v) || 'Normal';
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
   const byraAnalysModel = resolveByraAnalysModel();
+  const debugOut = {};
 
   try {
     const aiText = await runOpenAIAssistantRunWithRetry(
@@ -26114,6 +26122,7 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.
         promptCacheKey: reviewMode ? 'cf-ovrig-riskfaktor-rev' : 'cf-ovrig-riskfaktor-gen',
         maxWaitMs: 180000,
         pollMs: 1500,
+        debugOut,
         debugMeta: { route: '/api/ai-ovriga-riskfaktor', user: req.user?.email || '' }
       },
       { maxAttempts: 3 }
@@ -26174,7 +26183,8 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.
         lage: reviewMode ? 'granska' : 'generera',
         poster: granskningPoster
       },
-      auditLogId: faktorAiLog && faktorAiLog.id
+      auditLogId: faktorAiLog && faktorAiLog.id,
+      debug: toAiRunDebugPayload(debugOut, { route: '/api/ai-ovriga-riskfaktor', label: 'Riskfaktoranalys' })
     });
   } catch (error) {
     const status = error.response?.status || 500;
@@ -26183,7 +26193,10 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.
     if (status === 429) {
       return res.status(429).json({ error: 'AI är tillfälligt hårt belastad (rate limit). Vänta 10–30 sek och försök igen.' });
     }
-    res.status(status).json({ error: 'Kunde inte generera AI-förslag: ' + msg });
+    res.status(status).json({
+      error: 'Kunde inte generera AI-förslag: ' + msg,
+      debug: toAiRunDebugPayload(debugOut, { route: '/api/ai-ovriga-riskfaktor', label: 'Riskfaktoranalys', error: msg })
+    });
   }
 });
 

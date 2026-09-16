@@ -3627,11 +3627,17 @@ class RiskAssessmentManager {
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
+                if (err && err.debug && window.AiPromptDebug && typeof window.AiPromptDebug.show === 'function') {
+                    window.AiPromptDebug.show(err.debug);
+                }
                 throw new Error(err.error || `HTTP ${response.status}`);
             }
 
             const data = await response.json();
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
+            if (data.debug && window.AiPromptDebug && typeof window.AiPromptDebug.show === 'function') {
+                window.AiPromptDebug.show(data.debug);
+            }
 
             if (reviewMode) {
                 const underlag = this.readAiExtraUnderlag();
