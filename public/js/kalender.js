@@ -269,22 +269,134 @@
     const label = `${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)} (${hours} t)`;
     const dd = el.detailBody.querySelector('[data-avsatt-tid]');
     if (dd) dd.textContent = label;
-    const btn = el.detailBody.querySelector('[data-registrera-tid]');
+    const klarBtn = el.detailBody.querySelector('[data-klar-tid]');
+    if (klarBtn) {
+      klarBtn.disabled = !(hours > 0);
+      klarBtn.innerHTML = `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${hours} t)`;
+    }
+  }
+
+  function applyKlarLocally(ev) {
+    if (!ev) return;
+    ev.status = 'Klar';
+    if (ev.runRec) {
+      ev.runRec.fields = { ...(ev.runRec.fields || {}), Status: 'Klar' };
+    }
+    const rid = String(ev.runRec?.id || '').trim();
+    if (rid) {
+      const rr = runRecords.find((r) => r.id === rid);
+      if (rr) rr.fields = { ...(rr.fields || {}), Status: 'Klar' };
+    }
+  }
+
+  async function klarAndRegisterTid(ev) {
+    const f = ev.record?.fields || {};
+    const runF = ev.runRec?.fields || {};
+    const runId = String(ev.runRec?.id || '').trim();
+    const kundId = String(f['Kund ID'] || runF['Kund ID'] || '').trim();
+    const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
+    const uppdragId = String(ev.record?.id || runF['Uppdrag ID'] || '').trim();
+    const sched = scheduleOf(ev);
+    if (!sched || !(sched.hours > 0)) {
+      showSaveToast('Avsätt tid i kalendern först (dra i nederkant).', true);
+      return;
+    }
+    if (!runId) {
+      showSaveToast('Saknar uppdragskörning – kan inte klarmarkera.', true);
+      return;
+    }
+    if (!kundId) {
+      showSaveToast('Saknar kundkoppling.', true);
+      return;
+    }
+
+    let tidBody;
+    try {
+      const helper = window.KalenderKlarTid;
+      const build = helper && helper.buildKalenderTidPayload
+        ? helper.buildKalenderTidPayload
+        : null;
+      const args = {
+        customerId: kundId,
+        customerName: name,
+        uppdragId,
+        uppdragsnamn: displayName(ev.typ, f),
+        koringId: runId,
+        hours: sched.hours,
+        date: sched.date,
+        start: sched.start,
+        end: sched.end,
+        status: 'Klar'
+      };
+      if (build) {
+        tidBody = build(args);
+      } else {
+        tidBody = {
+          customerId: kundId,
+          customerName: name,
+          uppdragId,
+          uppdragsnamn: displayName(ev.typ, f),
+          koringId: runId,
+          date: sched.date,
+          hours: sched.hours,
+          start: sched.start || '',
+          end: sched.end || '',
+          activity: 'Uppdragsarbete',
+          description: `Avsatt tid ${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (från kalender)`,
+          status: 'Klar'
+        };
+      }
+    } catch (err) {
+      showSaveToast((err && err.message) || 'Kunde inte bygga tidpost', true);
+      return;
+    }
+
+    const btn = el.detailBody && el.detailBody.querySelector('[data-klar-tid]');
     if (btn) {
-      btn.innerHTML = `<i class="fas fa-clock"></i> Registrera tid (${hours} t)`;
-      const href = btn.getAttribute('href');
-      if (href) {
-        try {
-          const u = new URL(href, window.location.origin);
-          u.searchParams.set('hours', String(hours));
-          const date = dragState?.date;
-          if (date) {
-            u.searchParams.set('date', date);
-            u.searchParams.set('start', KV.toLocalDateTimeIso(date, startMin));
-            u.searchParams.set('end', KV.toLocalDateTimeIso(date, endMin));
-          }
-          btn.setAttribute('href', `${u.pathname}?${u.searchParams.toString()}`);
-        } catch (_) { /* ignore bad href */ }
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar…';
+    }
+
+    try {
+      const tidRes = await fetch(`${baseUrl}/api/tidregistrering`, {
+        method: 'POST',
+        ...authOpts(),
+        headers: {
+          ...(authOpts().headers || {}),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(tidBody)
+      });
+      const tidData = await tidRes.json().catch(() => ({}));
+      if (!tidRes.ok) throw new Error(tidData.error || 'Kunde inte registrera tid');
+
+      const stRes = await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/status`, {
+        method: 'PATCH',
+        ...authOpts(),
+        headers: {
+          ...(authOpts().headers || {}),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: 'Klar' })
+      });
+      const stData = await stRes.json().catch(() => ({}));
+      if (!stRes.ok) throw new Error(stData.error || 'Tid sparad, men klarmarkering misslyckades');
+
+      if (stData.record) {
+        ev.runRec = stData.record;
+        const idx = runRecords.findIndex((r) => r.id === stData.record.id);
+        if (idx >= 0) runRecords[idx] = stData.record;
+      }
+      applyKlarLocally(ev);
+      showSaveToast(`Klarmarkerad · ${sched.hours} t registrerad`);
+      closeDetail();
+      render();
+    } catch (err) {
+      console.error('Kalender klar+tid:', err);
+      showSaveToast((err && err.message) || 'Kunde inte spara', true);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${sched.hours} t)`;
       }
     }
   }
@@ -359,29 +471,6 @@
       showSaveToast(err.message || 'Kunde inte spara tidblock', true);
       return false;
     }
-  }
-
-  function tidHref(ev) {
-    const f = ev.record?.fields || {};
-    const kundId = String(f['Kund ID'] || '').trim();
-    if (!kundId) return '';
-    const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
-    const params = new URLSearchParams({
-      new: '1',
-      customerId: kundId,
-      customerName: name,
-      uppdrag: displayName(ev.typ, f)
-    });
-    const sched = scheduleOf(ev);
-    if (sched) {
-      params.set('hours', KV.tidPrefillHours(sched.start, sched.end));
-      params.set('date', sched.date);
-      if (sched.start) params.set('start', sched.start);
-      if (sched.end) params.set('end', sched.end);
-    } else if (ev.deadline) {
-      params.set('date', toDate(ev.deadline));
-    }
-    return `tid.html?${params.toString()}`;
   }
 
   function chip(ev) {
@@ -826,7 +915,8 @@
     const period = ev.periodLabel || ev.periodKey || '—';
     const siblings = Array.isArray(group) && group.length > 1 ? group : null;
     const sched = scheduleOf(ev);
-    const tidUrl = tidHref(ev);
+    const isKlar = cls === 'klar';
+    const canKlarTid = !isKlar && !!ev.runRec?.id && !!kundId;
     const blockLabel = sched
       ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (${sched.hours} t)`
       : 'Ej avsatt — dra i vecko-/dagsvy';
@@ -843,8 +933,11 @@
         ${ansvarig ? `<div><dt>Ansvarig</dt><dd>${esc(ansvarig)}</dd></div>` : ''}
       </dl>
       <div class="kalender-detail-actions">
-        ${kundId ? `<a class="btn btn-primary btn-sm" href="kundkort.html?id=${encodeURIComponent(kundId)}"><i class="fas fa-user"></i> Öppna kundkort</a>` : ''}
-        ${tidUrl ? `<a class="btn btn-ghost btn-sm" data-registrera-tid href="${esc(tidUrl)}"><i class="fas fa-clock"></i> Registrera tid${sched ? ` (${esc(String(sched.hours))} t)` : ''}</a>` : ''}
+        ${kundId ? `<a class="btn btn-ghost btn-sm" href="kundkort.html?id=${encodeURIComponent(kundId)}"><i class="fas fa-user"></i> Öppna kundkort</a>` : ''}
+        ${canKlarTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tid ${sched && sched.hours > 0 ? '' : 'disabled'}>
+          <i class="fas fa-check"></i> Klarmarkera & registrera tid${sched && sched.hours > 0 ? ` (${esc(String(sched.hours))} t)` : ''}
+        </button>` : ''}
+        ${isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Klarmarkerad</span>` : ''}
         <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
       </div>
       ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
@@ -864,6 +957,12 @@
     el.detailBody.querySelectorAll('[data-key]').forEach((btn) => {
       btn.addEventListener('click', () => openDetail(btn.getAttribute('data-key')));
     });
+    const klarBtn = el.detailBody.querySelector('[data-klar-tid]');
+    if (klarBtn) {
+      klarBtn.addEventListener('click', () => {
+        klarAndRegisterTid(ev);
+      });
+    }
   }
 
   function closeDetail() {

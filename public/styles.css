@@ -21217,6 +21217,15 @@ a.byra-profil-chip:hover {
     flex-wrap: wrap;
     gap: 0.5rem;
     margin-top: 1rem;
+    align-items: center;
+}
+.kalender-detail-done-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--success, #067647);
 }
 .kalender-detail-siblings {
     margin-top: 1.1rem;
