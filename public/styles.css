@@ -14390,9 +14390,10 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     position: fixed;
     bottom: 0;
     right: 0;
-    width: 100%;
-    max-width: 420px;
-    max-height: 85vh;
+    width: min(920px, calc(100vw - 1.5rem));
+    height: min(88vh, 920px);
+    max-width: none;
+    max-height: none;
     background: var(--card-bg, #fff);
     box-shadow: -4px 0 20px rgba(0,0,0,0.15);
     z-index: 9999;
@@ -14401,6 +14402,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border-radius: 12px 12px 0 0;
     overflow: hidden;
     transition: transform 0.25s ease, opacity 0.25s ease;
+}
+@media (max-width: 640px) {
+    .ai-chat-panel {
+        width: 100%;
+        height: 92vh;
+        right: 0;
+        border-radius: 12px 12px 0 0;
+    }
 }
 .ai-chat-panel--closed {
     transform: translateY(100%);
@@ -14493,9 +14502,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .ai-chat-panel__messages {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem;
-    min-height: 180px;
-    max-height: 40vh;
+    padding: 1rem 1.25rem;
+    min-height: 0;
 }
 .ai-chat-msg { margin-bottom: 0.75rem; }
 .ai-chat-msg__inner {
