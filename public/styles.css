@@ -14662,6 +14662,138 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .ai-chat-panel__send:hover:not(:disabled) { opacity: 0.9; }
 .ai-chat-panel__send:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* AI-prompt debug-blobb */
+.ai-prompt-debug {
+    position: fixed;
+    z-index: 10000;
+    left: 1rem;
+    bottom: 1rem;
+    pointer-events: none;
+}
+.ai-prompt-debug__fab {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: none;
+    border-radius: 999px;
+    padding: 0.55rem 0.9rem;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+    position: relative;
+}
+.ai-prompt-debug__fab:hover { filter: brightness(1.08); }
+.ai-prompt-debug__fab-dot {
+    position: absolute;
+    top: 0.2rem;
+    right: 0.25rem;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 2px #0f172a;
+}
+.ai-prompt-debug--open .ai-prompt-debug__fab { display: none; }
+.ai-prompt-debug__panel {
+    pointer-events: auto;
+    display: none;
+    flex-direction: column;
+    width: min(720px, calc(100vw - 2rem));
+    height: min(70vh, 720px);
+    background: #fff;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+    overflow: hidden;
+}
+.ai-prompt-debug--open .ai-prompt-debug__panel { display: flex; }
+.ai-prompt-debug--large .ai-prompt-debug__panel {
+    width: min(1100px, calc(100vw - 1.5rem));
+    height: min(92vh, 980px);
+}
+.ai-prompt-debug__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+    color: #fff;
+}
+.ai-prompt-debug__titles h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: inherit;
+}
+.ai-prompt-debug__meta {
+    margin: 0.25rem 0 0;
+    font-size: 0.72rem;
+    opacity: 0.9;
+    word-break: break-word;
+}
+.ai-prompt-debug__actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+.ai-prompt-debug__btn {
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    border-radius: 8px;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+.ai-prompt-debug__btn:hover { background: rgba(255,255,255,0.16); }
+.ai-prompt-debug__btn--close { width: 2rem; padding: 0.35rem; }
+.ai-prompt-debug__body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.85rem 1rem 1rem;
+    background: #f8fafc;
+}
+.ai-prompt-debug__error {
+    color: #b91c1c;
+    font-size: 0.85rem;
+    margin-bottom: 0.6rem;
+}
+.ai-prompt-debug__section { margin-bottom: 0.75rem; }
+.ai-prompt-debug__heading {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 0.25rem;
+}
+.ai-prompt-debug__pre {
+    margin: 0;
+    padding: 0.65rem 0.75rem;
+    max-height: 280px;
+    overflow: auto;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+}
+.ai-prompt-debug--large .ai-prompt-debug__pre { max-height: 42vh; }
+@media (max-width: 640px) {
+    .ai-prompt-debug { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; }
+    .ai-prompt-debug__panel,
+    .ai-prompt-debug--large .ai-prompt-debug__panel {
+        width: 100%;
+        height: min(88vh, 900px);
+    }
+}
+
+
 /* Statistik f?r riskbed?mning */
 .risk-header-sub {
     margin: 0;
