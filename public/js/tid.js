@@ -19,6 +19,11 @@
     to: document.getElementById('tid-to'),
     statusFilter: document.getElementById('tid-status-filter'),
     customerFilter: document.getElementById('tid-customer-filter'),
+    bulkBar: document.getElementById('tid-bulk-bar'),
+    bulkCount: document.getElementById('tid-bulk-count'),
+    bulkInvoice: document.getElementById('tid-bulk-invoice'),
+    bulkClear: document.getElementById('tid-bulk-clear'),
+    selectAllKlar: document.getElementById('tid-select-all-klar'),
     newBtn: document.getElementById('tid-new'),
     modal: document.getElementById('tid-modal'),
     form: document.getElementById('tid-form'),
@@ -29,7 +34,9 @@
     date: document.getElementById('tid-date'),
     hours: document.getElementById('tid-hours'),
     activity: document.getElementById('tid-activity'),
+    activityList: document.getElementById('tid-activity-datalist'),
     rate: document.getElementById('tid-rate'),
+    rateHint: document.getElementById('tid-rate-hint'),
     uppdrag: document.getElementById('tid-uppdrag'),
     description: document.getElementById('tid-description'),
     status: document.getElementById('tid-status'),
@@ -42,7 +49,10 @@
   let entries = [];
   let summary = null;
   let customers = [];
+  let hourlyRates = [];
+  let selectedIds = new Set();
   let bound = false;
+  let rateTouched = false;
 
   function authOpts() {
     return window.AuthManager && AuthManager.getAuthFetchOptions
@@ -102,6 +112,74 @@
     return { from: from, to: to };
   }
 
+  function resolveRateFromTimlista(activity, uppdragsnamn) {
+    if (!hourlyRates.length) return null;
+    const needles = [activity, uppdragsnamn]
+      .map(function (s) { return String(s || '').trim().toLowerCase(); })
+      .filter(Boolean);
+
+    function exact(needle) {
+      return hourlyRates.find(function (it) {
+        return String(it.namn || '').toLowerCase() === needle;
+      }) || null;
+    }
+    function partial(needle) {
+      if (needle.length < 3) return null;
+      return hourlyRates.find(function (it) {
+        const n = String(it.namn || '').toLowerCase();
+        if (n.length < 3) return false;
+        return n.indexOf(needle) !== -1 || needle.indexOf(n) !== -1;
+      }) || null;
+    }
+
+    for (let i = 0; i < needles.length; i++) {
+      const hit = exact(needles[i]);
+      if (hit) return hit;
+    }
+    for (let j = 0; j < needles.length; j++) {
+      const hit = partial(needles[j]);
+      if (hit) return hit;
+    }
+
+    const named = hourlyRates.find(function (it) {
+      const n = String(it.namn || '').trim().toLowerCase();
+      return n === 'timpris' || n.indexOf('timpris') !== -1 || /^tim(me|mar)?\b/.test(n);
+    });
+    if (named) return named;
+
+    const prices = [];
+    hourlyRates.forEach(function (it) {
+      if (prices.indexOf(it.pris) === -1) prices.push(it.pris);
+    });
+    if (prices.length === 1) return hourlyRates[0];
+    return null;
+  }
+
+  function applyRateFromTimlista(force) {
+    if (!el.rate) return;
+    if (!force && rateTouched && String(el.rate.value || '').trim() !== '') return;
+    const hit = resolveRateFromTimlista(
+      el.activity && el.activity.value,
+      el.uppdrag && el.uppdrag.value
+    );
+    if (!hit) {
+      if (el.rateHint) {
+        el.rateHint.hidden = true;
+        el.rateHint.textContent = '';
+      }
+      return;
+    }
+    if (force || !String(el.rate.value || '').trim()) {
+      el.rate.value = hit.pris;
+      if (!force) rateTouched = false;
+    }
+    if (el.rateHint) {
+      el.rateHint.hidden = false;
+      el.rateHint.textContent = 'Timpris från byråns prislista: ' + hit.namn;
+    }
+    updateAmountHint();
+  }
+
   function updateAmountHint() {
     if (!el.amountHint) return;
     const h = Number(el.hours && el.hours.value);
@@ -113,6 +191,13 @@
       el.amountHint.hidden = true;
       el.amountHint.textContent = '';
     }
+  }
+
+  function updateActivityDatalist() {
+    if (!el.activityList) return;
+    el.activityList.innerHTML = hourlyRates.map(function (it) {
+      return '<option value="' + esc(it.namn) + '"></option>';
+    }).join('');
   }
 
   async function api(path, opts) {
@@ -191,15 +276,41 @@
     });
   }
 
+  function eligibleKlarIds() {
+    return filteredEntries().filter(function (e) { return e.status === 'Klar'; }).map(function (e) { return e.id; });
+  }
+
+  function syncSelectionWithList() {
+    const valid = new Set(eligibleKlarIds());
+    selectedIds = new Set(Array.from(selectedIds).filter(function (id) { return valid.has(id); }));
+  }
+
+  function updateBulkBar() {
+    syncSelectionWithList();
+    const n = selectedIds.size;
+    if (el.bulkCount) el.bulkCount.textContent = String(n);
+    if (el.bulkBar) el.bulkBar.hidden = n === 0;
+    if (el.bulkInvoice) el.bulkInvoice.disabled = n === 0;
+    if (el.selectAllKlar) {
+      const ids = eligibleKlarIds();
+      el.selectAllKlar.disabled = ids.length === 0;
+      el.selectAllKlar.checked = ids.length > 0 && ids.every(function (id) { return selectedIds.has(id); });
+      el.selectAllKlar.indeterminate = n > 0 && !el.selectAllKlar.checked;
+    }
+  }
+
   function renderList() {
     if (!el.list) return;
     const list = filteredEntries();
+    syncSelectionWithList();
     if (!list.length) {
       el.list.innerHTML = '<p class="moten-empty">Ingen tid registrerad för valt filter. Klicka på <strong>Registrera tid</strong>.</p>';
+      updateBulkBar();
       return;
     }
     el.list.innerHTML = list.map(function (e) {
       const canEdit = e.status !== 'Fakturerad';
+      const canSelect = e.status === 'Klar';
       let actions = '';
       if (canEdit && e.status === 'Utkast') {
         actions += '<button type="button" class="btn btn-primary btn-sm" data-tid-ready="' + esc(e.id) + '">Markera Klar</button>';
@@ -213,16 +324,26 @@
         actions += '<button type="button" class="btn btn-ghost btn-sm" data-tid-del="' + esc(e.id) + '">Radera</button>';
       }
       const act = e.activity ? (e.activity + (e.description ? ' — ' : '')) : '';
-      return '<article class="tid-card" data-id="' + esc(e.id) + '"><div class="tid-card-main">' +
+      const amountNote = e.rateFromPrislista
+        ? '<span class="tid-rate-from-list" title="Beräknat från byråns prislista"> · från prislista</span>'
+        : '';
+      const check = canSelect
+        ? '<label class="tid-card-check"><input type="checkbox" data-tid-select="' + esc(e.id) + '"' +
+          (selectedIds.has(e.id) ? ' checked' : '') + '><span class="sr-only">Välj för fakturering</span></label>'
+        : '<span class="tid-card-check tid-card-check--empty" aria-hidden="true"></span>';
+      return '<article class="tid-card' + (selectedIds.has(e.id) ? ' is-selected' : '') + '" data-id="' + esc(e.id) + '">' +
+        check +
+        '<div class="tid-card-main">' +
         '<div class="tid-card-top"><h3>' + esc(e.customerName || 'Kund saknas') + '</h3>' +
         '<span class="' + badgeClass(e.status) + '">' + esc(e.status) + '</span></div>' +
         '<p class="tid-card-meta">' + esc(fmtDate(e.date)) + ' · ' + esc(fmtHours(e.hours)) +
-        (e.amount != null ? ' · ' + esc(fmtMoney(e.amount)) : '') + '</p>' +
+        (e.amount != null ? ' · ' + esc(fmtMoney(e.amount)) : '') + amountNote + '</p>' +
         '<p class="tid-card-desc">' + esc(act) + esc(e.description || '') + '</p>' +
         (e.uppdragsnamn ? '<p class="tid-card-meta">Uppdrag: ' + esc(e.uppdragsnamn) + '</p>' : '') +
         '<p class="tid-card-meta">' + esc(e.performedByName || e.performedBy || '') + '</p></div>' +
         '<div class="tid-card-actions">' + actions + '</div></article>';
     }).join('');
+    updateBulkBar();
   }
 
   async function loadEntries() {
@@ -234,6 +355,8 @@
     const data = await api('/api/tidregistrering' + qs);
     entries = data.entries || [];
     summary = data.summary || null;
+    hourlyRates = (data.prislista && data.prislista.hourlyRates) || [];
+    updateActivityDatalist();
     renderSummary();
     renderList();
   }
@@ -243,6 +366,11 @@
     if (el.form) el.form.reset();
     el.formError.hidden = true;
     el.formError.textContent = '';
+    rateTouched = false;
+    if (el.rateHint) {
+      el.rateHint.hidden = true;
+      el.rateHint.textContent = '';
+    }
     if (entry) {
       el.modalTitle.textContent = 'Redigera tid';
       el.editId.value = entry.id;
@@ -255,6 +383,16 @@
       el.uppdrag.value = entry.uppdragsnamn || '';
       el.description.value = entry.description || '';
       el.status.value = entry.status === 'Klar' ? 'Klar' : 'Utkast';
+      if (entry.rate != null && Number(entry.rate) > 0) {
+        rateTouched = !entry.rateFromPrislista;
+        if (entry.rateFromPrislista && el.rateHint) {
+          el.rateHint.hidden = false;
+          el.rateHint.textContent = 'Timpris från byråns prislista' +
+            (entry.rateMatchedName ? ': ' + entry.rateMatchedName : '');
+        }
+      } else {
+        applyRateFromTimlista(true);
+      }
     } else {
       el.modalTitle.textContent = 'Registrera tid';
       el.editId.value = '';
@@ -284,6 +422,7 @@
       if (!el.activity.value && pre.get('hours')) {
         el.activity.value = 'Uppdragsarbete';
       }
+      applyRateFromTimlista(true);
     }
     updateAmountHint();
     el.modal.hidden = false;
@@ -302,6 +441,9 @@
       el.formError.hidden = false;
       el.formError.textContent = 'Välj eller ange en kund';
       return;
+    }
+    if (!String(el.rate.value || '').trim()) {
+      applyRateFromTimlista(true);
     }
     const body = {
       customerId: cust.id || '',
@@ -346,9 +488,43 @@
     await loadEntries();
   }
 
+  async function bulkMarkInvoiced() {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) {
+      alert('Välj minst en tidpost med status Klar.');
+      return;
+    }
+    if (!confirm('Markera ' + ids.length + ' tidpost(er) som fakturerad?')) return;
+    try {
+      if (el.bulkInvoice) el.bulkInvoice.disabled = true;
+      const data = await api('/api/tidregistrering/bulk/status', {
+        method: 'PUT',
+        body: JSON.stringify({ ids: ids, status: 'Fakturerad' })
+      });
+      selectedIds = new Set();
+      await loadEntries();
+      const parts = [];
+      if (data.count) parts.push(data.count + ' markerad(e) som fakturerad');
+      if (data.skipped && data.skipped.length) {
+        parts.push(data.skipped.length + ' hoppades över');
+      }
+      if (data.errors && data.errors.length) {
+        parts.push(data.errors.length + ' misslyckades');
+      }
+      if (parts.length && ((data.skipped && data.skipped.length) || (data.errors && data.errors.length))) {
+        alert(parts.join('. ') + '.');
+      }
+    } catch (err) {
+      alert(err.message || 'Kunde inte markera som fakturerad');
+    } finally {
+      updateBulkBar();
+    }
+  }
+
   async function deleteEntry(id) {
     if (!confirm('Radera tidposten?')) return;
     await api('/api/tidregistrering/' + encodeURIComponent(id), { method: 'DELETE' });
+    selectedIds.delete(id);
     await loadEntries();
   }
 
@@ -377,12 +553,48 @@
     }
     if (el.form) el.form.addEventListener('submit', saveEntry);
     if (el.hours) el.hours.addEventListener('input', updateAmountHint);
-    if (el.rate) el.rate.addEventListener('input', updateAmountHint);
+    if (el.rate) {
+      el.rate.addEventListener('input', function () {
+        rateTouched = true;
+        if (el.rateHint) {
+          el.rateHint.hidden = true;
+          el.rateHint.textContent = '';
+        }
+        updateAmountHint();
+      });
+    }
+    if (el.activity) {
+      el.activity.addEventListener('change', function () { applyRateFromTimlista(false); });
+      el.activity.addEventListener('blur', function () { applyRateFromTimlista(false); });
+    }
+    if (el.uppdrag) {
+      el.uppdrag.addEventListener('change', function () { applyRateFromTimlista(false); });
+      el.uppdrag.addEventListener('blur', function () { applyRateFromTimlista(false); });
+    }
     if (el.customerSearch) el.customerSearch.addEventListener('change', resolveCustomerFromSearch);
     if (el.customerFilter) el.customerFilter.addEventListener('input', renderList);
+    if (el.bulkInvoice) el.bulkInvoice.addEventListener('click', bulkMarkInvoiced);
+    if (el.bulkClear) {
+      el.bulkClear.addEventListener('click', function () {
+        selectedIds = new Set();
+        renderList();
+      });
+    }
+    if (el.selectAllKlar) {
+      el.selectAllKlar.addEventListener('change', function () {
+        const ids = eligibleKlarIds();
+        if (el.selectAllKlar.checked) {
+          ids.forEach(function (id) { selectedIds.add(id); });
+        } else {
+          ids.forEach(function (id) { selectedIds.delete(id); });
+        }
+        renderList();
+      });
+    }
     [el.from, el.to, el.statusFilter].forEach(function (node) {
       if (!node) return;
       node.addEventListener('change', function () {
+        selectedIds = new Set();
         loadEntries().catch(function (err) {
           if (err.needsSetup) showSetup();
         });
@@ -392,6 +604,16 @@
       n.addEventListener('click', closeModal);
     });
     if (el.list) {
+      el.list.addEventListener('change', function (ev) {
+        const cb = ev.target.closest('[data-tid-select]');
+        if (!cb) return;
+        const id = cb.getAttribute('data-tid-select');
+        if (cb.checked) selectedIds.add(id);
+        else selectedIds.delete(id);
+        const card = cb.closest('.tid-card');
+        if (card) card.classList.toggle('is-selected', cb.checked);
+        updateBulkBar();
+      });
       el.list.addEventListener('click', async function (ev) {
         const t = ev.target.closest('[data-tid-ready],[data-tid-draft],[data-tid-invoiced],[data-tid-edit],[data-tid-del]');
         if (!t) return;
