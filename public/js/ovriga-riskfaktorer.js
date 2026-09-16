@@ -2389,6 +2389,8 @@ modeFromModalId(modalId) {
             tab.setAttribute('aria-label', done
                 ? ((tab.querySelector('.tjanst-tab-label')?.textContent || id) + ' (klar)')
                 : (tab.querySelector('.tjanst-tab-label')?.textContent || id));
+            const blob = tab.querySelector('[data-resa-blob]');
+            if (blob) blob.title = done ? 'Ta bort klarmarkering' : 'Klarmarkera';
         });
         this.syncRiskResaProgress(mode);
     }
@@ -2420,9 +2422,9 @@ modeFromModalId(modalId) {
             : ('<i class="fas fa-check" aria-hidden="true"></i> ' + progress.doneCount + '/' + progress.total + ' delar klara');
     }
 
-    async toggleRiskKlarmarkering(mode) {
+    async toggleRiskKlarmarkering(mode, flikId) {
         if (this._klarSaveInFlight) return;
-        const id = this._activeRiskTab[mode] || 'utforande';
+        const id = flikId || this._activeRiskTab[mode] || 'utforande';
         const set = this.klarmarkeradeFlikar[mode] || new Set();
         const turningOn = !set.has(id);
         if (turningOn) set.add(id);
@@ -2562,11 +2564,23 @@ modeFromModalId(modalId) {
             const modal = document.getElementById(modalId);
             if (!modal || modal.dataset.riskTabsBound === '1') return;
             modal.dataset.riskTabsBound = '1';
-            modal.querySelectorAll('.tjanst-tab[data-risk-tab]').forEach((tab) => {
-                tab.addEventListener('click', () => {
-                    this.setRiskTab(modalId, tab.getAttribute('data-risk-tab'));
+            const mode = modalId === 'edit-risk-modal' ? 'edit' : 'add';
+            if (window.AnalyskortMall && AnalyskortMall.bindResaTabClicks) {
+                AnalyskortMall.bindResaTabClicks(modal, {
+                    tabAttr: 'data-risk-tab',
+                    onNavigate: (id) => this.setRiskTab(modalId, id),
+                    onToggleKlar: (id) => {
+                        this.setRiskTab(modalId, id);
+                        this.toggleRiskKlarmarkering(mode, id);
+                    }
                 });
-            });
+            } else {
+                modal.querySelectorAll('.tjanst-tab[data-risk-tab]').forEach((tab) => {
+                    tab.addEventListener('click', () => {
+                        this.setRiskTab(modalId, tab.getAttribute('data-risk-tab'));
+                    });
+                });
+            }
         });
     }
 
