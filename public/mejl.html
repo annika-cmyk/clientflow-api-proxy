@@ -382,7 +382,16 @@
         border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
         padding: 1.25rem 1.4rem; margin-top: 1rem;
       }
+      .mejl-pane--detail > .mejl-compose {
+        margin-top: 0;
+        min-height: 320px;
+        max-height: min(78vh, 920px);
+        overflow: auto;
+        box-sizing: border-box;
+      }
+      .mejl-pane--detail > .mejl-compose[hidden],
       .mejl-compose[hidden] { display: none !important; }
+      .mejl-detail[hidden] { display: none !important; }
       .mejl-compose .form-grid { display: grid; gap: 0.75rem; }
       .mejl-compose textarea.form-input { min-height: 160px; resize: vertical; }
       .mejl-filter { min-width: 220px; }
@@ -625,94 +634,6 @@
                     </label>
                 </div>
 
-                <section class="mejl-compose" id="mejl-compose" hidden>
-                    <h2 style="margin:0 0 0.75rem; font-size:1.05rem;">Nytt mejl</h2>
-                    <div class="mejl-compose-cards">
-                        <div class="mejl-compose-card" data-compose-card="mottagare">
-                            <h3 class="mejl-compose-card__title">Mottagare</h3>
-                            <div class="mejl-compose-card__row mejl-compose-card__row--2">
-                                <div class="form-group">
-                                    <label for="mejl-to">Till</label>
-                                    <input type="email" id="mejl-to" class="form-input" placeholder="kund@foretag.se">
-                                </div>
-                                <div class="form-group">
-                                    <label for="mejl-customer">Kund/etikett</label>
-                                    <select id="mejl-customer" class="form-select form-input">
-                                        <option value="">Ingen</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mejl-compose-card" data-compose-card="innehall">
-                            <h3 class="mejl-compose-card__title">Innehåll — syns öppet i Gmail</h3>
-                            <div class="form-group">
-                                <label for="mejl-subject">Ämne</label>
-                                <input type="text" id="mejl-subject" class="form-input" placeholder="Ämne">
-                            </div>
-                            <div class="form-group">
-                                <label for="mejl-body">Offentlig del</label>
-                                <textarea id="mejl-body" class="form-input" placeholder="Skriv den del som ska synas öppet i mejlet…"></textarea>
-                            </div>
-                        </div>
-
-                        <div class="mejl-compose-card mejl-compose-card--protected" data-compose-card="skyddat">
-                            <h3 class="mejl-compose-card__title"><i class="fas fa-lock" aria-hidden="true"></i> Skyddat innehåll — kräver BankID</h3>
-                            <div class="mejl-compose-tools">
-                                <button type="button" class="btn btn-secondary btn-sm" id="mejl-mark-bankid"><i class="fas fa-shield-alt"></i> Markera som BankID</button>
-                                <button type="button" class="btn btn-secondary btn-sm" id="mejl-toggle-protected">BankID-skyddad text</button>
-                            </div>
-                            <div class="mejl-protected-box" id="mejl-protected-wrap" hidden>
-                                <label for="mejl-protected-body">Skyddad text (kräver BankID via länk)</label>
-                                <textarea id="mejl-protected-body" class="form-input" placeholder="Denna text syns först efter BankID…"></textarea>
-                            </div>
-                        </div>
-
-                        <div class="mejl-compose-card" data-compose-card="bilagor">
-                            <h3 class="mejl-compose-card__title">Bilagor</h3>
-                            <div class="mejl-attach-pick">
-                                <label for="mejl-attachments" class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0;">
-                                    <i class="fas fa-paperclip" aria-hidden="true"></i> Välj filer
-                                </label>
-                                <input type="file" id="mejl-attachments" class="visually-hidden" multiple>
-                            </div>
-                            <div id="mejl-attach-list" class="mejl-attach-list"></div>
-                            <p class="mejl-hint">Klicka på statusmärket för att växla BankID-skydd per bilaga.</p>
-                        </div>
-
-                        <div class="mejl-compose-card" data-compose-card="uppfoljning">
-                            <div class="mejl-compose-card__header-row">
-                                <h3 class="mejl-compose-card__title">Uppföljning</h3>
-                            </div>
-                            <div class="mejl-compose-card__header-row">
-                                <label style="margin:0;font-size:0.9rem;font-weight:600;color:#334155;">Frågor / begär underlag</label>
-                                <button type="button" class="btn btn-secondary btn-sm" id="mejl-q-add"><i class="fas fa-plus"></i> Lägg till fråga</button>
-                            </div>
-                            <div id="mejl-q-list" class="mejl-q-list"></div>
-                            <div class="form-group" style="margin-top:0.55rem;">
-                                <label for="mejl-q-target">Koppla svar till</label>
-                                <select id="mejl-q-target" class="form-select form-input">
-                                    <option value="">Ingen koppling</option>
-                                    <option value="kunddokumentation">Kunddokumentation</option>
-                                    <option value="uppdragskorning">Uppdragskörning (ange ID nedan)</option>
-                                </select>
-                            </div>
-                            <div class="form-group" id="mejl-q-run-wrap" hidden>
-                                <label for="mejl-q-run-id">Uppdragskörning-ID</label>
-                                <input type="text" id="mejl-q-run-id" class="form-input" placeholder="rec…">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mejl-connect-actions" style="margin-top:0.9rem;">
-                        <button type="button" class="btn btn-primary" id="mejl-send-btn">
-                            <i class="fas fa-paper-plane"></i> Skicka via Gmail
-                        </button>
-                        <button type="button" class="btn btn-secondary" id="mejl-compose-cancel">Avbryt</button>
-                        <span id="mejl-send-status" class="mejl-hint"></span>
-                    </div>
-                    <p id="mejl-sig-compose-hint" class="mejl-hint" style="margin:0.55rem 0 0;">Sidfoten bifogas automatiskt om du sparat en under Inställningar · sidfot.</p>
-                </section>
-
                 <div class="mejl-layout" id="mejl-main" hidden>
                     <section class="mejl-pane mejl-pane--list" aria-label="Mejllista">
                         <nav class="mejl-folders" aria-label="Mappar">
@@ -730,6 +651,93 @@
                         <div id="mejl-detail" class="mejl-detail">
                             <p class="mejl-detail-empty">Välj ett mejl till vänster.</p>
                         </div>
+                        <section class="mejl-compose" id="mejl-compose" hidden>
+                            <h2 style="margin:0 0 0.75rem; font-size:1.05rem;">Nytt mejl</h2>
+                            <div class="mejl-compose-cards">
+                                <div class="mejl-compose-card" data-compose-card="mottagare">
+                                    <h3 class="mejl-compose-card__title">Mottagare</h3>
+                                    <div class="mejl-compose-card__row mejl-compose-card__row--2">
+                                        <div class="form-group">
+                                            <label for="mejl-to">Till</label>
+                                            <input type="email" id="mejl-to" class="form-input" placeholder="kund@foretag.se">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="mejl-customer">Kund/etikett</label>
+                                            <select id="mejl-customer" class="form-select form-input">
+                                                <option value="">Ingen</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mejl-compose-card" data-compose-card="innehall">
+                                    <h3 class="mejl-compose-card__title">Innehåll — syns öppet i Gmail</h3>
+                                    <div class="form-group">
+                                        <label for="mejl-subject">Ämne</label>
+                                        <input type="text" id="mejl-subject" class="form-input" placeholder="Ämne">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="mejl-body">Offentlig del</label>
+                                        <textarea id="mejl-body" class="form-input" placeholder="Skriv den del som ska synas öppet i mejlet…"></textarea>
+                                    </div>
+                                </div>
+
+                                <div class="mejl-compose-card mejl-compose-card--protected" data-compose-card="skyddat">
+                                    <h3 class="mejl-compose-card__title"><i class="fas fa-lock" aria-hidden="true"></i> Skyddat innehåll — kräver BankID</h3>
+                                    <div class="mejl-compose-tools">
+                                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-mark-bankid"><i class="fas fa-shield-alt"></i> Markera som BankID</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-toggle-protected">BankID-skyddad text</button>
+                                    </div>
+                                    <div class="mejl-protected-box" id="mejl-protected-wrap" hidden>
+                                        <label for="mejl-protected-body">Skyddad text (kräver BankID via länk)</label>
+                                        <textarea id="mejl-protected-body" class="form-input" placeholder="Denna text syns först efter BankID…"></textarea>
+                                    </div>
+                                </div>
+
+                                <div class="mejl-compose-card" data-compose-card="bilagor">
+                                    <h3 class="mejl-compose-card__title">Bilagor</h3>
+                                    <div class="mejl-attach-pick">
+                                        <label for="mejl-attachments" class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0;">
+                                            <i class="fas fa-paperclip" aria-hidden="true"></i> Välj filer
+                                        </label>
+                                        <input type="file" id="mejl-attachments" class="visually-hidden" multiple>
+                                    </div>
+                                    <div id="mejl-attach-list" class="mejl-attach-list"></div>
+                                    <p class="mejl-hint">Klicka på statusmärket för att växla BankID-skydd per bilaga.</p>
+                                </div>
+
+                                <div class="mejl-compose-card" data-compose-card="uppfoljning">
+                                    <div class="mejl-compose-card__header-row">
+                                        <h3 class="mejl-compose-card__title">Uppföljning</h3>
+                                    </div>
+                                    <div class="mejl-compose-card__header-row">
+                                        <label style="margin:0;font-size:0.9rem;font-weight:600;color:#334155;">Frågor / begär underlag</label>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-q-add"><i class="fas fa-plus"></i> Lägg till fråga</button>
+                                    </div>
+                                    <div id="mejl-q-list" class="mejl-q-list"></div>
+                                    <div class="form-group" style="margin-top:0.55rem;">
+                                        <label for="mejl-q-target">Koppla svar till</label>
+                                        <select id="mejl-q-target" class="form-select form-input">
+                                            <option value="">Ingen koppling</option>
+                                            <option value="kunddokumentation">Kunddokumentation</option>
+                                            <option value="uppdragskorning">Uppdragskörning (ange ID nedan)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" id="mejl-q-run-wrap" hidden>
+                                        <label for="mejl-q-run-id">Uppdragskörning-ID</label>
+                                        <input type="text" id="mejl-q-run-id" class="form-input" placeholder="rec…">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mejl-connect-actions" style="margin-top:0.9rem;">
+                                <button type="button" class="btn btn-primary" id="mejl-send-btn">
+                                    <i class="fas fa-paper-plane"></i> Skicka via Gmail
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="mejl-compose-cancel">Avbryt</button>
+                                <span id="mejl-send-status" class="mejl-hint"></span>
+                            </div>
+                            <p id="mejl-sig-compose-hint" class="mejl-hint" style="margin:0.55rem 0 0;">Sidfoten bifogas automatiskt om du sparat en under Inställningar · sidfot.</p>
+                        </section>
                     </section>
                 </div>
 
@@ -780,6 +788,6 @@
     <script src="js/mejl-hidden.js?v=1" defer></script>
     <script src="js/mejl-handle-status.js?v=20260916task" defer></script>
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
-    <script src="js/mejl.js?v=20260916sidfot" defer></script>
+    <script src="js/mejl.js?v=20260917compose-pane" defer></script>
 </body>
 </html>

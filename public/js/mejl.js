@@ -190,6 +190,25 @@
     ? MejlHidden.createApi()
     : null;
 
+  /** Visa skrivläge i högerkolumnen; behåll lista + toppmeny. */
+  function showComposePane(opts) {
+    const options = opts || {};
+    if (els.compose) {
+      els.compose.hidden = false;
+      const heading = els.compose.querySelector('h2');
+      if (heading && options.title) heading.textContent = options.title;
+      else if (heading && !options.keepTitle) heading.textContent = 'Nytt mejl';
+    }
+    if (els.detail) els.detail.hidden = true;
+    if (els.sendStatus && options.clearStatus !== false) els.sendStatus.textContent = '';
+  }
+
+  /** Stäng skrivläge och återställ mejldetaljen (tom eller senast valda). */
+  function hideComposePane() {
+    if (els.compose) els.compose.hidden = true;
+    if (els.detail) els.detail.hidden = false;
+  }
+
   function labelChipHtml(label, opts) {
     const removable = opts && opts.removable;
     const cls = [
@@ -1214,7 +1233,7 @@
     if (replyBtn) {
       replyBtn.addEventListener('click', () => {
         const fromEmail = String(m.from || '').match(/<([^>]+)>/)?.[1] || m.from;
-        els.compose.hidden = false;
+        showComposePane({ title: 'Svara' });
         els.to.value = fromEmail || '';
         els.subject.value = /^re:/i.test(m.subject || '') ? m.subject : `Re: ${m.subject || ''}`;
         els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
@@ -1253,6 +1272,7 @@
   }
 
   async function openSharedMessage(listId) {
+    hideComposePane();
     activeId = listId;
     renderList();
     els.detail.innerHTML = '<p class="mejl-detail-empty"><i class="fas fa-spinner fa-spin"></i> Laddar…</p>';
@@ -1297,6 +1317,7 @@
       await openSharedMessage(id);
       return;
     }
+    hideComposePane();
     activeId = id;
     renderList();
     els.detail.innerHTML = '<p class="mejl-detail-empty"><i class="fas fa-spinner fa-spin"></i> Laddar…</p>';
@@ -1523,7 +1544,7 @@
         : `Skickat från ${data.from || 'Gmail'}`;
       signatureReady = !!prep.signatureAttached;
       updateComposeSignatureHint();
-      els.compose.hidden = true;
+      hideComposePane();
       els.to.value = ''; els.subject.value = ''; els.body.value = '';
       if (els.protectedBody) els.protectedBody.value = '';
       if (els.protectedWrap) els.protectedWrap.hidden = true;
@@ -1605,12 +1626,14 @@
   }
   els.filter.addEventListener('change', () => loadInbox());
   els.composeToggle.addEventListener('click', () => {
-    els.compose.hidden = false;
-    els.sendStatus.textContent = '';
+    delete els.compose.dataset.threadId;
+    delete els.compose.dataset.inReplyTo;
+    showComposePane({ title: 'Nytt mejl' });
+    if (els.to) els.to.focus();
     loadSignatureSettings().catch(() => updateComposeSignatureHint());
   });
   els.composeCancel.addEventListener('click', () => {
-    els.compose.hidden = true;
+    hideComposePane();
   });
   els.sendBtn.addEventListener('click', () => sendMail());
   els.customer.addEventListener('change', () => {
@@ -1876,6 +1899,7 @@
 
   function onFolderClick(next) {
     if (folder === next) return;
+    hideComposePane();
     if ((next === 'inbox' || next === 'sent' || next === 'open') && !(status && status.connected)) {
       showToast('Koppla Gmail för att öppna Inkorg/öppna/Skickat. Delade mejl finns under «Delat med mig».', 'error');
       folder = 'shared';
