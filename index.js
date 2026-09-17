@@ -113,8 +113,10 @@ const {
 } = require('./lib/ai-ovrig-riskfaktor-quality');
 const {
   retrieveOvrigKallaUtdrag,
-  buildOvrigRepairPrompt
+  buildOvrigRepairPrompt,
+  looksLikeModelRefusal
 } = require('./lib/ai-vector-retrieve');
+const { parseAssistantJson: parseAiJsonSafe } = require('./lib/aml-news/json');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
   resolveAssistantVectorStoreId,
@@ -26105,34 +26107,22 @@ ${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
 ${existingBlock ? `\n${existingBlock}\n` : ''}${extraUnderlagBlock ? `\n${extraUnderlagBlock}\n` : ''}${kallaRetrieve.block ? `\n${kallaRetrieve.block}\n` : ''}
 Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
 
-  const extractFirstJsonObject = (text) => {
-    if (!text) return null;
-    const start = text.indexOf('{');
-    if (start === -1) return null;
-    let depth = 0;
-    for (let i = start; i < text.length; i++) {
-      const ch = text[i];
-      if (ch === '{') depth++;
-      else if (ch === '}') {
-        depth--;
-        if (depth === 0) return text.slice(start, i + 1);
-      }
-    }
-    return null;
-  };
-  const stripCodeFences = (text) => {
-    if (!text) return '';
-    let t = String(text).replace(/^\uFEFF/, '').trim();
-    if (/^```/m.test(t)) {
-      t = t.replace(/```[a-zA-Z0-9_-]*\s*/g, '```');
-      t = t.replace(/^```/g, '').replace(/```$/g, '').trim();
-    }
-    return t.trim();
-  };
   const parseAssistantJson = (rawText) => {
-    const cleaned = stripCodeFences(rawText);
-    const candidate = extractFirstJsonObject(cleaned) || extractFirstJsonObject(rawText) || cleaned || rawText || '';
-    return JSON.parse(candidate);
+    try {
+      return parseAiJsonSafe(rawText);
+    } catch (_) {
+      return null;
+    }
+  };
+  const parseAssistantJsonOrThrow = (rawText, label) => {
+    const parsed = parseAssistantJson(rawText);
+    if (parsed && typeof parsed === 'object') return parsed;
+    if (looksLikeModelRefusal(rawText)) {
+      throw new Error(
+        (label || 'AI') + ' returnerade text i stället för JSON (modellvägran). Försök igen.'
+      );
+    }
+    return parseAiJsonSafe(rawText);
   };
   const normRiskfaktorNiva = (v) => RiskSkala.riskLabelSv(v) || 'Normal';
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
@@ -26192,16 +26182,18 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       userPrompt,
       reviewMode ? 'cf-ovrig-riskfaktor-rev' : 'cf-ovrig-riskfaktor-gen'
     );
-    let result = parseAssistantJson(aiText);
-    if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
+    let result = parseAssistantJsonOrThrow(aiText, 'AI');
     let faktorAiPayload = buildFaktorPayload(result);
     let quality = validateOvrigAiPayload(faktorAiPayload, {
       extraUnderlag: extraUnderlagText,
       sannolikhet: faktorAiPayload.sannolikhet,
       konsekvens: faktorAiPayload.konsekvens
     });
+    let repairFallbackUsed = false;
     if (!quality.ok) {
       console.warn('AI-övriga-riskfaktor kvalitet underkänd:', quality.violations.map((v) => v.id).join(', '));
+      const firstPayload = faktorAiPayload;
+      const firstQuality = quality;
       const repairPrompt = buildOvrigRepairPrompt({
         riskfaktor,
         typ,
@@ -26211,24 +26203,43 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
         rejectedPayload: faktorAiPayload
       });
       // Kort repair utan gammalt BEFINTLIGT-ankare; ingen file_search.
-      aiText = await runOvrigAi(
-        `${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}\n\n${repairPrompt}\n`,
-        reviewMode ? 'cf-ovrig-riskfaktor-fix-rev' : 'cf-ovrig-riskfaktor-fix-gen',
-        { vectorStoreId: null, temperature: 0.2 }
-      );
-      result = parseAssistantJson(aiText);
-      if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar efter kvalitetsreparation.');
-      faktorAiPayload = buildFaktorPayload(result);
-      quality = validateOvrigAiPayload(faktorAiPayload, {
-        extraUnderlag: extraUnderlagText,
-        sannolikhet: faktorAiPayload.sannolikhet,
-        konsekvens: faktorAiPayload.konsekvens
-      });
-      if (!quality.ok) {
-        console.warn(
-          'AI-övriga-riskfaktor kvalitet fortfarande underkänd efter reparation:',
-          quality.violations.map((v) => v.id).join(', ')
+      try {
+        aiText = await runOvrigAi(
+          `${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}\n\n${repairPrompt}\n`,
+          reviewMode ? 'cf-ovrig-riskfaktor-fix-rev' : 'cf-ovrig-riskfaktor-fix-gen',
+          { vectorStoreId: null, temperature: 0.2 }
         );
+        const repaired = parseAssistantJson(aiText);
+        if (repaired && typeof repaired === 'object') {
+          result = repaired;
+          faktorAiPayload = buildFaktorPayload(result);
+          quality = validateOvrigAiPayload(faktorAiPayload, {
+            extraUnderlag: extraUnderlagText,
+            sannolikhet: faktorAiPayload.sannolikhet,
+            konsekvens: faktorAiPayload.konsekvens
+          });
+          if (!quality.ok) {
+            console.warn(
+              'AI-övriga-riskfaktor kvalitet fortfarande underkänd efter reparation:',
+              quality.violations.map((v) => v.id).join(', ')
+            );
+          }
+        } else {
+          // Modellvägran / icke-JSON: behåll första giltiga JSON-svaret hellre än att faila hela anropet.
+          console.warn(
+            'AI-övriga-riskfaktor repair gav icke-JSON',
+            looksLikeModelRefusal(aiText) ? '(modellvägran)' : '(parse-fel)',
+            String(aiText || '').slice(0, 120)
+          );
+          faktorAiPayload = firstPayload;
+          quality = firstQuality;
+          repairFallbackUsed = true;
+        }
+      } catch (repairErr) {
+        console.warn('AI-övriga-riskfaktor repair misslyckades, behåller första svaret:', repairErr.message);
+        faktorAiPayload = firstPayload;
+        quality = firstQuality;
+        repairFallbackUsed = true;
       }
     }
     let granskningPoster = reviewMode
@@ -26255,7 +26266,8 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       aiModel: byraAnalysModel,
       quality: {
         ok: quality.ok,
-        violations: quality.violations.map((v) => v.id)
+        violations: quality.violations.map((v) => v.id),
+        repairFallbackUsed
       },
       retrieval: {
         queries: kallaRetrieve.queries || [],

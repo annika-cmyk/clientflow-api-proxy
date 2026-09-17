@@ -2147,7 +2147,11 @@ class RiskFactorsManager {
         } catch (error) {
             if (requestEpoch !== this._aiSuggestionEpoch) return;
             console.error('AI-förslag fel:', error);
-            this.showNotification('Kunde inte generera AI-förslag: ' + error.message, 'error');
+            const errMsg = String(error.message || 'Okänt fel');
+            this.showNotification(
+              /^Kunde inte generera AI-förslag/i.test(errMsg) ? errMsg : ('Kunde inte generera AI-förslag: ' + errMsg),
+              'error'
+            );
         } finally {
             if (requestEpoch === this._aiSuggestionEpoch && btn) {
                 btn.disabled = false;
