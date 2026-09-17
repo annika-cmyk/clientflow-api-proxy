@@ -461,6 +461,20 @@
       }
       .mejl-match-pill.is-link { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
       .mejl-match-pill.is-auto { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+      .mejl-match-pill.is-unmatched { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+      .mejl-item-unmatched-badge {
+        display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-weight: 700;
+        letter-spacing: 0.02em; text-transform: uppercase; color: #9a3412;
+        background: #fff7ed; border: 1px solid #fed7aa; border-radius: 4px; padding: 0.1rem 0.35rem;
+        vertical-align: middle;
+      }
+      .mejl-item.is-unmatched { border-left: 3px solid #fb923c; }
+      .mejl-unmatched { line-height: 1.45; }
+      .mejl-unmatched-filter-btn {
+        display: inline; margin-left: 0.25rem; padding: 0; border: 0; background: none;
+        color: #1e3a5f; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer;
+      }
+      .mejl-unmatched-filter-btn:hover { color: #0f172a; }
       .mejl-label-link-row {
         display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-top: 0.35rem;
       }
@@ -630,7 +644,8 @@
                     <label class="mejl-filter">
                         <span class="sr-only">Filtrera kund</span>
                         <select id="mejl-customer-filter" class="form-select form-input">
-                            <option value="">Alla matchade kunder</option>
+                            <option value="">Alla under KUNDER</option>
+                            <option value="__unmatched__">Omatchade etiketter</option>
                         </select>
                     </label>
                 </div>
