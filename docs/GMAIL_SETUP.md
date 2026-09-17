@@ -115,6 +115,7 @@ Spara till **Dokumentation** skriver till KUNDDATA (`Dokumentation`/`Attachments
 | `envPresent` false / `envLengths` 0 trots att du lagt in vars | Fel tjänst, fel variabelnamn, tomt värde, citattecken runt värdet, eller saknad redeploy efter Save |
 | Knappen visar toast med saknade env | Lägg in dem i Render på **clientflow-api-proxy-1**; alias fungerar också |
 | `redirect_uri_mismatch` efter Google-login | Redirect URI i Google Cloud måste vara **exakt** samma som `GOOGLE_GMAIL_REDIRECT_URI` (inkl. `www`) |
+| Status "Ej kopplad" / toast om att koppla igen | Vanligtvis **förväntat**: Google har ogiltigförklarat refresh-tokenen. Vanliga orsaker: OAuth-appen är i **Testing**-läge (token går ut efter ~7 dagar), användaren bytt Google-lösenord, eller återkallat åtkomst under [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Klicka **Koppla Gmail** igen. Deploy raderar **inte** sparade tokens (de ligger krypterade i Airtable). |
 | Koppling lyckas men inkorg tom | Skapa Gmail-etikett `KUNDER` och underetiketter med kundnamn |
 
 **Exakt prod-redirect:** `https://www.app.clientflow.se/api/gmail/oauth/callback`  

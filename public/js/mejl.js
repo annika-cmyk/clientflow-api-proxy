@@ -352,8 +352,15 @@
       const sharedHint = sharedMessages.length
         ? ` ${sharedMessages.length} ${sharedMessages.length === 1 ? 'delat mejl' : 'delade mejl'} visas under «Delat med mig» — Gmail behövs inte för dem.`
         : '';
-      els.connectText.textContent =
-        'Koppla Gmail för att läsa kundmejl under KUNDER och skicka som dig själv.' + sharedHint;
+      let reconnectBase =
+        'Koppla Gmail för att läsa kundmejl under KUNDER och skicka som dig själv.';
+      if (status.reconnectHint) {
+        reconnectBase = status.reconnectHint;
+      } else if (status.tokenState === 'decrypt_failed') {
+        reconnectBase =
+          'Sparad Gmail-koppling kunde inte läsas. Klicka Koppla Gmail och ge åtkomst igen.';
+      }
+      els.connectText.textContent = reconnectBase + sharedHint;
       els.connectBtn.hidden = false;
       if (!connectInFlight) resetConnectButton();
       setConnectEnabled(true);
@@ -587,10 +594,16 @@
     if (status && typeof status === 'object') {
       status.connected = false;
       status.email = '';
+      status.reconnectHint =
+        message ||
+        'Gmail-åtkomsten har gått ut eller återkallats. Klicka Koppla Gmail och ge åtkomst igen.';
     }
     try {
       renderStatus();
-      setConnectEnabled(!!(status && status.configured), message || 'Koppla Gmail igen');
+      setConnectEnabled(
+        !!(status && status.configured),
+        message || 'Koppla Gmail igen'
+      );
       if (els.connectBtn) els.connectBtn.hidden = false;
       if (els.disconnectBtn) els.disconnectBtn.hidden = true;
     } catch (_) {
@@ -693,9 +706,15 @@
       if (!res.ok || !data.success) {
         const reconnect = inboxErrorNeedsReconnect(res, data);
         if (reconnect) markGmailNeedsReconnect(data.error);
-        showInboxFailure(data.error || (reconnect ? 'Gmail behöver kopplas igen.' : 'Kunde inte hämta mejl'), {
-          reconnect
-        });
+        showInboxFailure(
+          data.error ||
+            (reconnect
+              ? 'Gmail-åtkomsten har gått ut. Klicka Koppla Gmail och ge åtkomst igen.'
+              : 'Kunde inte hämta mejl'),
+          {
+            reconnect
+          }
+        );
         return;
       }
       const prevActive = activeId;
