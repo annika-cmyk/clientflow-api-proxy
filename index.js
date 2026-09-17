@@ -108,6 +108,7 @@ const {
   OVRIG_EXTRA_UNDERLAG_AI_RULES
 } = require('./lib/ai-ovrig-riskfaktor-prompt');
 const {
+  OVRIG_COMPLIANCE_FRAME,
   OVRIG_HARD_PRIORITY_RULES,
   validateOvrigAiPayload
 } = require('./lib/ai-ovrig-riskfaktor-quality');
@@ -26058,6 +26059,8 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   // Statiska regler i instructions (återanvänds via prompt cache). Variabelt underlag i input.
   const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
+${OVRIG_COMPLIANCE_FRAME}
+
 ${OVRIG_HARD_PRIORITY_RULES}
 
 ${REDOVISNINGSBYRA_AI_RULES}
@@ -26084,7 +26087,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "motiveringInneboende": "4-8 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning (branschens generella risk; sänk inte inneboende p.g.a. kundspecifika mildrande detaljer). Förklara mekanismen i klarspråk.",
   "motiveringResidual": "4-8 meningar: hur åtgärderna OCH konkreta fakta från extra underlag (om finns) sänkt S och/eller K — inte bara «strikta kontroller». Koppla till dokumenterade kontroller.",
   "atgard": "4-8 meningar eller flera kontroller: VAD kontrolleras, VEM, NÄR, VAR det dokumenteras, VARFÖR det minskar PT/TF. Riskbaserat stickprov/avvikelser — inte «vid varje transaktion» eller påhittade trösklar (t.ex. över 1000 kr). När extra underlag finns: använd dess fakta. Inte Inför/öka/bör. Inte Capego-boilerplate utan underlagsfakta.",
-  "hot": [ { "titel": "Kort hot-titel", "beskrivning": "3-6 meningar: hur riskfaktorn kan utnyttjas steg för steg (PT/TF), i klarspråk.", "kalla": "valfri exakt källa med dokument+år/avsnitt" } ],
+  "hot": [ { "titel": "Kort hot-titel", "beskrivning": "3-6 meningar: hur risken typiskt syns i bokföring/export/intäkter (PT/TF) och vad byrån kan upptäcka/dokumentera — upptäckts-/compliance-perspektiv, inte brottsinstruktion.", "kalla": "valfri exakt källa med dokument+år/avsnitt" } ],
   "sarbarheter": [ { "titel": "Kort sårbarhetstitel", "beskrivning": "3-5 meningar: varför byrån kan vara exponerad och vad medarbetaren ska tänka på." } ]${reviewMode ? `,
   "granskning": {
     "poster": [
@@ -26182,7 +26185,25 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       userPrompt,
       reviewMode ? 'cf-ovrig-riskfaktor-rev' : 'cf-ovrig-riskfaktor-gen'
     );
-    let result = parseAssistantJsonOrThrow(aiText, 'AI');
+    let result = parseAssistantJson(aiText);
+    let refusalRetryUsed = false;
+    if ((!result || typeof result !== 'object') && looksLikeModelRefusal(aiText)) {
+      // Första anropet vägrade (t.ex. underlag frågar «hur PT/TF kan gå till») — retry med explicit compliance-ram.
+      console.warn(
+        'AI-övriga-riskfaktor modellvägran på första anrop, retry:',
+        String(aiText || '').slice(0, 120)
+      );
+      refusalRetryUsed = true;
+      const softUserPrompt = `${OVRIG_COMPLIANCE_FRAME}\n\n${userPrompt}\n\nSvara ENDAST med giltigt JSON-objekt enligt schemat.`;
+      aiText = await runOvrigAi(
+        softUserPrompt,
+        reviewMode ? 'cf-ovrig-riskfaktor-soft-rev' : 'cf-ovrig-riskfaktor-soft-gen',
+        { temperature: 0.2 }
+      );
+      result = parseAssistantJsonOrThrow(aiText, 'AI');
+    } else if (!result || typeof result !== 'object') {
+      result = parseAssistantJsonOrThrow(aiText, 'AI');
+    }
     let faktorAiPayload = buildFaktorPayload(result);
     let quality = validateOvrigAiPayload(faktorAiPayload, {
       extraUnderlag: extraUnderlagText,
@@ -26267,7 +26288,8 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       quality: {
         ok: quality.ok,
         violations: quality.violations.map((v) => v.id),
-        repairFallbackUsed
+        repairFallbackUsed,
+        refusalRetryUsed
       },
       retrieval: {
         queries: kallaRetrieve.queries || [],
