@@ -282,7 +282,14 @@
 
   function fillCustomerSelects() {
     const opts = customers.map((c) => `<option value="${esc(c.id)}">${esc(c.namn)}</option>`).join('');
-    els.filter.innerHTML = `<option value="">Alla matchade kunder</option>${opts}`;
+    const prevFilter = els.filter ? els.filter.value : '';
+    els.filter.innerHTML =
+      `<option value="">Alla under KUNDER</option>` +
+      `<option value="__unmatched__">Omatchade etiketter</option>` +
+      opts;
+    if (prevFilter && [...els.filter.options].some((o) => o.value === prevFilter)) {
+      els.filter.value = prevFilter;
+    }
     els.customer.innerHTML = `<option value="">Ingen</option>${opts}`;
   }
 
@@ -405,7 +412,14 @@
       .filter(Boolean);
     if (!names.length) return '';
     const more = list.length > names.length ? ` (+${list.length - names.length} till)` : '';
-    return `<p class="mejl-hint mejl-unmatched">Etiketter under KUNDER utan kundmatch: <strong>${esc(names.join(', '))}</strong>${esc(more)}.</p>`;
+    return (
+      `<p class="mejl-hint mejl-unmatched">` +
+      `<strong>${list.length}</strong> etikett(er) under KUNDER saknar kundmatch` +
+      ` (t.ex. <strong>${esc(names.join(', '))}</strong>${esc(more)}).` +
+      ` Deras mejl syns i listan med märket «Ingen kundmatch» — öppna mejlet och koppla etiketten till rätt kund.` +
+      ` <button type="button" class="mejl-unmatched-filter-btn" data-mejl-filter-unmatched>Visa bara omatchade</button>` +
+      `</p>`
+    );
   }
 
   function sharedListId(archiveId) {
@@ -493,6 +507,7 @@
         empty = 'Koppla Gmail för att se inkorg under KUNDER, eller öppna «Delat med mig».';
       }
       els.list.innerHTML = `<p class="mejl-hint">${empty}</p>${extraHtml || ''}`;
+      bindUnmatchedFilterButtons(els.list);
       return;
     }
     els.list.innerHTML =
@@ -514,6 +529,10 @@
           const sharedBadge =
             m.source === 'shared' || folder === 'shared'
               ? `<span class="mejl-item-shared-badge"><i class="fas fa-share-alt" aria-hidden="true"></i> Delat med dig</span>`
+              : '';
+          const unmatchedBadge =
+            m.matchReason === 'unmatched'
+              ? `<span class="mejl-item-unmatched-badge" title="Gmail-etiketten matchar ingen kund i ClientFlow">Ingen kundmatch</span>`
               : '';
           const menuHtml = isSharedListId(m.id)
             ? ''
@@ -537,10 +556,10 @@
             </div>
           </div>`;
           return `
-      <div class="mejl-item${m.id === activeId ? ' is-active' : ''}${handleClass}" data-id="${esc(m.id)}" role="button" tabindex="0">
+      <div class="mejl-item${m.id === activeId ? ' is-active' : ''}${handleClass}${m.matchReason === 'unmatched' ? ' is-unmatched' : ''}" data-id="${esc(m.id)}" role="button" tabindex="0">
         <div class="mejl-item-top">
           <div class="mejl-item-customer-row">
-            ${customerLink}
+            ${customerLink}${unmatchedBadge}
           </div>
           <div class="mejl-item-top-right">
             <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
@@ -555,6 +574,7 @@
     `;
         })
         .join('') + (extraHtml || '');
+    bindUnmatchedFilterButtons(els.list);
   }
 
   async function loadSharedWithMe() {
@@ -568,7 +588,11 @@
       const filterId = els.filter && els.filter.value ? els.filter.value : '';
       sharedMessages = (data.archives || [])
         .map(archiveToListItem)
-        .filter((m) => !filterId || m.customerId === filterId);
+        .filter((m) => {
+          if (!filterId) return true;
+          if (filterId === '__unmatched__') return !m.customerId;
+          return m.customerId === filterId;
+        });
       return sharedMessages;
     } catch (_) {
       sharedMessages = [];
@@ -587,11 +611,26 @@
     els.syncStatus.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${esc(text)}`;
   }
 
+  function bindUnmatchedFilterButtons(root) {
+    const scope = root || els.list;
+    if (!scope) return;
+    scope.querySelectorAll('[data-mejl-filter-unmatched]').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!els.filter) return;
+        els.filter.value = '__unmatched__';
+        loadInbox();
+      });
+    });
+  }
+
   function applyInboxData(data) {
     messages = data.messages || [];
     const unmatchedHtml = renderUnmatchedHint(data.unmatchedLabels);
     if (data.note && !messages.length) {
       els.list.innerHTML = `<p class="mejl-hint">${esc(data.note)}</p>${unmatchedHtml}`;
+      bindUnmatchedFilterButtons(els.list);
       return;
     }
     renderList(unmatchedHtml);
@@ -874,6 +913,7 @@
     if (r === 'email') return { text: 'Match via e-post (auto)', cls: 'is-auto' };
     if (r === 'label+email') return { text: 'Match via etikett + e-post (auto)', cls: 'is-auto' };
     if (r === 'label') return { text: 'Match via etikettnamn (auto)', cls: 'is-auto' };
+    if (r === 'unmatched') return { text: 'Ingen kundmatch – koppla etiketten', cls: 'is-unmatched' };
     return null;
   }
 
