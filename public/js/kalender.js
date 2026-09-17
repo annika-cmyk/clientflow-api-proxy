@@ -315,6 +315,26 @@
     return Number.isFinite(h) && h > 0 ? h : 0;
   }
 
+  /** Synka klarmarkeringsknappar när avsatt tid ändras i detaljpanelen. */
+  function syncKlarActionButtons(hours) {
+    if (!el.detailBody) return;
+    const hasHours = Number(hours) > 0;
+    const klarTidBtn = el.detailBody.querySelector('[data-klar-tid]');
+    const klarOnlyBtn = el.detailBody.querySelector('[data-klar-only]');
+    if (klarTidBtn) {
+      klarTidBtn.disabled = !hasHours;
+      klarTidBtn.innerHTML = hasHours
+        ? `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${hours} t)`
+        : '<i class="fas fa-check"></i> Klarmarkera & registrera tid';
+      klarTidBtn.classList.toggle('btn-primary', hasHours);
+      klarTidBtn.classList.toggle('btn-ghost', !hasHours);
+    }
+    if (klarOnlyBtn) {
+      klarOnlyBtn.classList.toggle('btn-primary', !hasHours);
+      klarOnlyBtn.classList.toggle('btn-ghost', hasHours);
+    }
+  }
+
   /** Uppdatera avsatt tid i öppen detaljpanel medan man drar/ändrar längd. */
   function previewDetailSchedule(key, startMin, endMin) {
     if (!openDetailKey || String(openDetailKey) !== String(key || '')) return;
@@ -323,11 +343,7 @@
     const label = `${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)} (${hours} t)`;
     const dd = el.detailBody.querySelector('[data-avsatt-tid]');
     if (dd) dd.textContent = label;
-    const klarBtn = el.detailBody.querySelector('[data-klar-tid]');
-    if (klarBtn) {
-      klarBtn.disabled = !(hours > 0);
-      klarBtn.innerHTML = `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${hours} t)`;
-    }
+    syncKlarActionButtons(hours);
   }
 
   function applyKlarLocally(ev) {
@@ -340,6 +356,94 @@
     if (rid) {
       const rr = runRecords.find((r) => r.id === rid);
       if (rr) rr.fields = { ...(rr.fields || {}), Status: 'Klar' };
+    }
+  }
+
+  async function patchRunStatusKlar(ev, runId) {
+    const stRes = await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/status`, {
+      method: 'PATCH',
+      ...authOpts(),
+      headers: {
+        ...(authOpts().headers || {}),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ status: 'Klar' })
+    });
+    const stData = await stRes.json().catch(() => ({}));
+    if (!stRes.ok) throw new Error(stData.error || 'Klarmarkering misslyckades');
+    if (stData.record) {
+      ev.runRec = stData.record;
+      const idx = runRecords.findIndex((r) => r.id === stData.record.id);
+      if (idx >= 0) runRecords[idx] = stData.record;
+    }
+    applyKlarLocally(ev);
+    // Behåll synlighet: Klara-filtret ska vara på så blocket inte försvinner.
+    if (!showDone) {
+      showDone = true;
+      syncUi();
+    }
+  }
+
+  /** Mejl skapat som uppgift: markera hanterat + fråga om svar i ClientFlow-inkorgen. */
+  function afterKlarMejlLink(runId, uppdragId) {
+    let navigatedToMejl = false;
+    try {
+      const linkApi =
+        window.MejlTaskLink && MejlTaskLink.createApi ? MejlTaskLink.createApi() : null;
+      if (linkApi && typeof linkApi.onKalenderKlar === 'function') {
+        const result = linkApi.onKalenderKlar({
+          runId,
+          uppdragId,
+          confirmFn: (msg) => window.confirm(msg),
+          navigateFn: (url) => {
+            navigatedToMejl = true;
+            window.location.href = url;
+          }
+        });
+        if (result && result.handled && !result.navigated) {
+          showSaveToast('Mejlet markerat som hanterat');
+        }
+      }
+    } catch (linkErr) {
+      console.warn('Kalender mejl-länk:', linkErr);
+    }
+    return navigatedToMejl;
+  }
+
+  async function klarOnly(ev) {
+    const runF = ev.runRec?.fields || {};
+    const runId = String(ev.runRec?.id || '').trim();
+    const uppdragId = String(ev.record?.id || runF['Uppdrag ID'] || '').trim();
+    if (!runId) {
+      showSaveToast('Saknar uppdragskörning – kan inte klarmarkera.', true);
+      return;
+    }
+
+    const btn = el.detailBody && el.detailBody.querySelector('[data-klar-only]');
+    const tidBtn = el.detailBody && el.detailBody.querySelector('[data-klar-tid]');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar…';
+    }
+    if (tidBtn) tidBtn.disabled = true;
+
+    try {
+      await patchRunStatusKlar(ev, runId);
+      showSaveToast('Klarmarkerad');
+      const navigatedToMejl = afterKlarMejlLink(runId, uppdragId);
+      if (navigatedToMejl) return;
+      closeDetail();
+      render();
+    } catch (err) {
+      console.error('Kalender klar:', err);
+      showSaveToast((err && err.message) || 'Kunde inte klarmarkera', true);
+      const sched = scheduleOf(ev);
+      const hours = sched && sched.hours > 0 ? sched.hours : 0;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check"></i> Klarmarkera';
+      }
+      syncKlarActionButtons(hours);
     }
   }
 
@@ -406,10 +510,12 @@
     }
 
     const btn = el.detailBody && el.detailBody.querySelector('[data-klar-tid]');
+    const onlyBtn = el.detailBody && el.detailBody.querySelector('[data-klar-only]');
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar…';
     }
+    if (onlyBtn) onlyBtn.disabled = true;
 
     try {
       const tidRes = await fetch(`${baseUrl}/api/tidregistrering`, {
@@ -424,54 +530,10 @@
       const tidData = await tidRes.json().catch(() => ({}));
       if (!tidRes.ok) throw new Error(tidData.error || 'Kunde inte registrera tid');
 
-      const stRes = await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/status`, {
-        method: 'PATCH',
-        ...authOpts(),
-        headers: {
-          ...(authOpts().headers || {}),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status: 'Klar' })
-      });
-      const stData = await stRes.json().catch(() => ({}));
-      if (!stRes.ok) throw new Error(stData.error || 'Tid sparad, men klarmarkering misslyckades');
-
-      if (stData.record) {
-        ev.runRec = stData.record;
-        const idx = runRecords.findIndex((r) => r.id === stData.record.id);
-        if (idx >= 0) runRecords[idx] = stData.record;
-      }
-      applyKlarLocally(ev);
-      // Behåll synlighet: Klara-filtret ska vara på så blocket inte försvinner.
-      if (!showDone) {
-        showDone = true;
-        syncUi();
-      }
+      await patchRunStatusKlar(ev, runId);
       showSaveToast(`Klarmarkerad · ${sched.hours} t registrerad`);
 
-      // Mejl skapat som uppgift: markera hanterat + fråga om svar i ClientFlow-inkorgen
-      let navigatedToMejl = false;
-      try {
-        const linkApi =
-          window.MejlTaskLink && MejlTaskLink.createApi ? MejlTaskLink.createApi() : null;
-        if (linkApi && typeof linkApi.onKalenderKlar === 'function') {
-          const result = linkApi.onKalenderKlar({
-            runId,
-            uppdragId,
-            confirmFn: (msg) => window.confirm(msg),
-            navigateFn: (url) => {
-              navigatedToMejl = true;
-              window.location.href = url;
-            }
-          });
-          if (result && result.handled && !result.navigated) {
-            showSaveToast('Mejlet markerat som hanterat');
-          }
-        }
-      } catch (linkErr) {
-        console.warn('Kalender mejl-länk:', linkErr);
-      }
-
+      const navigatedToMejl = afterKlarMejlLink(runId, uppdragId);
       if (navigatedToMejl) return;
       closeDetail();
       render();
@@ -482,6 +544,8 @@
         btn.disabled = false;
         btn.innerHTML = `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${sched.hours} t)`;
       }
+      if (onlyBtn) onlyBtn.disabled = false;
+      syncKlarActionButtons(sched.hours);
     }
   }
 
@@ -1026,9 +1090,13 @@
     });
   }
 
-  /** Sidopanel (Deadlines/Öppna): bara ClientFlow-körningar — inte Google-händelser. */
+  /** Sidopanel (Deadlines/Öppna): ClientFlow-körningar som inte är klara — inte Google-händelser. */
   function sidePanelEvents(list) {
-    return (list || []).filter((ev) => !isGoogleEvent(ev));
+    return (list || []).filter((ev) => {
+      if (isGoogleEvent(ev)) return false;
+      const st = statusOf(ev);
+      return st !== 'Klar' && st !== 'Avslutad';
+    });
   }
 
   function renderSide(list) {
@@ -1119,7 +1187,9 @@
     const siblings = Array.isArray(group) && group.length > 1 ? group : null;
     const sched = scheduleOf(ev);
     const isKlar = cls === 'klar';
-    const canKlarTid = !isKlar && !!ev.runRec?.id && !!kundId;
+    const canKlar = !isKlar && !!ev.runRec?.id;
+    const canKlarTid = canKlar && !!kundId;
+    const hasHours = !!(sched && sched.hours > 0);
     const blockLabel = sched
       ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (${sched.hours} t)`
       : 'Ej avsatt — dra i vecko-/dagsvy';
@@ -1131,6 +1201,8 @@
         el.detailTitle.textContent = name;
       }
     }
+    const klarOnlyCls = hasHours ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm';
+    const klarTidCls = hasHours ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
     el.detailBody.innerHTML = `
       <div class="kalender-detail-status kalender-detail-status--${cls}">${esc(statusLabel(st, ev.deadline))}</div>
       <dl class="kalender-detail-dl">
@@ -1142,8 +1214,11 @@
         ${ansvarig ? `<div><dt>Ansvarig</dt><dd>${esc(ansvarig)}</dd></div>` : ''}
       </dl>
       <div class="kalender-detail-actions">
-        ${canKlarTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tid ${sched && sched.hours > 0 ? '' : 'disabled'}>
-          <i class="fas fa-check"></i> Klarmarkera & registrera tid${sched && sched.hours > 0 ? ` (${esc(String(sched.hours))} t)` : ''}
+        ${canKlar ? `<button type="button" class="${klarOnlyCls}" data-klar-only>
+          <i class="fas fa-check"></i> Klarmarkera
+        </button>` : ''}
+        ${canKlarTid ? `<button type="button" class="${klarTidCls}" data-klar-tid ${hasHours ? '' : 'disabled'}>
+          <i class="fas fa-check"></i> Klarmarkera & registrera tid${hasHours ? ` (${esc(String(sched.hours))} t)` : ''}
         </button>` : ''}
         ${isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Klarmarkerad</span>` : ''}
         <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
@@ -1165,6 +1240,12 @@
     el.detailBody.querySelectorAll('[data-key]').forEach((btn) => {
       btn.addEventListener('click', () => openDetail(btn.getAttribute('data-key')));
     });
+    const klarOnlyBtn = el.detailBody.querySelector('[data-klar-only]');
+    if (klarOnlyBtn) {
+      klarOnlyBtn.addEventListener('click', () => {
+        klarOnly(ev);
+      });
+    }
     const klarBtn = el.detailBody.querySelector('[data-klar-tid]');
     if (klarBtn) {
       klarBtn.addEventListener('click', () => {
