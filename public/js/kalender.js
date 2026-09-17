@@ -1026,9 +1026,13 @@
     });
   }
 
-  /** Sidopanel (Deadlines/Öppna): bara ClientFlow-körningar — inte Google-händelser. */
+  /** Sidopanel (Deadlines/Öppna): ClientFlow-körningar som inte är klara — inte Google-händelser. */
   function sidePanelEvents(list) {
-    return (list || []).filter((ev) => !isGoogleEvent(ev));
+    return (list || []).filter((ev) => {
+      if (isGoogleEvent(ev)) return false;
+      const st = statusOf(ev);
+      return st !== 'Klar' && st !== 'Avslutad';
+    });
   }
 
   function renderSide(list) {
