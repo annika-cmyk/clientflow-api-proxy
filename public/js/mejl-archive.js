@@ -766,6 +766,36 @@
       return created;
     }
 
+    function resolveKopplaSelection(mode, splitOn) {
+      const Koppla = global.MejlKopplaUppdrag;
+      if (Koppla && typeof Koppla.resolveKopplaSelection === 'function') {
+        return Koppla.resolveKopplaSelection({ mode, splitOn });
+      }
+      const raw = String(mode || 'dokumentation').trim();
+      if (raw === 'uppgift') return { effective: 'uppgift', create: 'uppgift' };
+      if (raw === 'new-uppdrag') return { effective: 'uppdrag', create: 'uppdrag' };
+      if (splitOn && (raw === 'dokumentation' || raw === 'korning' || raw === 'uppdrag')) {
+        return { effective: 'split', create: null };
+      }
+      const known = raw === 'korning' || raw === 'uppdrag' || raw === 'dokumentation';
+      return { effective: known ? raw : 'dokumentation', create: null };
+    }
+
+    function kopplaFieldVisibility(mode, splitOn) {
+      const Koppla = global.MejlKopplaUppdrag;
+      if (Koppla && typeof Koppla.kopplaFieldVisibility === 'function') {
+        return Koppla.kopplaFieldVisibility({ mode, splitOn });
+      }
+      const raw = String(mode || 'dokumentation').trim();
+      const split = !!splitOn && raw !== 'uppgift' && raw !== 'new-uppdrag';
+      return {
+        run: raw === 'korning' || split,
+        uppdrag: raw === 'uppdrag' || split,
+        newUppdrag: raw === 'new-uppdrag',
+        uppgift: raw === 'uppgift'
+      };
+    }
+
     async function openSaveWizard(id, m, customerId, onDone) {
       if (!customerId) { showToast('Koppla mejlet till en kund först.', 'error'); return; }
       const atts = Array.isArray(m.attachments) ? m.attachments : [];
@@ -820,26 +850,8 @@
           (defaultMode === 'korning' ? ' selected' : '') +
           '>Uppdragskörning</option>' +
           '<option value="uppdrag">Uppdrag</option>' +
-          '</select></div>' +
-          '<div id="mejl-save-run-wrap" hidden><label class="mejl-label-edit-label" for="mejl-save-run">Körning</label>' +
-          '<select id="mejl-save-run" class="form-select form-input"><option value="">Välj…</option>' +
-          runOpts +
-          '</select></div>' +
-          '<div id="mejl-save-uppdrag-wrap" hidden>' +
-          '<label class="mejl-label-edit-label" for="mejl-save-uppdrag">Uppdrag</label>' +
-          '<select id="mejl-save-uppdrag" class="form-select form-input">' +
-          '<option value="">Välj…</option>' +
-          uppdragOpts +
-          '</select></div>' +
-          '<details id="mejl-koppla-advanced" class="mejl-koppla-advanced">' +
-          '<summary>Fler alternativ</summary>' +
-          '<div class="form-grid" style="margin-top:0.5rem;">' +
-          '<label><input type="checkbox" id="mejl-save-split"> Dela upp: mejl→dokumentation, bilagor→körning/uppdrag</label>' +
-          '<div><label class="mejl-label-edit-label" for="mejl-advanced-action">Skapa från mejlet</label>' +
-          '<select id="mejl-advanced-action" class="form-select form-input">' +
-          '<option value="">Ingen (bara koppla)</option>' +
-          '<option value="new-uppdrag">Skapa enstaka uppdrag…</option>' +
-          '<option value="uppgift">Skapa uppgift (Mina uppgifter)…</option>' +
+          '<option value="new-uppdrag">Nytt uppdrag</option>' +
+          '<option value="uppgift">Ny uppgift</option>' +
           '</select></div>' +
           '<div id="mejl-new-uppdrag-wrap" hidden class="form-grid mejl-koppla-subform">' +
           '<div><label class="mejl-label-edit-label" for="mejl-new-uppdrag-namn">Namn på uppdrag *</label>' +
@@ -856,7 +868,7 @@
           '<input type="date" id="mejl-new-uppdrag-deadline" class="form-input" value="' +
           esc(today) +
           '"></div>' +
-          '<p class="mejl-hint" style="margin:0;">Skapas som Eget uppdrag med frekvens Engång (en körning).</p>' +
+          '<p class="mejl-hint" style="margin:0;">Skapas som Eget uppdrag med frekvens Engång. Mejlet kopplas dit.</p>' +
           '</div>' +
           '<div id="mejl-uppgift-wrap" hidden class="form-grid mejl-koppla-subform">' +
           '<div><label class="mejl-label-edit-label" for="mejl-uppgift-text">Uppgift *</label>' +
@@ -871,17 +883,28 @@
           '<input type="date" id="mejl-uppgift-deadline" class="form-input" value="' +
           esc(today) +
           '"></div>' +
-          '<p class="mejl-hint" style="margin:0;">Skapas som Att göra (Mina uppgifter) och engångsuppdrag för kalendern.</p>' +
+          '<p class="mejl-hint" style="margin:0;">Skapas som Att göra (Mina uppgifter) och engångsuppdrag. Mejlet kopplas dit.</p>' +
           '</div>' +
+          '<div id="mejl-save-run-wrap" hidden><label class="mejl-label-edit-label" for="mejl-save-run">Körning</label>' +
+          '<select id="mejl-save-run" class="form-select form-input"><option value="">Välj…</option>' +
+          runOpts +
+          '</select></div>' +
+          '<div id="mejl-save-uppdrag-wrap" hidden>' +
+          '<label class="mejl-label-edit-label" for="mejl-save-uppdrag">Uppdrag</label>' +
+          '<select id="mejl-save-uppdrag" class="form-select form-input">' +
+          '<option value="">Välj…</option>' +
+          uppdragOpts +
+          '</select></div>' +
+          '<details id="mejl-koppla-advanced" class="mejl-koppla-advanced">' +
+          '<summary>Fler alternativ</summary>' +
+          '<div class="form-grid" style="margin-top:0.5rem;">' +
+          '<label><input type="checkbox" id="mejl-save-split"> Dela upp: mejl→dokumentation, bilagor→körning/uppdrag</label>' +
           '</div></details>' +
           '</div>',
         async (root) => {
-          const advancedAction = String((root.querySelector('#mejl-advanced-action') || {}).value || '');
           const splitOn = !!(root.querySelector('#mejl-save-split') || {}).checked;
-          let mode = root.querySelector('#mejl-save-mode').value;
-          if (advancedAction === 'uppgift') mode = 'uppgift';
-          else if (splitOn) mode = 'split';
-          else if (advancedAction === 'new-uppdrag' && mode === 'dokumentation') mode = 'uppdrag';
+          const resolved = resolveKopplaSelection(root.querySelector('#mejl-save-mode').value, splitOn);
+          let mode = resolved.effective;
           const includeEmail = root.querySelector('#mejl-save-email').checked;
           const saveAtts = root.querySelector('#mejl-save-atts').checked;
           const selectedAtts = [...root.querySelectorAll('input[name="att"]:checked')].map((el) => el.value);
@@ -898,9 +921,21 @@
               ? String(runEl.options[runEl.selectedIndex].textContent || '').trim()
               : '';
 
-          if (advancedAction === 'new-uppdrag') uppdragId = '__new__';
+          if (resolved.create === 'uppdrag') uppdragId = '__new__';
 
-          if (mode === 'uppgift') {
+          function runLabelFromRecord(rec, fallbackName) {
+            const f = (rec && (rec.fields || rec)) || {};
+            return (
+              ((f['Period Label'] || f.PeriodKey || '') +
+                (f.Typ ? ' · ' + f.Typ : '') +
+                (f.Deadline ? ' (' + f.Deadline + ')' : '')) ||
+              fallbackName ||
+              (rec && rec.id) ||
+              ''
+            );
+          }
+
+          if (resolved.create === 'uppgift') {
             try {
               const created = await createUppgiftFromMejl(customerId, root, m, customerMeta, id);
               uppdragId = created.record.id;
@@ -912,42 +947,29 @@
               });
               if (match) {
                 runId = match.id;
-                const f = match.fields || match;
-                runName =
-                  ((f['Period Label'] || f.PeriodKey || '') +
-                    (f.Typ ? ' · ' + f.Typ : '') +
-                    (f.Deadline ? ' (' + f.Deadline + ')' : '')) ||
-                  uppdragName ||
-                  match.id;
+                runName = runLabelFromRecord(match, uppdragName);
               }
               markUppgiftSkapadFromMejl(id, { runId, uppdragId });
             } catch (err) {
               showToast((err && err.message) || 'Kunde inte skapa uppgift', 'error');
               return;
             }
-          } else if ((mode === 'uppdrag' || mode === 'split' || mode === 'korning') && uppdragId === '__new__') {
+          } else if (resolved.create === 'uppdrag') {
             try {
               const created = await createEngangUppdrag(customerId, root);
               uppdragId = created.record.id;
               uppdragName = created.displayName;
-              if (mode === 'korning' || mode === 'split') {
-                const freshRuns = await loadRuns(customerId);
-                const match = (freshRuns || []).find((r) => {
-                  const f = r.fields || r;
-                  return String(f['Uppdrag ID'] || '').trim() === uppdragId;
-                });
-                if (match) {
-                  runId = match.id;
-                  const f = match.fields || match;
-                  runName =
-                    ((f['Period Label'] || f.PeriodKey || '') +
-                      (f.Typ ? ' · ' + f.Typ : '') +
-                      (f.Deadline ? ' (' + f.Deadline + ')' : '')) ||
-                    uppdragName ||
-                    match.id;
-                } else if (mode === 'korning') {
-                  showToast('Körning saknas ännu — kopplar till det nya uppdraget.', 'info');
-                }
+              const freshRuns = await loadRuns(customerId);
+              const match = (freshRuns || []).find((r) => {
+                const f = r.fields || r;
+                return String(f['Uppdrag ID'] || '').trim() === uppdragId;
+              });
+              if (match) {
+                runId = match.id;
+                runName = runLabelFromRecord(match, uppdragName);
+                if (mode === 'uppdrag') mode = 'korning';
+              } else if (mode === 'korning') {
+                showToast('Körning saknas ännu — kopplar till det nya uppdraget.', 'info');
               }
             } catch (err) {
               showToast((err && err.message) || 'Kunde inte skapa uppdrag', 'error');
@@ -1098,28 +1120,26 @@
       );
       const modeEl = document.getElementById('mejl-save-mode');
       const attsEl = document.getElementById('mejl-save-atts');
-      const advancedActionEl = document.getElementById('mejl-advanced-action');
       const splitEl = document.getElementById('mejl-save-split');
+      const okBtn = document.querySelector('#mejl-modal-root [data-mejl-ok]');
       const sync = () => {
         const mode = modeEl ? modeEl.value : 'dokumentation';
-        const advancedAction = advancedActionEl ? advancedActionEl.value : '';
         const splitOn = !!(splitEl && splitEl.checked);
-        const effectiveMode = advancedAction === 'uppgift' ? 'uppgift' : splitOn ? 'split' : mode;
+        const vis = kopplaFieldVisibility(mode, splitOn);
         const u = document.getElementById('mejl-save-uppdrag-wrap');
         const r = document.getElementById('mejl-save-run-wrap');
         const neu = document.getElementById('mejl-new-uppdrag-wrap');
         const uppg = document.getElementById('mejl-uppgift-wrap');
         const attsList = document.getElementById('mejl-save-atts-list');
-        if (r) r.hidden = !(effectiveMode === 'korning' || effectiveMode === 'split');
-        if (u) u.hidden = !(effectiveMode === 'uppdrag' || effectiveMode === 'split');
-        if (uppg) uppg.hidden = advancedAction !== 'uppgift';
-        if (neu) neu.hidden = advancedAction !== 'new-uppdrag';
+        if (r) r.hidden = !vis.run;
+        if (u) u.hidden = !vis.uppdrag;
+        if (uppg) uppg.hidden = !vis.uppgift;
+        if (neu) neu.hidden = !vis.newUppdrag;
         if (attsList) attsList.hidden = !(attsEl && attsEl.checked);
-        if (modeEl) modeEl.disabled = advancedAction === 'uppgift';
+        if (okBtn) okBtn.textContent = vis.newUppdrag || vis.uppgift ? 'Skapa och koppla' : 'Koppla';
       };
       if (modeEl) modeEl.addEventListener('change', sync);
       if (attsEl) attsEl.addEventListener('change', sync);
-      if (advancedActionEl) advancedActionEl.addEventListener('change', sync);
       if (splitEl) splitEl.addEventListener('change', sync);
       sync();
     }
