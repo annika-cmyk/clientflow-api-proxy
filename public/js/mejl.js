@@ -1202,7 +1202,7 @@
     errEl.textContent = message;
   }
 
-  async function openReggaTidModal(m, listMeta) {
+  async function openReggaTidModal(m, listMeta, messageId) {
     const Tid = window.MejlReggaTid;
     if (!Tid || typeof Tid.buildMejlTidPayload !== 'function') {
       showToast('Tidregistrering kunde inte laddas. Ladda om sidan.', 'error');
@@ -1214,6 +1214,10 @@
       (known && known.namn) ||
       String((m && m.customerName) || (listMeta && listMeta.customerName) || '').trim();
     const today = Tid.todayIsoDate();
+    const emailDate = typeof Tid.dateFromMejl === 'function' ? Tid.dateFromMejl(m, today) : today;
+    const mejlId = String(
+      messageId || (m && (m.gmailMessageId || m.id || m.messageId)) || ''
+    ).trim();
     const description = Tid.descriptionFromMejl({
       subject: m && m.subject,
       snippet: (m && (m.snippet || m.text)) || ''
@@ -1237,7 +1241,7 @@
       '<div class="mejl-tid-split">' +
       '<div><label class="mejl-label-edit-label" for="mejl-tid-date">Datum *</label>' +
       '<input type="date" id="mejl-tid-date" class="form-input" value="' +
-      esc(today) +
+      esc(emailDate) +
       '" required></div>' +
       '<div><label class="mejl-label-edit-label" for="mejl-tid-status">Status</label>' +
       '<select id="mejl-tid-status" class="form-select form-input">' +
@@ -1258,7 +1262,7 @@
       '<textarea id="mejl-tid-description" class="form-input" rows="3">' +
       esc(description) +
       '</textarea></div>' +
-      '<p class="mejl-hint" style="margin:0;">Sparas på dig som handläggare och syns under Tid.</p>' +
+      '<p class="mejl-hint" style="margin:0;">Ämne sparas i beskrivningen och datum på tidposten. Länk till mejlet följer med.</p>' +
       '<p id="mejl-tid-error" class="mejl-hint mejl-tid-error" hidden></p>' +
       '</div></div>' +
       '<div class="mejl-modal-actions">' +
@@ -1319,7 +1323,9 @@
           description: root.querySelector('#mejl-tid-description').value,
           status: root.querySelector('#mejl-tid-status').value,
           subject: m && m.subject,
-          snippet: m && (m.snippet || m.text)
+          snippet: m && (m.snippet || m.text),
+          messageId: mejlId.startsWith('shared:') ? (m && m.gmailMessageId) || '' : mejlId,
+          gmailMessageId: m && m.gmailMessageId
         });
       } catch (err) {
         showTidFormError(root, (err && err.message) || 'Kontrollera fälten');
@@ -1508,7 +1514,12 @@
     }
     const reggaTidButton = document.getElementById('mejl-regga-tid-btn');
     if (reggaTidButton) {
-      reggaTidButton.addEventListener('click', () => openReggaTidModal(m, listMeta));
+      reggaTidButton.addEventListener('click', () => {
+        const mejlId = isShared
+          ? String((m && m.gmailMessageId) || (archiveForDetail && archiveForDetail.gmailMessageId) || '').trim()
+          : String(id || (m && m.id) || '').trim();
+        openReggaTidModal(m, listMeta, mejlId);
+      });
     }
     if (!isShared && handleStatusApi) {
       handleStatusApi.bindDetailButtons({

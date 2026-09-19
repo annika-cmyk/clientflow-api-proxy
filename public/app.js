@@ -1222,6 +1222,7 @@ class ClientFlowApp {
                                 <span class="my-task-meta">${this.escapeHtml(t.customerName || '')}${t.datum ? ` · ${this.escapeHtml(t.datum)}` : ''}</span>
                                 <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
                             </a>
+                            ${t.mejlUrl ? `<a class="my-task-mejl" href="${this.escapeHtml(t.mejlUrl)}">Öppna mejl</a>` : ''}
                         </div>
                     `).join('')}
                 </div>`;

@@ -10230,6 +10230,19 @@ class CustomerCardManager {
         return this._esc(text || '').replace(/\n/g, '<br>');
     }
 
+    _mejlHref(text) {
+        const m = String(text || '').match(/(?:https?:\/\/[^\s<>"']+\/)?mejl\.html\?messageId=[A-Za-z0-9%_.~-]+/);
+        return m ? m[0] : '';
+    }
+
+    _linkifyMejl(text) {
+        const raw = String(text || '');
+        return raw.replace(
+            /((?:https?:\/\/[^\s<>"']+\/)?mejl\.html\?messageId=[A-Za-z0-9%_.~-]+)/g,
+            '<a href="$1">Öppna mejl</a>'
+        ).replace(/\n/g, '<br>');
+    }
+
     _renderKalla(raw) {
         const resolved = (typeof AmlKalla !== 'undefined' && AmlKalla.resolveKalla)
             ? AmlKalla.resolveKalla(raw)
@@ -13774,6 +13787,7 @@ class CustomerCardManager {
 
         const date = fields['Datum'] || '-';
         const content = fields['Notes'] || '';
+        const mejlHref = this._mejlHref(fields['Mejl-länk'] || content);
         // Person/skapad av visas inte i UI (för att undvika "// Namn" längst ner)
         const person = fields['Person'] || '';
         const attachments = fields['Attachments'] || [];
@@ -13791,6 +13805,7 @@ class CustomerCardManager {
                         <span class="note-date"><i class="fas fa-calendar-alt"></i> ${date}</span>
                     </div>
                     <div class="note-summary-actions" onclick="event.stopPropagation()">
+                        ${mejlHref ? `<a class="note-mejl-link" href="${this._esc(mejlHref)}" onclick="event.stopPropagation()" style="font-size:0.8rem;font-weight:600;margin-right:0.35rem;align-self:center;">Öppna mejl</a>` : ''}
                         <button class="btn-icon-note" title="Redigera" onclick="customerCardManager.editNote('${noteId}')">
                             <i class="fas fa-pencil-alt"></i>
                         </button>
@@ -13801,7 +13816,7 @@ class CustomerCardManager {
                 </div>
                 ${hasDetails ? `
                 <div class="note-details" id="note-details-${noteId}" style="display:none;">
-                    ${content ? `<div class="note-content"><p>${content.replace(/\n/g, '<br>')}</p></div>` : ''}
+                    ${content ? `<div class="note-content"><p>${this._linkifyMejl(content)}</p></div>` : ''}
                     ${todoList}
                     ${attachmentsHTML}
                 </div>` : ''}

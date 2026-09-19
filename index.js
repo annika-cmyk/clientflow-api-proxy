@@ -53,6 +53,7 @@ const { createGmailIntegration } = require('./lib/gmail');
 const { createMejlExtras } = require('./lib/mejl');
 const { createMotesbokning } = require('./lib/motesbokning');
 const { createTidregistrering } = require('./lib/tidregistrering');
+const { extractMejlLink } = require('./lib/mejl-link');
 const {
   normalizeUppdragRiskAtgarderDone,
   requiredRiskAtgarderFromUppdrag,
@@ -17609,6 +17610,19 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
         airtableFields[`Status${i}`] = noteData[`Status${i}`].trim();
       }
     }
+
+    const noteMejlUrl = String(noteData.mejlUrl || noteData['Mejl-länk'] || '').trim()
+      || extractMejlLink(noteData.notes || '');
+    if (noteMejlUrl) {
+      airtableFields['Mejl-länk'] = noteMejlUrl;
+      try {
+        await ensureAirtableTableFields(airtableAccessToken, airtableBaseId, NOTES_TABLE, [
+          { name: 'Mejl-länk', type: 'singleLineText', description: 'Deep-link till mejl i ClientFlow' }
+        ]);
+      } catch (ensureErr) {
+        console.warn('ensure anteckning Mejl-länk:', ensureErr.message);
+      }
+    }
     
     // Ta bort tomma fält innan vi skickar till Airtable (tomma strängar kan orsaka 422-fel)
     cleanedFields = {};
@@ -17628,16 +17642,36 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
     console.log('🌐 Skapar anteckning i Airtable:', url);
     console.log('📋 Fält som skickas till Airtable:', JSON.stringify(cleanedFields, null, 2));
     
-    const response = await axios.post(url, {
-      fields: cleanedFields,
-      typecast: true
-    }, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
-    });
+    const response = await (async () => {
+      try {
+        return await axios.post(url, {
+          fields: cleanedFields,
+          typecast: true
+        }, {
+          headers: {
+            'Authorization': `Bearer ${airtableAccessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        });
+      } catch (postErr) {
+        const unknown = String(postErr.response?.data?.error?.message || '');
+        if (!/Mejl-länk/i.test(unknown) || !cleanedFields['Mejl-länk']) throw postErr;
+        console.warn('Anteckningar saknar Mejl-länk — länken ligger kvar i Notes');
+        const without = { ...cleanedFields };
+        delete without['Mejl-länk'];
+        return axios.post(url, {
+          fields: without,
+          typecast: true
+        }, {
+          headers: {
+            'Authorization': `Bearer ${airtableAccessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        });
+      }
+    })();
 
     const duration = Date.now() - startTime;
     
@@ -17798,7 +17832,8 @@ app.get('/api/my-tasks', authenticateToken, async (req, res) => {
           status: status || 'Att göra',
           customerId: customer?.id || null,
           customerName: customer?.namn || f['Företagsnamn'] || 'Okänd kund',
-          datum: f['Datum'] || ''
+          datum: f['Datum'] || '',
+          mejlUrl: String(f['Mejl-länk'] || '').trim() || extractMejlLink(f.Notes || '')
         });
       }
     }

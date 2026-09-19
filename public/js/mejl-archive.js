@@ -698,13 +698,23 @@
       } catch (_) {}
     }
 
-    async function createUppgiftFromMejl(customerId, root, message, customerMeta) {
+    function mejlDeepLink(messageId) {
+      const mid = String(messageId || '').trim();
+      if (!mid || mid.startsWith('shared:')) return '';
+      return 'mejl.html?messageId=' + encodeURIComponent(mid);
+    }
+
+    async function createUppgiftFromMejl(customerId, root, message, customerMeta, messageId) {
       const text = String((root.querySelector('#mejl-uppgift-text') || {}).value || '').trim();
       const ansvarig = String((root.querySelector('#mejl-uppgift-ansvarig') || {}).value || '').trim();
       const deadline = String((root.querySelector('#mejl-uppgift-deadline') || {}).value || '').trim();
       const meta = customerMeta || {};
       const klientansvarig = String(meta.klientansvarig || ansvarig || '').trim();
       const today = todayIsoDate();
+      const mejlId = String(
+        messageId || (message && (message.gmailMessageId || message.id || message.messageId)) || ''
+      ).trim();
+      const link = mejlDeepLink(mejlId.startsWith('shared:') ? (message && message.gmailMessageId) || '' : mejlId);
       const Koppla = global.MejlKopplaUppdrag || null;
       const notePayload = Koppla && typeof Koppla.buildUppgiftNotePayload === 'function'
         ? Koppla.buildUppgiftNotePayload({
@@ -714,16 +724,22 @@
           orgnr: meta.orgnr,
           foretagsnamn: meta.namn,
           mejlSubject: (message && (message.subject || message.Subject)) || '',
-          today
+          today,
+          messageId: mejlId,
+          mejlUrl: link
         })
         : (() => {
           if (!text) throw new Error('Ange vad som ska göras.');
           if (!ansvarig) throw new Error('Välj handläggare.');
           const subject = String((message && (message.subject || message.Subject)) || '').trim();
+          const base = subject
+            ? ('Uppgift från mejl: ' + subject + '\n\n' + text)
+            : ('Uppgift från mejl\n\n' + text);
           return {
             typAvAnteckning: ['Emailkonversation'],
             datum: today,
-            notes: subject ? ('Uppgift från mejl: ' + subject + '\n\n' + text) : ('Uppgift från mejl\n\n' + text),
+            notes: link && base.indexOf(link) === -1 ? (base + '\n\n' + link) : base,
+            mejlUrl: link,
             ToDo1: text,
             Status1: 'Att göra',
             name: ansvarig,
@@ -886,7 +902,7 @@
 
           if (mode === 'uppgift') {
             try {
-              const created = await createUppgiftFromMejl(customerId, root, m, customerMeta);
+              const created = await createUppgiftFromMejl(customerId, root, m, customerMeta, id);
               uppdragId = created.record.id;
               uppdragName = created.displayName;
               const freshRuns = await loadRuns(customerId);

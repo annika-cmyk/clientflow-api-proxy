@@ -3622,6 +3622,16 @@ body.sidebar-collapsed .nav-status-icon {
     color: var(--text);
     white-space: nowrap;
 }
+.my-task-row .my-task-mejl {
+    flex-shrink: 0;
+    align-self: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #1e3a5f;
+    text-decoration: underline;
+    white-space: nowrap;
+    margin-right: 0.35rem;
+}
 .my-task-akut {
     color: var(--error);
     flex-shrink: 0;
@@ -21976,6 +21986,7 @@ body.kalender-detail-open { overflow: hidden; }
 .tid-card-top h3 { margin: 0; font-size: 1rem; }
 .tid-card-meta { margin: 0.15rem 0; font-size: 0.85rem; color: var(--text); }
 .tid-card-desc { margin: 0.35rem 0; font-size: 0.9rem; }
+.tid-mejl-link { color: #1e3a5f; font-weight: 600; text-decoration: underline; }
 .tid-badge {
   display: inline-block;
   padding: 0.15rem 0.5rem;
