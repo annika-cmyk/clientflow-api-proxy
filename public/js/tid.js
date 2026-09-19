@@ -39,6 +39,7 @@
     rateHint: document.getElementById('tid-rate-hint'),
     uppdrag: document.getElementById('tid-uppdrag'),
     description: document.getElementById('tid-description'),
+    mejlLink: document.getElementById('tid-mejl-link'),
     status: document.getElementById('tid-status'),
     amountHint: document.getElementById('tid-amount-hint'),
     save: document.getElementById('tid-save'),
@@ -299,6 +300,24 @@
     }
   }
 
+  function mejlLinkHtml(url) {
+    const href = String(url || '').trim();
+    if (!href || !/^\/?(?:https?:\/\/[^\s]+\/)?mejl\.html\?messageId=/.test(href)) return '';
+    return '<p class="tid-card-meta"><a class="tid-mejl-link" href="' + esc(href) + '">Öppna mejl</a></p>';
+  }
+
+  function renderMejlLink(url) {
+    if (!el.mejlLink) return;
+    const href = String(url || '').trim();
+    if (!href || !/^\/?(?:https?:\/\/[^\s]+\/)?mejl\.html\?messageId=/.test(href)) {
+      el.mejlLink.hidden = true;
+      el.mejlLink.innerHTML = '';
+      return;
+    }
+    el.mejlLink.hidden = false;
+    el.mejlLink.innerHTML = '<a class="tid-mejl-link" href="' + esc(href) + '">Öppna mejl</a>';
+  }
+
   function renderList() {
     if (!el.list) return;
     const list = filteredEntries();
@@ -339,6 +358,7 @@
         '<p class="tid-card-meta">' + esc(fmtDate(e.date)) + ' · ' + esc(fmtHours(e.hours)) +
         (e.amount != null ? ' · ' + esc(fmtMoney(e.amount)) : '') + amountNote + '</p>' +
         '<p class="tid-card-desc">' + esc(act) + esc(e.description || '') + '</p>' +
+        mejlLinkHtml(e.mejlUrl) +
         (e.uppdragsnamn ? '<p class="tid-card-meta">Uppdrag: ' + esc(e.uppdragsnamn) + '</p>' : '') +
         '<p class="tid-card-meta">' + esc(e.performedByName || e.performedBy || '') + '</p></div>' +
         '<div class="tid-card-actions">' + actions + '</div></article>';
@@ -383,6 +403,7 @@
       el.uppdrag.value = entry.uppdragsnamn || '';
       el.description.value = entry.description || '';
       el.status.value = entry.status === 'Klar' ? 'Klar' : 'Utkast';
+      renderMejlLink(entry.mejlUrl);
       if (entry.rate != null && Number(entry.rate) > 0) {
         rateTouched = !entry.rateFromPrislista;
         if (entry.rateFromPrislista && el.rateHint) {
@@ -396,6 +417,7 @@
     } else {
       el.modalTitle.textContent = 'Registrera tid';
       el.editId.value = '';
+      renderMejlLink('');
       el.customerId.value = '';
       el.date.value = new Date().toISOString().slice(0, 10);
       el.status.value = 'Utkast';

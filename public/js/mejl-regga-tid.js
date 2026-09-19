@@ -2,6 +2,7 @@
  * Bygg payload för tidregistrering från ett mejl (Regga tid i mejldetaljen).
  * Fälten matchar POST /api/tidregistrering (lib/tidregistrering buildEntryFields).
  * Uppdrag är valfritt — samma regel som Tid-formuläret.
+ * Ämne hamnar i Beskrivning, datum i Datum, mejllänk i mejlUrl (inte i brödtexten).
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -63,6 +64,45 @@
     return '';
   }
 
+  /** Stabil djuplänk: mejlsidan + message id. Tom för delade list-id. */
+  function mejlDeepLink(messageId) {
+    const mid = String(messageId || '').trim();
+    if (!mid || mid.startsWith('shared:')) return '';
+    return 'mejl.html?messageId=' + encodeURIComponent(mid);
+  }
+
+  function localIsoDate(raw) {
+    if (raw == null || raw === '') return '';
+    const s = String(raw).trim();
+    const day = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (day) return day[1];
+    const n = Number(s);
+    const d =
+      Number.isFinite(n) && String(Math.trunc(Math.abs(n))).length >= 12
+        ? new Date(n)
+        : new Date(s);
+    if (Number.isNaN(d.getTime())) return '';
+    return todayIsoDate(d);
+  }
+
+  /** Mejlets datum till datumfältet. Saknas det används fallback (ofta idag). */
+  function dateFromMejl(message, fallback) {
+    const m = message || {};
+    const fromMail = localIsoDate(m.internalDate) || localIsoDate(m.date) || localIsoDate(m.emailDate);
+    if (fromMail) return fromMail;
+    const fb = String(fallback || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fb)) return fb;
+    return todayIsoDate(m.now);
+  }
+
+  function messageIdForLink(src) {
+    const explicit = String((src && src.messageId) || '').trim();
+    if (explicit && !explicit.startsWith('shared:')) return explicit;
+    const gmail = String((src && src.gmailMessageId) || '').trim();
+    if (gmail && !gmail.startsWith('shared:')) return gmail;
+    return '';
+  }
+
   function buildMejlTidPayload(input) {
     const src = input || {};
     const customerId = String(src.customerId || '').trim();
@@ -75,7 +115,7 @@
 
     const hours = hoursFromParts(src.hours, src.minutes);
     const dateRaw = String(src.date || '').trim();
-    const date = dateRaw || String(src.today || '').trim() || todayIsoDate(src.now);
+    const date = dateRaw || dateFromMejl(src, src.today);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       const err = new Error('Datum krävs (YYYY-MM-DD)');
       err.status = 400;
@@ -89,6 +129,7 @@
         ? 'Mejl'
         : String(src.activity).trim();
     const status = String(src.status || 'Utkast').trim() || 'Utkast';
+    const mejlUrl = String(src.mejlUrl || '').trim() || mejlDeepLink(messageIdForLink(src));
 
     return {
       customerId,
@@ -99,7 +140,8 @@
       hours,
       description,
       activity,
-      status
+      status,
+      mejlUrl
     };
   }
 
@@ -107,6 +149,8 @@
     todayIsoDate,
     hoursFromParts,
     descriptionFromMejl,
+    dateFromMejl,
+    mejlDeepLink,
     buildMejlTidPayload
   };
 });
