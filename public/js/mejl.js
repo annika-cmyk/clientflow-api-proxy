@@ -1139,6 +1139,219 @@
     return data;
   }
 
+  function uppdragLabel(u) {
+    const f = (u && (u.fields || u)) || {};
+    const typ = f.Typ || f.typ || '';
+    if (window.UppdragTyp && UppdragTyp.uppdragDisplayName) {
+      return UppdragTyp.uppdragDisplayName(typ, f) || typ || u.id;
+    }
+    return f.Namn || typ || f.Name || u.id || '';
+  }
+
+  function tidCustomerOptionsHtml(selectedId, fallbackName) {
+    const list = (customers || []).slice();
+    if (selectedId && !list.some((c) => c.id === selectedId)) {
+      list.unshift({ id: selectedId, namn: fallbackName || 'Kopplad kund' });
+    }
+    const opts = list
+      .map((c) => {
+        const sel = c.id === selectedId ? ' selected' : '';
+        return `<option value="${esc(c.id)}"${sel}>${esc(c.namn)}</option>`;
+      })
+      .join('');
+    return `<option value="">Välj kund…</option>${opts}`;
+  }
+
+  function fillUppdragSelect(select, records) {
+    if (!select) return;
+    const opts = ['<option value="">Inget uppdrag</option>'].concat(
+      (records || []).map((u) => `<option value="${esc(u.id)}">${esc(uppdragLabel(u))}</option>`)
+    );
+    select.innerHTML = opts.join('');
+  }
+
+  async function loadCustomerUppdrag(customerId) {
+    const cid = String(customerId || '').trim();
+    if (!cid) return [];
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(cid)}`,
+        authOpts()
+      );
+      const data = await res.json().catch(() => ({}));
+      return (data && data.records) || [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function closeReggaTidModal() {
+    const el = document.getElementById('mejl-modal-root');
+    if (el) el.remove();
+  }
+
+  function showTidFormError(root, message) {
+    const errEl = root && root.querySelector('#mejl-tid-error');
+    if (!errEl) return;
+    if (!message) {
+      errEl.hidden = true;
+      errEl.textContent = '';
+      return;
+    }
+    errEl.hidden = false;
+    errEl.textContent = message;
+  }
+
+  async function openReggaTidModal(m, listMeta) {
+    const Tid = window.MejlReggaTid;
+    if (!Tid || typeof Tid.buildMejlTidPayload !== 'function') {
+      showToast('Tidregistrering kunde inte laddas. Ladda om sidan.', 'error');
+      return;
+    }
+    const customerId = resolveMessageCustomerId(m, listMeta);
+    const known = (customers || []).find((c) => c.id === customerId);
+    const customerName =
+      (known && known.namn) ||
+      String((m && m.customerName) || (listMeta && listMeta.customerName) || '').trim();
+    const today = Tid.todayIsoDate();
+    const description = Tid.descriptionFromMejl({
+      subject: m && m.subject,
+      snippet: (m && (m.snippet || m.text)) || ''
+    });
+    closeReggaTidModal();
+    const root = document.createElement('div');
+    root.id = 'mejl-modal-root';
+    root.className = 'mejl-modal-backdrop';
+    root.innerHTML =
+      '<div class="mejl-modal" role="dialog" aria-modal="true" aria-labelledby="mejl-tid-title">' +
+      '<h3 id="mejl-tid-title">Regga tid</h3>' +
+      '<div class="mejl-modal-body"><div class="form-grid">' +
+      '<div><label class="mejl-label-edit-label" for="mejl-tid-customer">Kund *</label>' +
+      '<select id="mejl-tid-customer" class="form-select form-input">' +
+      tidCustomerOptionsHtml(customerId, customerName) +
+      '</select>' +
+      (customerId
+        ? ''
+        : '<p class="mejl-hint" style="margin:0.35rem 0 0;">Mejlet saknar kundmatch. Välj kund.</p>') +
+      '</div>' +
+      '<div class="mejl-tid-split">' +
+      '<div><label class="mejl-label-edit-label" for="mejl-tid-date">Datum *</label>' +
+      '<input type="date" id="mejl-tid-date" class="form-input" value="' +
+      esc(today) +
+      '" required></div>' +
+      '<div><label class="mejl-label-edit-label" for="mejl-tid-status">Status</label>' +
+      '<select id="mejl-tid-status" class="form-select form-input">' +
+      '<option value="Utkast" selected>Utkast</option>' +
+      '<option value="Klar">Klar (fakturaunderlag)</option>' +
+      '</select></div></div>' +
+      '<div class="mejl-tid-split">' +
+      '<div><label class="mejl-label-edit-label" for="mejl-tid-hours">Timmar</label>' +
+      '<input type="number" id="mejl-tid-hours" class="form-input" min="0" step="0.25" inputmode="decimal" placeholder="0"></div>' +
+      '<div><label class="mejl-label-edit-label" for="mejl-tid-minutes">Minuter</label>' +
+      '<input type="number" id="mejl-tid-minutes" class="form-input" min="0" max="59" step="1" inputmode="numeric" placeholder="0"></div>' +
+      '</div>' +
+      '<p class="mejl-hint" style="margin:0;">Minst 1 minut. 1 timme och 30 minuter blir 1,5 h i Tid.</p>' +
+      '<div><label class="mejl-label-edit-label" for="mejl-tid-uppdrag">Uppdrag (valfritt)</label>' +
+      '<select id="mejl-tid-uppdrag" class="form-select form-input"><option value="">Inget uppdrag</option></select>' +
+      '<p class="mejl-hint" style="margin:0.35rem 0 0;">Behövs inte. Tidposten syns i Tid även utan uppdrag.</p></div>' +
+      '<div><label class="mejl-label-edit-label" for="mejl-tid-description">Beskrivning</label>' +
+      '<textarea id="mejl-tid-description" class="form-input" rows="3">' +
+      esc(description) +
+      '</textarea></div>' +
+      '<p class="mejl-hint" style="margin:0;">Sparas på dig som handläggare och syns under Tid.</p>' +
+      '<p id="mejl-tid-error" class="mejl-hint mejl-tid-error" hidden></p>' +
+      '</div></div>' +
+      '<div class="mejl-modal-actions">' +
+      '<button type="button" class="btn btn-secondary btn-sm" data-mejl-tid-cancel>Avbryt</button>' +
+      '<button type="button" class="btn btn-primary btn-sm" data-mejl-tid-ok><i class="fas fa-clock"></i> Registrera</button>' +
+      '</div></div>';
+    document.body.appendChild(root);
+    root.addEventListener('click', (e) => {
+      if (e.target === root) closeReggaTidModal();
+    });
+    root.querySelector('[data-mejl-tid-cancel]').addEventListener('click', closeReggaTidModal);
+
+    const customerSel = root.querySelector('#mejl-tid-customer');
+    const uppdragSel = root.querySelector('#mejl-tid-uppdrag');
+    let uppdragReq = 0;
+    async function refreshUppdrag(cid) {
+      const seq = ++uppdragReq;
+      if (!cid) {
+        fillUppdragSelect(uppdragSel, []);
+        return;
+      }
+      uppdragSel.innerHTML = '<option value="">Hämtar uppdrag…</option>';
+      const records = await loadCustomerUppdrag(cid);
+      if (seq !== uppdragReq) return;
+      fillUppdragSelect(uppdragSel, records);
+    }
+    customerSel.addEventListener('change', () => {
+      showTidFormError(root, '');
+      refreshUppdrag(customerSel.value);
+    });
+    refreshUppdrag(customerSel.value);
+    const hoursInput = root.querySelector('#mejl-tid-hours');
+    if (hoursInput) hoursInput.focus();
+
+    root.querySelector('[data-mejl-tid-ok]').addEventListener('click', async () => {
+      const okBtn = root.querySelector('[data-mejl-tid-ok]');
+      showTidFormError(root, '');
+      const cid = String(customerSel.value || '').trim();
+      const knownCust = (customers || []).find((c) => c.id === cid);
+      const opt = customerSel.options[customerSel.selectedIndex];
+      const cname = knownCust
+        ? knownCust.namn
+        : String((opt && opt.textContent) || '').trim();
+      const uppdragId = String(uppdragSel.value || '').trim();
+      const uppdragOpt = uppdragSel.options[uppdragSel.selectedIndex];
+      const uppdragsnamn =
+        uppdragId && uppdragOpt ? String(uppdragOpt.textContent || '').trim() : '';
+      let payload;
+      try {
+        payload = Tid.buildMejlTidPayload({
+          customerId: cid,
+          customerName: cname,
+          uppdragId,
+          uppdragsnamn,
+          hours: root.querySelector('#mejl-tid-hours').value,
+          minutes: root.querySelector('#mejl-tid-minutes').value,
+          date: root.querySelector('#mejl-tid-date').value,
+          description: root.querySelector('#mejl-tid-description').value,
+          status: root.querySelector('#mejl-tid-status').value,
+          subject: m && m.subject,
+          snippet: m && (m.snippet || m.text)
+        });
+      } catch (err) {
+        showTidFormError(root, (err && err.message) || 'Kontrollera fälten');
+        return;
+      }
+      okBtn.disabled = true;
+      try {
+        const res = await fetch(`${baseUrl}/api/tidregistrering`, {
+          method: 'POST',
+          ...authOpts(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showTidFormError(root, data.error || 'Kunde inte registrera tid');
+          return;
+        }
+        closeReggaTidModal();
+        const hoursLabel =
+          payload.hours != null ? String(payload.hours).replace('.', ',') : '';
+        showToast(
+          hoursLabel ? `Tid registrerad (${hoursLabel} h).` : 'Tid registrerad.',
+          'success'
+        );
+      } catch (err) {
+        showTidFormError(root, (err && err.message) || 'Kunde inte registrera tid');
+      } finally {
+        if (document.body.contains(okBtn)) okBtn.disabled = false;
+      }
+    });
+  }
+
   function renderDetail(id, m, listMeta, kunderLabels, archiveForDetail) {
     if (Array.isArray(kunderLabels)) kunderLabelsCache = kunderLabels;
     const isShared = isSharedListId(id) || (m && m.source === 'shared');
@@ -1179,12 +1392,17 @@
     const labelsToggleHtml = isShared
       ? ''
       : `<button type="button" class="mejl-labels-toggle${labelsOpen ? ' is-open' : ''}" id="mejl-labels-toggle" aria-expanded="${labelsOpen ? 'true' : 'false'}" aria-controls="mejl-labels-panel" title="Etiketter" aria-label="Etiketter"><i class="fas fa-tag" aria-hidden="true"></i></button>`;
+    const reggaTidBtn =
+      '<button type="button" class="btn btn-secondary btn-sm" id="mejl-regga-tid-btn">' +
+      '<i class="fas fa-clock"></i> Regga tid</button>';
     const gmailActionsHtml = isShared
-      ? `<p class="mejl-hint" style="margin-top:0.75rem;">Detta mejl delades med dig via ClientFlow. Svara/radera och Gmail-etiketter kräver att du kopplar din egen Gmail.</p>`
+      ? `<p class="mejl-hint" style="margin-top:0.75rem;">Detta mejl delades med dig via ClientFlow. Svara/radera och Gmail-etiketter kräver att du kopplar din egen Gmail.</p>
+        <div class="mejl-connect-actions" style="margin-top:0.75rem;">${reggaTidBtn}</div>`
       : `<div class="mejl-connect-actions" style="margin-top:0.75rem;">
         <button type="button" class="btn btn-secondary btn-sm" id="mejl-reply-btn">
           <i class="fas fa-reply"></i> Svara
         </button>
+        ${reggaTidBtn}
         <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn" title="Tas bort från ClientFlow, inte från Gmail">
           <i class="fas fa-eye-slash"></i> Ta bort från listan
         </button>
@@ -1287,6 +1505,10 @@
     const trashBtn = document.getElementById('mejl-trash-btn');
     if (trashBtn) {
       trashBtn.addEventListener('click', () => trashMessage(id));
+    }
+    const reggaTidButton = document.getElementById('mejl-regga-tid-btn');
+    if (reggaTidButton) {
+      reggaTidButton.addEventListener('click', () => openReggaTidModal(m, listMeta));
     }
     if (!isShared && handleStatusApi) {
       handleStatusApi.bindDetailButtons({
