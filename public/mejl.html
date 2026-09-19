@@ -573,6 +573,9 @@
       }
       .mejl-modal h3 { margin: 0 0 0.75rem; font-size: 1.05rem; color: #0f172a; }
       .mejl-modal .form-grid { display: grid; gap: 0.65rem; }
+      /* display:grid slår UA [hidden] — dolda kopplingsfält ska inte synas */
+      .mejl-modal .form-grid[hidden],
+      .mejl-koppla-subform[hidden] { display: none !important; }
       .mejl-modal-actions {
         display: flex; flex-wrap: wrap; gap: 0.45rem; justify-content: flex-end; margin-top: 1rem;
       }
@@ -804,7 +807,7 @@
     <script src="js/components.js?v=2.2" defer></script>
     <script src="js/mejl-mask-selection.js?v=20260913mask" defer></script>
     <script src="js/uppdrag-typ.js?v=2" defer></script>
-    <script src="js/mejl-archive.js?v=20260919lank" defer></script>
+    <script src="js/mejl-archive.js?v=20260919skapa" defer></script>
     <script src="js/mejl-hidden.js?v=1" defer></script>
     <script src="js/mejl-handle-status.js?v=20260916task" defer></script>
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
