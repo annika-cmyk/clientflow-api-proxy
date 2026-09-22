@@ -538,7 +538,8 @@
             ? 'Inga mejl har delats med dig ännu.'
             : 'Inga mejl har delats med dig ännu. När en kollega delar ett mejl visas det här — även utan att du kopplat Gmail.';
       } else if (!(status && status.connected) && folder !== 'shared') {
-        empty = 'Koppla Gmail för att se inkorg under KUNDER, eller öppna «Delat med mig».';
+        empty =
+          'Inga sparade mejl från den senaste månaden. Koppla Gmail för att synka, eller öppna «Delat med mig».';
       }
       els.list.innerHTML = `<p class="mejl-hint">${empty}</p>${extraHtml || ''}`;
       bindUnmatchedFilterButtons(els.list);
@@ -767,8 +768,25 @@
     }
 
     if (!(status && status.connected)) {
+      // Visa Airtable-cache (senaste månaden) även utan aktiv Gmail-koppling.
+      const hadMessages = messages.length > 0;
+      if (!hadMessages) {
+        els.list.innerHTML =
+          '<p class="mejl-hint"><i class="fas fa-spinner fa-spin"></i> Hämtar sparade mejl…</p>';
+      }
+      try {
+        const { res, data } = await fetchInbox('cache');
+        if (res.ok && data.success && (data.messages || []).length) {
+          applyInboxData(data);
+          setSyncStatus('Gmail ej kopplad — visar sparade mejl');
+          setTimeout(() => setSyncStatus(''), 4000);
+          return;
+        }
+      } catch (_) {
+        /* fall through */
+      }
       els.list.innerHTML =
-        '<p class="mejl-hint">Koppla Gmail för att se inkorg under KUNDER. Delade mejl finns under «Delat med mig».</p>';
+        '<p class="mejl-hint">Koppla Gmail för att synka inkorg under KUNDER. Sparade mejl från den senaste månaden visas här när de finns. Delade mejl finns under «Delat med mig».</p>';
       return;
     }
 
@@ -2247,13 +2265,7 @@
   function onFolderClick(next) {
     if (folder === next) return;
     hideComposePane();
-    if ((next === 'inbox' || next === 'sent' || next === 'open') && !(status && status.connected)) {
-      showToast('Koppla Gmail för att öppna Inkorg/öppna/Skickat. Delade mejl finns under «Delat med mig».', 'error');
-      folder = 'shared';
-      setFolderUi();
-      loadInbox();
-      return;
-    }
+    // Inkorg/Skickat fungerar offline via Airtable-cache; bara varna om sync behövs.
     folder = next;
     // "open" filtrerar lokalt bland inbox-data
     if (next === 'open') {
@@ -2323,8 +2335,9 @@
         /* delade mejl är optional vid boot */
       }
       await loadStatus();
-      if (!(status && status.connected)) {
-        folder = 'shared';
+      // Behåll inkorg även utan Gmail — cache från Airtable (senaste månaden) kan visas.
+      if (!(status && status.connected) && folder !== 'shared') {
+        folder = 'inbox';
       }
       renderStatus();
       resetConnectButton();
@@ -2334,6 +2347,18 @@
       try {
         await loadInbox();
         setFolderUi();
+        // Om inkorgscache är tom, visa delade mejl så sidan inte känns tom.
+        if (
+          !(status && status.connected) &&
+          folder === 'inbox' &&
+          !(messages && messages.length) &&
+          sharedMessages &&
+          sharedMessages.length
+        ) {
+          folder = 'shared';
+          setFolderUi();
+          renderList();
+        }
         if (deepMessageId) {
           history.replaceState(
             {},
