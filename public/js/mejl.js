@@ -1602,6 +1602,7 @@
     if (idx >= 0) sharedMessages[idx] = { ...sharedMessages[idx], ...item };
     else sharedMessages.unshift(item);
     rememberAttachmentCount(listId, item.attachmentCount || 0);
+    renderList();
     const m = {
       source: 'shared',
       archiveId: archive.id,
