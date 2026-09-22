@@ -437,6 +437,7 @@
   function archiveToListItem(archive) {
     const cid = String((archive && archive.customerId) || '').trim();
     const fromCustomers = customers.find((c) => c.id === cid);
+    const attachmentMeta = Array.isArray(archive.attachmentMeta) ? archive.attachmentMeta : [];
     return {
       id: sharedListId(archive.id),
       archiveId: archive.id,
@@ -457,10 +458,35 @@
       bodyText: archive.bodyText || '',
       bodyHtml: archive.bodyHtml || '',
       masked: !!archive.masked,
-      attachmentMeta: archive.attachmentMeta || [],
+      attachmentMeta,
+      attachmentCount: attachmentMeta.length,
       savedTo: archive.savedTo || [],
       isOwner: !!archive.isOwner
     };
+  }
+
+  function messageAttachmentCount(m) {
+    if (!m) return 0;
+    if (typeof m.attachmentCount === 'number' && Number.isFinite(m.attachmentCount)) {
+      return Math.max(0, Math.min(99, Math.floor(m.attachmentCount)));
+    }
+    if (Array.isArray(m.attachments) && m.attachments.length) return m.attachments.length;
+    if (Array.isArray(m.attachmentMeta) && m.attachmentMeta.length) return m.attachmentMeta.length;
+    return 0;
+  }
+
+  function rememberAttachmentCount(messageId, count) {
+    const id = String(messageId || '').trim();
+    if (!id || !(typeof count === 'number') || count < 0) return false;
+    const n = Math.min(99, Math.floor(count));
+    const touch = (list) => {
+      const idx = (list || []).findIndex((x) => x && String(x.id) === id);
+      if (idx < 0) return false;
+      if (list[idx].attachmentCount === n) return true;
+      list[idx] = { ...list[idx], attachmentCount: n };
+      return true;
+    };
+    return touch(messages) || touch(sharedMessages);
   }
 
   function isUnderlagRecipient(m) {
@@ -526,6 +552,15 @@
             handleStatusApi && handleStatus && typeof handleStatusApi.badgeHtml === 'function'
               ? handleStatusApi.badgeHtml(handleStatus)
               : '';
+          const attCount = messageAttachmentCount(m);
+          const attachBadge =
+            attCount > 0
+              ? `<span class="mejl-item-attach" title="${
+                  attCount === 1 ? '1 bilaga' : attCount + ' bilagor'
+                }"><i class="fas fa-paperclip" aria-hidden="true"></i>${
+                  attCount > 1 ? `<span class="mejl-item-attach-count">${attCount}</span>` : ''
+                }</span>`
+              : '';
           const sharedBadge =
             m.source === 'shared' || folder === 'shared'
               ? `<span class="mejl-item-shared-badge"><i class="fas fa-share-alt" aria-hidden="true"></i> Delat med dig</span>`
@@ -562,6 +597,7 @@
             ${customerLink}${unmatchedBadge}
           </div>
           <div class="mejl-item-top-right">
+            ${attachBadge}
             <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
             ${menuHtml}
           </div>
@@ -1565,6 +1601,8 @@
     const item = archiveToListItem(archive);
     if (idx >= 0) sharedMessages[idx] = { ...sharedMessages[idx], ...item };
     else sharedMessages.unshift(item);
+    rememberAttachmentCount(listId, item.attachmentCount || 0);
+    renderList();
     const m = {
       source: 'shared',
       archiveId: archive.id,
@@ -1603,6 +1641,8 @@
     const m = data.message;
     const listMeta = messages.find((x) => x.id === id) || {};
     if (Array.isArray(data.kunderLabels)) kunderLabelsCache = data.kunderLabels;
+    const attLen = Array.isArray(m.attachments) ? m.attachments.length : 0;
+    rememberAttachmentCount(id, attLen);
     // Synka listkort med detaljens etiketter/kund
     applyLabelResultToList(id, {
       labelIds: m.labelIds,
