@@ -203,6 +203,14 @@
     if (els.sendStatus && options.clearStatus !== false) els.sendStatus.textContent = '';
   }
 
+  function clearComposeReplyMeta() {
+    if (!els.compose || !els.compose.dataset) return;
+    delete els.compose.dataset.threadId;
+    delete els.compose.dataset.inReplyTo;
+    delete els.compose.dataset.quoteFrom;
+    delete els.compose.dataset.quoteDate;
+  }
+
   /** Stäng skrivläge och återställ mejldetaljen (tom eller senast valda). */
   function hideComposePane() {
     if (els.compose) els.compose.hidden = true;
@@ -1539,6 +1547,9 @@
         els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
         els.compose.dataset.threadId = m.threadId || '';
         els.compose.dataset.inReplyTo = m.messageIdHeader || '';
+        els.compose.dataset.quoteFrom = m.from || '';
+        els.compose.dataset.quoteDate =
+          m.date || (m.internalDate != null ? String(m.internalDate) : '');
         const cid = resolveMessageCustomerId(m, listMeta);
         if (cid) els.customer.value = cid;
         els.body.focus();
@@ -1796,10 +1807,23 @@
   }
 
 
+  /** Dela svarstext och citerat original vid första --- (samma som servern). */
+  function splitComposeReplyQuote(rawBody) {
+    const s = String(rawBody ?? '');
+    const marker = '\n---\n';
+    const idx = s.indexOf(marker);
+    if (idx === -1) return { publicText: s, quotedText: '' };
+    return { publicText: s.slice(0, idx), quotedText: s.slice(idx + marker.length) };
+  }
+
   async function sendMail() {
     els.sendStatus.textContent = 'Förbereder…';
     try {
-      const publicText = els.body.value;
+      const split = splitComposeReplyQuote(els.body.value);
+      const publicText = split.publicText;
+      const quotedText = split.quotedText;
+      const quoteFrom = (els.compose.dataset.quoteFrom || '').trim();
+      const quoteDate = els.compose.dataset.quoteDate || '';
       const protectedText = (els.protectedBody && els.protectedBody.value) || '';
       const protectedFiles = [];
       for (const f of pendingFiles) {
@@ -1830,7 +1854,18 @@
       }
       const prepRes = await fetch(`${baseUrl}/api/mejl/compose-prepare`, {
         method:'POST', ...authOpts(),
-        body: JSON.stringify({ publicText, protectedText, protectedFiles, subject: els.subject.value.trim(), customerId: els.customer.value || undefined, samarbeteUrl, samarbeteTitle })
+        body: JSON.stringify({
+          publicText,
+          quotedText: quotedText || undefined,
+          quoteFrom: quoteFrom || undefined,
+          quoteDate: quoteDate || undefined,
+          protectedText,
+          protectedFiles,
+          subject: els.subject.value.trim(),
+          customerId: els.customer.value || undefined,
+          samarbeteUrl,
+          samarbeteTitle
+        })
       });
       const prep = await prepRes.json().catch(() => ({}));
       if (!prepRes.ok || !prep.success) { els.sendStatus.textContent = prep.error || 'Kunde inte förbereda mejlet'; return; }
@@ -1864,7 +1899,7 @@
       pendingFiles = []; renderAttachList();
       if (els.qList) els.qList.innerHTML = '';
       if (els.attachments) els.attachments.value = '';
-      delete els.compose.dataset.threadId; delete els.compose.dataset.inReplyTo;
+      clearComposeReplyMeta();
       folder = 'sent'; await loadInbox();
     } catch (err) { els.sendStatus.textContent = err.message || 'Kunde inte skicka'; }
   }
@@ -1939,8 +1974,7 @@
   }
   els.filter.addEventListener('change', () => loadInbox());
   els.composeToggle.addEventListener('click', () => {
-    delete els.compose.dataset.threadId;
-    delete els.compose.dataset.inReplyTo;
+    clearComposeReplyMeta();
     showComposePane({ title: 'Nytt mejl' });
     if (els.to) els.to.focus();
     loadSignatureSettings().catch(() => updateComposeSignatureHint());
