@@ -17739,6 +17739,10 @@ app.patch('/api/notes/:id', authenticateToken, async (req, res) => {
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const NOTES_TABLE = 'tblXswCwopx7l02Mu';
 
+    if (!noteData || typeof noteData !== 'object') {
+      return res.status(400).json({ error: 'fields saknas' });
+    }
+
     const airtableFields = {};
 
     if (noteData.typAvAnteckning) {
@@ -17755,16 +17759,45 @@ app.patch('/api/notes/:id', authenticateToken, async (req, res) => {
       if (noteData[`Status${i}`] !== undefined) airtableFields[`Status${i}`] = noteData[`Status${i}`];
     }
 
+    const noteMejlUrl = String(noteData.mejlUrl || noteData['Mejl-länk'] || '').trim()
+      || (noteData.notes !== undefined ? extractMejlLink(noteData.notes || '') : '');
+    if (noteMejlUrl) {
+      airtableFields['Mejl-länk'] = noteMejlUrl;
+      try {
+        await ensureAirtableTableFields(airtableAccessToken, airtableBaseId, NOTES_TABLE, [
+          { name: 'Mejl-länk', type: 'singleLineText', description: 'Deep-link till mejl i ClientFlow' }
+        ]);
+      } catch (ensureErr) {
+        console.warn('ensure anteckning Mejl-länk (PATCH):', ensureErr.message);
+      }
+    }
+
     // Ta bort tomma strängar
     Object.keys(airtableFields).forEach(k => {
       if (airtableFields[k] === '') delete airtableFields[k];
     });
 
-    const response = await axios.patch(
-      `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}/${id}`,
-      { fields: airtableFields, typecast: true },
-      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-    );
+    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}/${id}`;
+    const response = await (async () => {
+      try {
+        return await axios.patch(
+          patchUrl,
+          { fields: airtableFields, typecast: true },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } catch (patchErr) {
+        const unknown = String(patchErr.response?.data?.error?.message || '');
+        if (!/Mejl-länk/i.test(unknown) || !airtableFields['Mejl-länk']) throw patchErr;
+        console.warn('Anteckningar saknar Mejl-länk — länken ligger kvar i Notes');
+        const without = { ...airtableFields };
+        delete without['Mejl-länk'];
+        return axios.patch(
+          patchUrl,
+          { fields: without, typecast: true },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      }
+    })();
 
     res.json({ success: true, note: response.data });
   } catch (error) {

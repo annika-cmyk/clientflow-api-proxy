@@ -773,6 +773,7 @@
       }
       const raw = String(mode || 'dokumentation').trim();
       if (raw === 'uppgift') return { effective: 'uppgift', create: 'uppgift' };
+      if (raw === 'existing-uppgift') return { effective: 'existing-uppgift', create: null };
       if (raw === 'new-uppdrag') return { effective: 'uppdrag', create: 'uppdrag' };
       if (splitOn && (raw === 'dokumentation' || raw === 'korning' || raw === 'uppdrag')) {
         return { effective: 'split', create: null };
@@ -787,13 +788,128 @@
         return Koppla.kopplaFieldVisibility({ mode, splitOn });
       }
       const raw = String(mode || 'dokumentation').trim();
-      const split = !!splitOn && raw !== 'uppgift' && raw !== 'new-uppdrag';
+      const split =
+        !!splitOn &&
+        raw !== 'uppgift' &&
+        raw !== 'new-uppdrag' &&
+        raw !== 'existing-uppgift';
       return {
         run: raw === 'korning' || split,
         uppdrag: raw === 'uppdrag' || split,
         newUppdrag: raw === 'new-uppdrag',
-        uppgift: raw === 'uppgift'
+        uppgift: raw === 'uppgift',
+        existingUppgift: raw === 'existing-uppgift'
       };
+    }
+
+    function listOpenUppgifterFromNotes(notes) {
+      const Koppla = global.MejlKopplaUppdrag;
+      if (Koppla && typeof Koppla.listOpenUppgifterFromNotes === 'function') {
+        return Koppla.listOpenUppgifterFromNotes(notes);
+      }
+      const out = [];
+      for (const note of notes || []) {
+        const id = String((note && note.id) || '').trim();
+        if (!id) continue;
+        const f = (note && (note.fields || note)) || {};
+        for (let i = 1; i <= 8; i++) {
+          const todo = f['ToDo' + i];
+          const text = typeof todo === 'string' ? todo.trim() : String(todo || '').trim();
+          if (!text) continue;
+          const status = String(f['Status' + i] || '').trim();
+          const statusLower = status.toLowerCase();
+          if (statusLower === 'klart' || statusLower === 'klar') continue;
+          const name = String(f.Name || '').trim();
+          const datum = String(f.Datum || '').trim();
+          out.push({
+            noteId: id,
+            index: i,
+            text,
+            status: status || 'Att göra',
+            name,
+            datum,
+            notes: String(f.Notes || ''),
+            value: id + ':' + i
+          });
+        }
+      }
+      out.sort((a, b) => String(b.datum || '').localeCompare(String(a.datum || '')));
+      return out;
+    }
+
+    async function loadOpenUppgifter(customerId) {
+      try {
+        const res = await fetch(
+          baseUrl + '/api/notes?customerId=' + encodeURIComponent(customerId),
+          authOpts()
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return [];
+        return listOpenUppgifterFromNotes(data.notes || []);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function markMejlUppgiftStatus(messageId) {
+      const mid = String(messageId || '').trim();
+      if (!mid) return;
+      try {
+        const hs =
+          global.MejlHandleStatus && MejlHandleStatus.createApi
+            ? MejlHandleStatus.createApi()
+            : null;
+        if (hs) hs.set(mid, hs.TASK_CREATED || 'task_created');
+      } catch (_) {}
+    }
+
+    async function linkExistingUppgiftFromMejl(openTasks, root, message, messageId) {
+      const raw = String((root.querySelector('#mejl-existing-uppgift') || {}).value || '').trim();
+      const Koppla = global.MejlKopplaUppdrag || null;
+      const parsed =
+        Koppla && typeof Koppla.parseUppgiftValue === 'function'
+          ? Koppla.parseUppgiftValue(raw)
+          : (function () {
+              const m = raw.match(/^(rec[A-Za-z0-9]+):([1-8])$/);
+              return m ? { noteId: m[1], index: Number(m[2]) } : null;
+            })();
+      if (!parsed) throw new Error('Välj en öppen uppgift.');
+      const task = (openTasks || []).find(
+        (t) => t.noteId === parsed.noteId && Number(t.index) === Number(parsed.index)
+      );
+      if (!task) throw new Error('Uppgiften hittades inte. Uppdatera och försök igen.');
+      const mejlId = String(
+        messageId || (message && (message.gmailMessageId || message.id || message.messageId)) || ''
+      ).trim();
+      const link = mejlDeepLink(
+        mejlId.startsWith('shared:') ? (message && message.gmailMessageId) || '' : mejlId
+      );
+      const patchFields =
+        Koppla && typeof Koppla.buildLinkExistingUppgiftPatch === 'function'
+          ? Koppla.buildLinkExistingUppgiftPatch({
+              notesText: task.notes,
+              mejlUrl: link,
+              messageId: mejlId
+            })
+          : (function () {
+              if (!link) throw new Error('Mejllänk saknas');
+              const body = String(task.notes || '').trim();
+              return {
+                notes: body && body.indexOf(link) === -1 ? body + '\n\n' + link : body || link,
+                mejlUrl: link
+              };
+            })();
+      const res = await fetch(baseUrl + '/api/notes/' + encodeURIComponent(parsed.noteId), {
+        method: 'PATCH',
+        ...authOpts(),
+        body: JSON.stringify({ fields: patchFields })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || data.message || 'Kunde inte koppla till uppgiften');
+      }
+      markMejlUppgiftStatus(mejlId);
+      return { task, noteId: parsed.noteId, displayName: task.text };
     }
 
     async function openSaveWizard(id, m, customerId, onDone) {
@@ -802,11 +918,12 @@
       const currentUser =
         (global.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) || {};
       const currentUserName = String(currentUser.name || currentUser.Namn || '').trim();
-      const [uppdrag, runs, users, customerMeta] = await Promise.all([
+      const [uppdrag, runs, users, customerMeta, openUppgifter] = await Promise.all([
         loadUppdrag(customerId),
         loadRuns(customerId),
         loadByraUsers(),
-        loadCustomerMeta(customerId)
+        loadCustomerMeta(customerId),
+        loadOpenUppgifter(customerId)
       ]);
       const defaultKlient = customerMeta.klientansvarig || currentUserName;
       const attChecks = atts.length
@@ -822,6 +939,13 @@
         const f = r.fields || r;
         const label = ((f['Period Label'] || f.PeriodKey || '') + (f.Typ ? ' · ' + f.Typ : '') + (f.Deadline ? ' (' + f.Deadline + ')' : '')) || r.id;
         return '<option value="' + esc(r.id) + '" data-uppdrag-id="' + esc(f['Uppdrag ID'] || '') + '">' + esc(label) + '</option>';
+      }).join('');
+      const existingUppgiftOpts = (openUppgifter || []).map((t) => {
+        const bits = [t.text];
+        if (t.status && t.status !== 'Att göra') bits.push(t.status);
+        if (t.name) bits.push(t.name);
+        if (t.datum) bits.push(t.datum);
+        return '<option value="' + esc(t.value) + '">' + esc(bits.join(' · ')) + '</option>';
       }).join('');
       const today = todayIsoDate();
       const ansvarigOpts = userNameOptionsHtml(users, currentUserName, 'Välj handläggare');
@@ -851,6 +975,7 @@
           '>Uppdragskörning</option>' +
           '<option value="uppdrag">Uppdrag</option>' +
           '<option value="new-uppdrag">Nytt uppdrag</option>' +
+          '<option value="existing-uppgift">Befintlig uppgift</option>' +
           '<option value="uppgift">Ny uppgift</option>' +
           '</select></div>' +
           '<div id="mejl-new-uppdrag-wrap" hidden class="form-grid mejl-koppla-subform">' +
@@ -869,6 +994,16 @@
           esc(today) +
           '"></div>' +
           '<p class="mejl-hint" style="margin:0;">Skapas som Eget uppdrag med frekvens Engång. Mejlet kopplas dit.</p>' +
+          '</div>' +
+          '<div id="mejl-existing-uppgift-wrap" hidden class="form-grid mejl-koppla-subform">' +
+          '<div><label class="mejl-label-edit-label" for="mejl-existing-uppgift">Öppen uppgift *</label>' +
+          '<select id="mejl-existing-uppgift" class="form-select form-input">' +
+          '<option value="">Välj…</option>' +
+          existingUppgiftOpts +
+          '</select></div>' +
+          (openUppgifter && openUppgifter.length
+            ? '<p class="mejl-hint" style="margin:0;">Länk till mejlet sparas på uppgiften. Mejl/bilagor kan samtidigt sparas i kunddokumentationen.</p>'
+            : '<p class="mejl-hint" style="margin:0;">Inga öppna uppgifter på kunden. Välj Ny uppgift för att skapa en.</p>') +
           '</div>' +
           '<div id="mejl-uppgift-wrap" hidden class="form-grid mejl-koppla-subform">' +
           '<div><label class="mejl-label-edit-label" for="mejl-uppgift-text">Uppgift *</label>' +
@@ -920,6 +1055,8 @@
             runEl && runEl.selectedIndex > 0
               ? String(runEl.options[runEl.selectedIndex].textContent || '').trim()
               : '';
+          let existingUppgiftName = '';
+          let targets = [];
 
           if (resolved.create === 'uppdrag') uppdragId = '__new__';
 
@@ -935,7 +1072,34 @@
             );
           }
 
-          if (resolved.create === 'uppgift') {
+          if (mode === 'existing-uppgift') {
+            try {
+              const linked = await linkExistingUppgiftFromMejl(openUppgifter, root, m, id);
+              existingUppgiftName = linked.displayName;
+            } catch (err) {
+              showToast((err && err.message) || 'Kunde inte koppla till uppgift', 'error');
+              return;
+            }
+            const wantsAttach = includeEmail || (saveAtts && selectedAtts.length);
+            if (wantsAttach) {
+              targets = [{
+                type: 'dokumentation',
+                customerId,
+                includeEmail,
+                attachmentIds: saveAtts ? selectedAtts : []
+              }];
+            } else {
+              showToast(
+                'Kopplat till uppgiften' +
+                  (existingUppgiftName ? ' «' + existingUppgiftName + '»' : '') +
+                  '. Mejlet har status Uppgift skapad.',
+                'success'
+              );
+              closeModal();
+              if (onDone) await onDone();
+              return;
+            }
+          } else if (resolved.create === 'uppgift') {
             try {
               const created = await createUppgiftFromMejl(customerId, root, m, customerMeta, id);
               uppdragId = created.record.id;
@@ -977,9 +1141,10 @@
             }
           }
 
-          let targets = [];
           if (mode === 'dokumentation') {
             targets = [{ type: 'dokumentation', customerId, includeEmail, attachmentIds: saveAtts ? selectedAtts : [] }];
+          } else if (mode === 'existing-uppgift') {
+            // targets redan satta (dokumentation) om mejl/bilagor ska sparas
           } else if (mode === 'uppdrag') {
             if (!uppdragId || uppdragId === '__new__') { showToast('Välj eller skapa ett uppdrag.', 'error'); return; }
             targets = [{
@@ -1097,9 +1262,18 @@
             runName ||
             uppdragName ||
             '';
-          const okMsg = destLabel
-            ? 'Kopplat till ' + destLabel + ' (' + nOk + ' objekt).'
-            : 'Kopplat (' + nOk + ' objekt).';
+          let okMsg;
+          if (existingUppgiftName) {
+            okMsg =
+              'Kopplat till uppgiften «' +
+              existingUppgiftName +
+              '»' +
+              (nOk ? ' och sparat i dokumentation (' + nOk + ' objekt).' : '.');
+          } else if (destLabel) {
+            okMsg = 'Kopplat till ' + destLabel + ' (' + nOk + ' objekt).';
+          } else {
+            okMsg = 'Kopplat (' + nOk + ' objekt).';
+          }
           showToast(
             nErr
               ? 'Kopplat ' +
@@ -1130,13 +1304,18 @@
         const r = document.getElementById('mejl-save-run-wrap');
         const neu = document.getElementById('mejl-new-uppdrag-wrap');
         const uppg = document.getElementById('mejl-uppgift-wrap');
+        const existing = document.getElementById('mejl-existing-uppgift-wrap');
         const attsList = document.getElementById('mejl-save-atts-list');
         if (r) r.hidden = !vis.run;
         if (u) u.hidden = !vis.uppdrag;
         if (uppg) uppg.hidden = !vis.uppgift;
+        if (existing) existing.hidden = !vis.existingUppgift;
         if (neu) neu.hidden = !vis.newUppdrag;
         if (attsList) attsList.hidden = !(attsEl && attsEl.checked);
-        if (okBtn) okBtn.textContent = vis.newUppdrag || vis.uppgift ? 'Skapa och koppla' : 'Koppla';
+        if (okBtn) {
+          okBtn.textContent =
+            vis.newUppdrag || vis.uppgift ? 'Skapa och koppla' : 'Koppla';
+        }
       };
       if (modeEl) modeEl.addEventListener('change', sync);
       if (attsEl) attsEl.addEventListener('change', sync);
