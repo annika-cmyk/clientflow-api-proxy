@@ -46,6 +46,17 @@ async function main() {
   } else {
     console.log('✅ Fältet "Gmail Sync Cache" finns redan.');
   }
+
+  const { ensureMejlcacheTable } = require('../lib/gmail/message-cache');
+  const mejlcache = await ensureMejlcacheTable();
+  if (!mejlcache.ok) {
+    console.warn('⚠️  Gmail Mejlcache:', mejlcache.error);
+    console.warn('   Kör senare: node scripts/setup-gmail-mejlcache.js');
+  } else if (mejlcache.created) {
+    console.log('✅ Skapade tabellen "Gmail Mejlcache".');
+  } else {
+    console.log('✅ Tabellen "Gmail Mejlcache" finns redan.');
+  }
 }
 
 main().catch((err) => {

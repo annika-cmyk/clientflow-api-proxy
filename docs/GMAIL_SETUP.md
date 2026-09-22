@@ -106,6 +106,21 @@ Spara till **Uppdragskörning** skriver filen primärt till **Uppdrag**-postens 
 
 Spara till **Dokumentation** skriver till KUNDDATA (`Dokumentation`/`Attachments`). Spara till **Uppdrag** skriver direkt till Uppdrag-postens bilagefält.
 
+## Inkorgscache (senaste 30 dagarna)
+
+Gmail-synken hämtar **bara mejl ≤ 30 dagar** (`newer_than:30d`). Äldre mejl hämtas inte.
+
+- **List-cache:** fältet `Gmail Sync Cache` på Application Users (historyId + metadata).
+- **Body-cache:** Airtable-tabellen **Gmail Mejlcache** (en rad per användare + Gmail Message ID, inkl. body). Öppnade mejl läses härifrån när de finns, utan ny Gmail-hämtning. Synken skriver bara nya/ändrade bodies.
+
+```
+node scripts/setup-gmail-mejlcache.js
+# eller POST /api/setup/airtable-gmail-mejlcache (Ledare/Admin)
+# (körs även av setup-gmail-fields.js när schema-token finns)
+```
+
+Valfri env: `AIRTABLE_TABLE_GMAIL_MEJLCACHE_ID`. Utan Gmail-koppling visas sparade mejl från den senaste månaden från cachen när de finns.
+
 ## Felsökning
 
 | Symptom | Åtgärd |
