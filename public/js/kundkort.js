@@ -1880,7 +1880,12 @@ class CustomerCardManager {
                     }
                 }
             }
-            const start0 = toDateStr(f['Startdatum'] || '');
+            let start0 = toDateStr(f['Startdatum'] || '');
+            const yearlyTypInst = typ === 'Bokslut' || typ === 'Deklaration'
+                || (window.YearlyUppdragRuns && YearlyUppdragRuns.isYearlyFreq(f['Frekvens']));
+            if (yearlyTypInst && window.YearlyUppdragRuns) {
+                start0 = YearlyUppdragRuns.alignYearlyStartToDeadline(start0, deadline0) || start0;
+            }
             if (start0 && deadline0) {
                 const map = instByTypeMonth.get(mapKey) || new Map();
                 addOpenMonthsToInstMap(map, start0.slice(0, 7), deadline0.slice(0, 7), deadline0);
@@ -2596,7 +2601,13 @@ class CustomerCardManager {
                 const resolvedAnsvarig = (window.KoringAnsvarig && KoringAnsvarig.resolveRunAnsvarig)
                     ? KoringAnsvarig.resolveRunAnsvarig(runAnsvarig, ansvarig)
                     : { name: runAnsvarig || ansvarig, inherited: !runAnsvarig && !!ansvarig };
-                const korningStart = toDateStr(runRec?.fields?.['Startdatum'] || '');
+                const korningStartRaw = toDateStr(runRec?.fields?.['Startdatum'] || '');
+                const korningDeadline = toDateStr(instDeadline || runRec?.fields?.['Deadline'] || '');
+                const korningStart = (window.YearlyUppdragRuns
+                    && (t === 'Bokslut' || t === 'Deklaration' || YearlyUppdragRuns.isYearlyFreq(freq))
+                    && korningStartRaw && korningDeadline)
+                    ? (YearlyUppdragRuns.alignYearlyStartToDeadline(korningStartRaw, korningDeadline) || korningStartRaw)
+                    : korningStartRaw;
                 const docsKey = `${t}:${mk}`;
                 const docsDeadlineKey = String(instDeadline || '').slice(0, 10);
                 const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : null);

@@ -307,6 +307,14 @@
       const st = MomsPeriod.startIsoFromPeriodKey(String(periodKey || '').trim(), freq);
       if (st) return st;
     }
+    const freqLow = String(freq || '').toLowerCase();
+    if (window.YearlyUppdragRuns && (YearlyUppdragRuns.isYearlyFreq(freq)
+      || typ === 'Bokslut' || typ === 'Deklaration')) {
+      return YearlyUppdragRuns.alignYearlyStartToDeadline(
+        fields?.['Startdatum'] || '',
+        dl
+      ) || dl;
+    }
     const step = monthsStepFromFreq(freq);
     if (step === 0) {
       const explicit = toDateStr(fields?.['Startdatum'] || '');
@@ -453,6 +461,26 @@
           s = addDays(s, 7);
         }
       }
+      return Array.from(runs.values());
+    }
+
+    if (window.YearlyUppdragRuns && (YearlyUppdragRuns.isYearlyFreq(freq)
+      || typ === 'Bokslut' || typ === 'Deklaration')) {
+      const horizonEnd = (() => {
+        const y = monthMax.getFullYear();
+        const m = monthMax.getMonth() + 1;
+        const last = new Date(y, m, 0).getDate();
+        return `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+      })();
+      const yearlyRuns = YearlyUppdragRuns.yearlyRunsThroughHorizon({
+        startIso: refStart,
+        deadlineIso: refDeadline,
+        freq: YearlyUppdragRuns.isYearlyFreq(freq) ? freq : 'Årsvis',
+        horizonEnd
+      });
+      yearlyRuns.forEach((run) => {
+        addRun(run.periodKey, run.deadlineIso, run.startIso, run.periodLabel);
+      });
       return Array.from(runs.values());
     }
 

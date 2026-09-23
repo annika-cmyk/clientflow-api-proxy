@@ -31,8 +31,13 @@
 
     function frekvensChoicesForTyp(typ, isLone) {
         if (isLone) return ['Varje månad'];
-        if (String(typ || '').trim() === 'Momsredovisning') {
+        var t = String(typ || '').trim();
+        if (t === 'Momsredovisning') {
             return ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration', 'Veckovis', 'Engång'];
+        }
+        // Bokslut och deklaration är årsvisa i grunden — Årsvis först som default.
+        if (t === 'Bokslut' || t === 'Deklaration') {
+            return ['Årsvis', 'Engång', 'Veckovis', 'Varje månad', 'Varje kvartal'];
         }
         return ['Veckovis', 'Varje månad', 'Varje kvartal', 'Årsvis', 'Engång'];
     }

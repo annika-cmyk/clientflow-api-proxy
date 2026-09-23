@@ -79,7 +79,12 @@ const {
   missingExactRiskLabels
 } = require('./lib/risk-skala-airtable');
 const { SCHEMA_FIELDS: OVRIGA_RISK_SCHEMA_FIELDS, applyOvrigExtraAirtableFields, isRiskFactorLightPatch } = require('./lib/ovriga-risk-fields');
-const { yearlyRunsThroughHorizon } = require('./lib/yearly-uppdrag-runs');
+const {
+  yearlyRunsThroughHorizon,
+  isYearlyFreq,
+  advanceYearlyTemplate,
+  alignYearlyStartToDeadline
+} = require('./lib/yearly-uppdrag-runs');
 const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag-runs');
 const UppdragTyp = require('./public/js/uppdrag-typ');
 const {
@@ -12010,6 +12015,28 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
   const isMomsSched = typ === 'Momsredovisning' && (freqLow.includes('månad') || freqLow.includes('kvartal'));
   if (!deadline0 && !isMomsSched) return { created: 0, skipped: true, reason: 'missing_deadline' };
 
+  // Årsvis: om Startdatum halkat efter Nästa deadline (t.ex. kvar på 2025-10-01
+  // medan deadline är 2027-03-31), flytta starten till rätt arbetsfönster.
+  const isYearUppdragEarly = typ === 'Bokslut' || typ === 'Deklaration'
+    || isYearlyFreq(freq);
+  if (isYearUppdragEarly && deadline0) {
+    const startRaw = toIsoDate(f['Startdatum'] || '');
+    const aligned = alignYearlyStartToDeadline(startRaw, deadline0);
+    if (aligned && startRaw && aligned !== startRaw) {
+      try {
+        const uppdragTableRef = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${uppdragTableRef}/${uppdragId}`,
+          { fields: { Startdatum: aligned, Uppdaterad: new Date().toISOString() } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+        f['Startdatum'] = aligned;
+      } catch (e) {
+        console.warn(`ensureRunsAheadForUppdrag: kunde inte alignera Startdatum för ${uppdragId}:`, e.message);
+      }
+    }
+  }
+
   const avslutasIso = toIsoDate(f['Avslutas'] || '');
   let horizonEnd = addMonthsIso(todayIso, 12) || todayIso;
   if (avslutasIso && avslutasIso < horizonEnd) horizonEnd = avslutasIso;
@@ -22464,6 +22491,15 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       'Uppdaterad': new Date().toISOString()
     };
     if (next) fields['Nästa deadline'] = next;
+    // Årsvis: flytta även Startdatum så nästa körning får samma arbetsfönster (+1 år),
+    // t.ex. 2025-10-01→2026-03-31 blir 2026-10-01→2027-03-31.
+    if (next && isYearlyFreq(freq)) {
+      const advanced = advanceYearlyTemplate({
+        startIso: toDateStr(f['Startdatum'] || ''),
+        deadlineIso: toDateStr(currentDeadline) || doneIso
+      });
+      if (advanced?.startIso) fields['Startdatum'] = advanced.startIso;
+    }
 
     const updateRes = await axios.patch(
       `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${existing.id}`,
