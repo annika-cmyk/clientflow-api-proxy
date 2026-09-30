@@ -153,6 +153,7 @@ const dokumentRiskSubkategori = require('./lib/dokument-risk-subkategori');
 const kycUppfoljning = require('./lib/kyc-uppfoljning');
 const kycDokumentSync = require('./lib/kyc-dokument-sync');
 const kycFormularMerge = require('./lib/kyc-formular-merge');
+const kycTjansterSync = require('./lib/kyc-tjanster-sync');
 const uppdragsavtalDokumentSync = require('./lib/uppdragsavtal-dokument-sync');
 const aktuellRiskbedomning = require('./lib/aktuell-riskbedomning');
 const amlKollen = require('./lib/aml-kollen');
@@ -8351,6 +8352,50 @@ async function fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseI
     offset = r.data.offset;
   } while (offset);
   return all;
+}
+
+/**
+ * Matcha KYC-formulärets tjänstetiketter mot byråns aktiva katalog
+ * och returnera record-id för Kundens utvalda tjänster (riskbedömning).
+ */
+async function resolveLinkedTjansterFromKyc(airtableAccessToken, airtableBaseId, byraId, kycTjanster) {
+  const byraKey = String(byraId || '').trim();
+  if (!byraKey) {
+    return { linkedIds: [], unmatched: [], labels: [] };
+  }
+  const catalogRecs = await fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseId, byraKey);
+  let catalog = catalogRecs.map((r) => ({
+    id: r.id,
+    namn: r.namn,
+    aktuell: r.fields?.Aktuell === true,
+    fields: r.fields
+  }));
+  try {
+    const num = parseInt(String(byraKey), 10);
+    const ff = Number.isNaN(num)
+      ? `{Byrå ID}="${byraKey}"`
+      : `OR({Byrå ID}="${byraKey}",{Byrå ID}=${num})`;
+    const byraUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}?filterByFormula=${encodeURIComponent(ff)}&maxRecords=1`;
+    const byraRes = await axios.get(byraUrl, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 10000
+    });
+    const byraRec = byraRes.data.records && byraRes.data.records[0];
+    if (byraRec) {
+      const utforandeState = readTjanstUtforandeFromFields(byraRec.fields || {});
+      catalog = TjanstAktivKundkoppling.enrichTjansterWithAktiv(catalog, utforandeState);
+      catalog = catalog.map((t) => ({
+        ...t,
+        valbar: TjanstAktivKundkoppling.isSelectableForKund(t, utforandeState)
+      }));
+    }
+  } catch (enrichErr) {
+    console.warn('⚠️ Kunde inte berika KYC→tjänst-katalog med utförande:', enrichErr.message);
+  }
+  return kycTjansterSync.resolveKycTjansterToCatalogIds({
+    kycTjanster,
+    catalog
+  });
 }
 
 /**
@@ -18871,10 +18916,38 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
         return res.status(400).json({ error: 'Inget att synka — fyll i kundformuläret först.' });
       }
       const merged = kycFormularMerge.mergeKycFormular(ctx.kyc || {}, patch);
+      const syncPatchFields = { 'KYC-formular (JSON)': JSON.stringify(merged) };
+      let tjansterFromKf = null;
+      if (Object.prototype.hasOwnProperty.call(patch, 'tjanster')) {
+        try {
+          const byraId = ctx.fields?.['Byrå ID'] || ctx.fields?.Byrå || '';
+          const resolved = await resolveLinkedTjansterFromKyc(
+            airtableAccessToken,
+            baseId,
+            byraId,
+            patch.tjanster
+          );
+          const prevLinked = ctx.fields?.['Kundens utvalda tjänster'] || [];
+          if (kycTjansterSync.linkedIdsChanged(prevLinked, resolved.linkedIds)) {
+            syncPatchFields['Kundens utvalda tjänster'] = resolved.linkedIds;
+          }
+          if (resolved.matchedNamn && resolved.matchedNamn.length) {
+            merged.tjanster = resolved.matchedNamn.join(', ');
+            syncPatchFields['KYC-formular (JSON)'] = JSON.stringify(merged);
+          }
+          tjansterFromKf = {
+            linkedIds: resolved.linkedIds,
+            unmatched: resolved.unmatched,
+            changed: kycTjansterSync.linkedIdsChanged(prevLinked, resolved.linkedIds)
+          };
+        } catch (tjanstSyncErr) {
+          console.warn('⚠️ Synka kundformulär→KYC kunde inte uppdatera tjänster:', tjanstSyncErr.message);
+        }
+      }
       try {
         await axios.patch(
           `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(ctx.tableName)}/${customerId}`,
-          { fields: { 'KYC-formular (JSON)': JSON.stringify(merged) } },
+          { fields: syncPatchFields },
           { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
         );
       } catch (patchErr) {
@@ -18883,7 +18956,7 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
           await ensureKunddataOptionalFields(airtableAccessToken, baseId);
           await axios.patch(
             `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(ctx.tableName)}/${customerId}`,
-            { fields: { 'KYC-formular (JSON)': JSON.stringify(merged) } },
+            { fields: syncPatchFields },
             { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
           );
         } else {
@@ -18895,7 +18968,11 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
         action: 'mark_synced_to_kyc',
         customerId
       });
-      syncMeta = { syncedToKyc: true, syncedFields: Object.keys(patch) };
+      syncMeta = {
+        syncedToKyc: true,
+        syncedFields: Object.keys(patch),
+        tjansterSync: tjansterFromKf || undefined
+      };
       ctx.kyc = merged;
     } else if (action === 'remind') {
       if (!Kundformular.canRemind(form)) {
@@ -19183,6 +19260,33 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
         KycHuvudman.hasForeignHemvist(huvudmanList) || KycHuvudman.hasForeignHemvist(foretradareList)
       );
     }
+
+    let tjansterSyncMeta = null;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'tjanster')) {
+      try {
+        const byraId = existingFields['Byrå ID'] || existingFields.Byrå || '';
+        const resolved = await resolveLinkedTjansterFromKyc(
+          airtableAccessToken,
+          baseId,
+          byraId,
+          req.body.tjanster
+        );
+        const prevLinked = existingFields['Kundens utvalda tjänster'] || [];
+        if (kycTjansterSync.linkedIdsChanged(prevLinked, resolved.linkedIds)) {
+          syncFields['Kundens utvalda tjänster'] = resolved.linkedIds;
+        }
+        // Normalisera KYC-text till katalognamn som faktiskt länkats (tomt om inget matchade)
+        kycData.tjanster = (resolved.matchedNamn || []).join(', ');
+        tjansterSyncMeta = {
+          linkedIds: resolved.linkedIds,
+          unmatched: resolved.unmatched,
+          matchedNamn: resolved.matchedNamn,
+          changed: kycTjansterSync.linkedIdsChanged(prevLinked, resolved.linkedIds)
+        };
+      } catch (tjanstSyncErr) {
+        console.warn('⚠️ Kunde inte synka KYC-tjänster till riskbedömning:', tjanstSyncErr.message);
+      }
+    }
     await ensureKunddataOptionalFields(airtableAccessToken, baseId);
 
     let patchFields = { 'KYC-formular (JSON)': JSON.stringify(kycData), ...syncFields };
@@ -19240,7 +19344,12 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
       console.warn('KYC verksamhetsrisk kunde inte uppdateras:', verksErr.message);
     }
 
-    res.json({ success: true, message: 'KYC-formulär sparat.' });
+    res.json({
+      success: true,
+      message: 'KYC-formulär sparat.',
+      tjansterSync: tjansterSyncMeta || undefined,
+      kyc: { tjanster: kycData.tjanster || '' }
+    });
   } catch (error) {
     console.error('❌ Error saving KYC-formular:', error.message);
     if (error.status === 403 || error.status === 404) {
