@@ -31,6 +31,9 @@
   }
 
   function matchFactor(namn) {
+    var raw = String(namn || '');
+    // Undvik att «hemvist i Sverige (ej utsatt område)» räknas som utsatt-faktor
+    if (/ej\s+utsatt/i.test(raw)) return null;
     var key = fold(namn);
     if (!key) return null;
     if (key === fold(FACTOR.label) || key.indexOf(fold(FACTOR.label)) !== -1) return FACTOR;

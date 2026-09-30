@@ -11831,7 +11831,9 @@ class CustomerCardManager {
         sel.value = foreign ? 'Ja' : 'Nej';
         this._applyUtlandskaUboFromKyc();
         this._renderKycHemvistOnKund();
+        this._applyGeoChecksFromLander();
         this._scheduleUboFromKycSave();
+        this._scheduleGeoFromLanderSave();
     }
 
     _scheduleUboFromKycSave() {
@@ -12172,6 +12174,46 @@ class CustomerCardManager {
         return (Eu.GEO_FACTORS || []).filter((f) => ids.includes(f.id)).map((f) => f.label);
     }
 
+    _hemvistGeoOpts() {
+        const HGS = window.KycHemvistGeoStyrning;
+        const Uts = window.UtsattOmradeStyrning;
+        const stored = Uts && Uts.parseStored
+            ? Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)'])
+            : (HGS && HGS.parseUtsattStored
+                ? HGS.parseUtsattStored(this.customerData?.fields?.['Utsatt område (JSON)'])
+                : null);
+        const addr = String(this.customerData?.fields?.Address || this.customerData?.fields?.Adress || '').trim();
+        return {
+            hemvistLabels: this._kycHemvistLabelsForGeo(),
+            addressImpliesSweden: HGS && HGS.addressImpliesSweden
+                ? HGS.addressImpliesSweden(stored, addr)
+                : false,
+            utsattStored: stored
+        };
+    }
+
+    _kycHemvistLabelsForGeo() {
+        const labels = this._kycHemvistLabels();
+        const foretag = (document.getElementById('kyc-hemvist-foretag')?.value
+            || this._savedKycFormular?.skatterattslig_hemvist_foretag
+            || '').trim();
+        if (foretag && !labels.some((l) => String(l).toLowerCase() === foretag.toLowerCase())) {
+            return [foretag, ...labels];
+        }
+        return labels;
+    }
+
+    _kycStateForHemvistGeo() {
+        return {
+            ...(this._savedKycFormular || {}),
+            skatterattslig_hemvist_foretag: (document.getElementById('kyc-hemvist-foretag')?.value
+                || this._savedKycFormular?.skatterattslig_hemvist_foretag
+                || 'Sverige').trim(),
+            huvudman: this._collectKycHuvudman(),
+            foretradare: this._collectKycForetradare()
+        };
+    }
+
     _mergeSteeredGeoIds(allChecked) {
         const Eu = window.EuHogriskLander;
         const motpartRecs = this._riskerForTypId('geografiska_motparter', this._allaRisker || []);
@@ -12192,6 +12234,17 @@ class CustomerCardManager {
         if (Uts && Uts.mergeIntoLinkedSet) {
             const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);
             Uts.mergeIntoLinkedSet(allChecked, byraRecs, stored);
+        }
+        const HGS = window.KycHemvistGeoStyrning;
+        if (HGS && HGS.mergeIntoLinkedSet) {
+            const opts = this._hemvistGeoOpts();
+            HGS.mergeIntoLinkedSet(
+                allChecked,
+                byraRecs,
+                this._kycStateForHemvistGeo(),
+                opts.utsattStored,
+                opts
+            );
         }
         return allChecked;
     }
@@ -12223,11 +12276,11 @@ class CustomerCardManager {
             }
         }
         const Uts = window.UtsattOmradeStyrning;
+        const byraRecs = this._riskerForTypId('geografiska', this._allaRisker || []);
         if (Uts && Uts.steeredRecordIds) {
-            const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
-            const utsSteered = new Set(Uts.steeredRecordIds(recs));
+            const utsSteered = new Set(Uts.steeredRecordIds(byraRecs));
             const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);
-            const utsSuggested = new Set(Uts.suggestedRecordIds(recs, stored));
+            const utsSuggested = new Set(Uts.suggestedRecordIds(byraRecs, stored));
             document.querySelectorAll('input[name="risk-geografiska"]').forEach((cb) => {
                 if (!utsSteered.has(cb.value)) return;
                 cb.checked = utsSuggested.has(cb.value);
@@ -12236,20 +12289,40 @@ class CustomerCardManager {
                 if (item) item.classList.toggle('is-geo-steered', utsSuggested.has(cb.value));
             });
         }
+        const HGS = window.KycHemvistGeoStyrning;
+        if (HGS && HGS.steeredRecordIds) {
+            const opts = this._hemvistGeoOpts();
+            const steered = new Set(HGS.steeredRecordIds(byraRecs));
+            const suggested = new Set(HGS.suggestedRecordIds(
+                byraRecs,
+                this._kycStateForHemvistGeo(),
+                opts.utsattStored,
+                opts
+            ));
+            document.querySelectorAll('input[name="risk-geografiska"]').forEach((cb) => {
+                if (!steered.has(cb.value)) return;
+                cb.checked = suggested.has(cb.value);
+                cb.disabled = suggested.has(cb.value);
+                const item = cb.closest('.risker-check-item');
+                if (item) item.classList.toggle('is-geo-steered', suggested.has(cb.value));
+            });
+        }
     }
 
     _maybeSteerGeoFromSavedLander() {
-        const Eu = window.EuHogriskLander;
-        if (!Eu || !Eu.suggestedRecordIds || !this._allaRisker) return;
-        const labels = this._kycLanderLabels();
-        const opts = this._geoLanderOpts();
+        if (!this._allaRisker) return;
         const linked = this._linkedRiskIds || new Set();
-        if (opts.onlySweden || labels.length) {
-            const recs = this._riskerForTypId('geografiska_motparter', this._allaRisker);
-            const suggested = Eu.suggestedRecordIds(recs, labels, opts);
-            const steered = new Set(Eu.steeredRecordIds(recs));
-            const staleSteered = [...steered].some((id) => linked.has(id) && !suggested.includes(id));
-            if (suggested.some((id) => !linked.has(id)) || staleSteered) this._scheduleGeoFromLanderSave();
+        const Eu = window.EuHogriskLander;
+        if (Eu && Eu.suggestedRecordIds) {
+            const labels = this._kycLanderLabels();
+            const opts = this._geoLanderOpts();
+            if (opts.onlySweden || labels.length) {
+                const recs = this._riskerForTypId('geografiska_motparter', this._allaRisker);
+                const suggested = Eu.suggestedRecordIds(recs, labels, opts);
+                const steered = new Set(Eu.steeredRecordIds(recs));
+                const staleSteered = [...steered].some((id) => linked.has(id) && !suggested.includes(id));
+                if (suggested.some((id) => !linked.has(id)) || staleSteered) this._scheduleGeoFromLanderSave();
+            }
         }
         const Uts = window.UtsattOmradeStyrning;
         if (Uts && Uts.suggestedRecordIds) {
@@ -12258,7 +12331,22 @@ class CustomerCardManager {
             const utsSuggested = Uts.suggestedRecordIds(byraRecs, stored);
             if (utsSuggested.some((id) => !linked.has(id))) this._scheduleGeoFromLanderSave();
         }
+        const HGS = window.KycHemvistGeoStyrning;
+        if (HGS && HGS.suggestedRecordIds) {
+            const byraRecs = this._riskerForTypId('geografiska', this._allaRisker);
+            const hemvistOpts = this._hemvistGeoOpts();
+            const suggested = HGS.suggestedRecordIds(
+                byraRecs,
+                this._kycStateForHemvistGeo(),
+                hemvistOpts.utsattStored,
+                hemvistOpts
+            );
+            const steered = new Set(HGS.steeredRecordIds(byraRecs));
+            const stale = [...steered].some((id) => linked.has(id) && !suggested.includes(id));
+            if (suggested.some((id) => !linked.has(id)) || stale) this._scheduleGeoFromLanderSave();
+        }
     }
+
 
     _maybeSteerVerksamhetFromSavedKyc() {
         const KVS = window.KycVerksamhetStyrning;
@@ -12479,7 +12567,7 @@ class CustomerCardManager {
             if (selector) container.insertBefore(box, selector);
             else container.prepend(box);
         }
-        const hemvistHelp = 'Hämtas från KYC-formuläret: skatterättslig hemvist hos verklig huvudman och företrädare. Utländsk hemvist styr riskfaktorn «Kunder med utländska huvudmän».';
+        const hemvistHelp = 'Hämtas från KYC-formuläret: skatterättslig hemvist hos företag, verklig huvudman och företrädare. Styr geografiska residualfaktorer (Sverige / EU / utanför EU) tillsammans med företagets adress (utsatt område). Utländsk hemvist styr även riskfaktorn «Kunder med utländska huvudmän».';
         box.innerHTML = `
             <div class="risker-checkgrupp-titel kyc-lander-geo-titel">
                 <span>Skatterättslig hemvist (huvudman och företrädare)</span>
@@ -12490,7 +12578,8 @@ class CustomerCardManager {
                     onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);">?</button>
             </div>
             <div class="kyc-lander-chips kyc-lander-chips--readonly kyc-hemvist-chips"></div>
-            <p class="kyc-lander-geo-empty kyc-hemvist-empty">Ingen hemvist ifylld i KYC-formuläret ännu.</p>`;
+            <p class="kyc-lander-geo-empty kyc-hemvist-empty">Ingen hemvist ifylld i KYC-formuläret ännu.</p>
+            <p class="kyc-lander-geo-styr kyc-hemvist-geo-styr"></p>`;
         const labels = this._kycHemvistLabels();
         const chips = box.querySelector('.kyc-hemvist-chips');
         const empty = box.querySelector('.kyc-hemvist-empty');
@@ -12501,6 +12590,25 @@ class CustomerCardManager {
             }).join('');
         }
         if (empty) empty.hidden = labels.length > 0;
+        const HGS = window.KycHemvistGeoStyrning;
+        const styrEl = box.querySelector('.kyc-hemvist-geo-styr');
+        if (styrEl && HGS && HGS.suggestedFactorLabels) {
+            const opts = this._hemvistGeoOpts();
+            const steered = HGS.suggestedFactorLabels(
+                this._kycStateForHemvistGeo(),
+                opts.utsattStored,
+                opts
+            );
+            const Uts = window.UtsattOmradeStyrning;
+            const parts = [];
+            if (Uts && Uts.hasHit && Uts.hasHit(opts.utsattStored) && Uts.FACTOR) {
+                parts.push(Uts.FACTOR.label);
+            }
+            steered.forEach((l) => parts.push(l));
+            styrEl.textContent = parts.length
+                ? `Styr geografisk residual: ${parts.join(', ')}.`
+                : '';
+        }
     }
 
     // Visa TIN-fältet endast om angiven skatterättslig hemvist inte är Sverige
@@ -12511,6 +12619,11 @@ class CustomerCardManager {
         const v = (input.value || '').trim().toLowerCase();
         const visa = v !== '' && v !== 'sverige';
         wrap.style.display = visa ? 'block' : 'none';
+        if (hemvistId === 'kyc-hemvist-foretag') {
+            this._renderKycHemvistOnKund();
+            this._applyGeoChecksFromLander();
+            this._scheduleGeoFromLanderSave();
+        }
     }
 
     _collectKYCFormularData() {
