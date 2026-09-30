@@ -70,20 +70,96 @@
       .slice(0, 48) || 'post';
   }
 
+  function riskNamn(risk) {
+    var fields = (risk && risk.fields) || risk || {};
+    return trimStr(fields.Riskfaktor || fields['Riskfaktor'] || fields.namn || '');
+  }
+
   function existingRiskNameSet(risks) {
     var set = Object.create(null);
     (risks || []).forEach(function (risk) {
-      var fields = (risk && risk.fields) || risk || {};
-      var name = fold(fields.Riskfaktor || fields['Riskfaktor'] || fields.namn || '');
+      var name = fold(riskNamn(risk));
       if (name) set[name] = true;
     });
     return set;
   }
 
-  function itemAlreadyCovered(item, existing) {
+  /** Lättvikts-alias så AB ↔ Aktiebolag m.m. matchar i checklistan. */
+  var BOLAGSFORM_ALIASES = {
+    ab: 'aktiebolag',
+    aktiebolag: 'aktiebolag',
+    'privat aktiebolag': 'aktiebolag',
+    'publikt aktiebolag': 'aktiebolag',
+    ef: 'enskild firma',
+    'enskild firma': 'enskild firma',
+    'enskild naringsverksamhet': 'enskild firma',
+    'fysisk person': 'enskild firma',
+    'fysiska personer': 'enskild firma',
+    hb: 'handelsbolag',
+    handelsbolag: 'handelsbolag',
+    kb: 'kommanditbolag',
+    kommanditbolag: 'kommanditbolag'
+  };
+
+  function bolagsformKey(raw) {
+    var cleaned = trimStr(raw)
+      .replace(/\s*[·•].*$/, '')
+      .replace(/\s*:\s*\d+\s*$/, '')
+      .replace(/\s*\(\s*ca\s*[^)]*\)\s*$/i, '');
+    var key = fold(cleaned);
+    return BOLAGSFORM_ALIASES[key] || key || '';
+  }
+
+  function bolagsformKeyFromItem(item) {
+    if (!item) return '';
+    var rf = trimStr(item.riskfaktor);
+    var m = rf.match(/^Kunder med bolagsform\s+(.+)$/i);
+    if (m) return bolagsformKey(m[1]);
+    return bolagsformKey(item.label);
+  }
+
+  function formsCoveredByRiskName(name) {
+    var raw = trimStr(name);
+    if (!raw) return [];
+    var out = [];
+    var seen = Object.create(null);
+    function add(formRaw) {
+      var key = bolagsformKey(formRaw);
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      out.push(key);
+    }
+    var m = raw.match(/^Kunder med bolagsform(?:erna)?\s*[:\-]?\s*(.+)$/i);
+    if (m) {
+      String(m[1] || '')
+        .split(/[,;/]| och /i)
+        .map(function (s) { return s.trim(); })
+        .filter(Boolean)
+        .forEach(add);
+      return out;
+    }
+    // Äldre merge-namn från etiketter: «AB · 50; Enskild firma · 20»
+    if (/[;|]/.test(raw) || /·/.test(raw)) {
+      raw.split(/\s*;\s*|\s*\|\s*/).forEach(function (part) {
+        add(part);
+      });
+    }
+    return out;
+  }
+
+  function itemAlreadyCovered(item, existingOrRisks) {
     if (!item) return false;
+    var risks = Array.isArray(existingOrRisks) ? existingOrRisks : null;
+    var existing = risks ? existingRiskNameSet(risks) : (existingOrRisks || Object.create(null));
     if (existing[fold(item.riskfaktor)]) return true;
     if (item.mergeName && existing[fold(item.mergeName)]) return true;
+
+    var formKey = bolagsformKeyFromItem(item);
+    if (!formKey || !risks) return false;
+    for (var i = 0; i < risks.length; i++) {
+      var covered = formsCoveredByRiskName(riskNamn(risks[i]));
+      if (covered.indexOf(formKey) >= 0) return true;
+    }
     return false;
   }
 
@@ -580,12 +656,11 @@
   }
 
   function filterOpenGroups(groups, risks, skippedIds) {
-    var existing = existingRiskNameSet(risks);
     var skipped = skippedIdSet(skippedIds);
     return (groups || []).map(function (g) {
       if (!g || skipped[g.id]) return null;
       var items = (g.items || []).filter(function (it) {
-        return !itemAlreadyCovered(it, existing);
+        return !itemAlreadyCovered(it, risks);
       });
       if (!items.length) return null;
       return Object.assign({}, g, { items: items });
@@ -613,24 +688,44 @@
     return out.slice(0, 100);
   }
 
+  function countCoveredItems(group, risks) {
+    var items = (group && group.items) || [];
+    var n = 0;
+    items.forEach(function (it) {
+      if (itemAlreadyCovered(it, risks)) n += 1;
+    });
+    return n;
+  }
+
   function groupIsFullyCovered(group, risks) {
     var items = (group && group.items) || [];
     if (!items.length) return false;
-    var existing = existingRiskNameSet(risks);
     return items.every(function (it) {
-      return itemAlreadyCovered(it, existing);
+      return itemAlreadyCovered(it, risks);
     });
+  }
+
+  function groupIsPartiallyCovered(group, risks) {
+    return countCoveredItems(group, risks) > 0;
   }
 
   /**
    * Checklist-status per analysförslagsgrupp.
-   * Analyserad (matchande riskfaktor) vinner över avstådd.
+   * Analyserad (helt eller delvis) vinner över avstådd.
    * @returns {{status:'analyserad'|'avstadd'|'pending', label:string}|null}
    */
   function resolveGroupChecklistStatus(group, risks, skippedIds) {
     if (!group) return null;
-    if (groupIsFullyCovered(group, risks)) {
+    var total = ((group && group.items) || []).length;
+    var covered = countCoveredItems(group, risks);
+    if (total && covered >= total) {
       return { status: 'analyserad', label: 'Analyserad' };
+    }
+    if (covered > 0) {
+      return {
+        status: 'analyserad',
+        label: 'Delvis analyserad (' + covered + '/' + total + ')'
+      };
     }
     if (skippedIdSet(skippedIds)[group.id]) {
       return { status: 'avstadd', label: 'Avstådd' };
