@@ -16186,10 +16186,13 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
       ...incoming,
       // Katalogversion ägs av servern (bumpas vid riskfaktor-skrivning), inte av klienten.
       riskFactorCatalogVersion: existingState.riskFactorCatalogVersion,
-      // Behåll avstådda analysförslag om äldre klienter inte skickar fältet.
+      // Behåll avstådda/kopplade analysförslag om äldre klienter inte skickar fälten.
       kundriskAnalysSkipped: Object.prototype.hasOwnProperty.call(incoming, 'kundriskAnalysSkipped')
         ? incoming.kundriskAnalysSkipped
-        : existingState.kundriskAnalysSkipped
+        : existingState.kundriskAnalysSkipped,
+      kundriskAnalysLinked: Object.prototype.hasOwnProperty.call(incoming, 'kundriskAnalysLinked')
+        ? incoming.kundriskAnalysLinked
+        : existingState.kundriskAnalysLinked
     });
     if (state.steps[8] && !ByraResa.step8Ready(state.kalla, state.customKallor)) {
       return res.status(400).json({

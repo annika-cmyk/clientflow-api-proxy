@@ -655,10 +655,11 @@
     return groups;
   }
 
-  function filterOpenGroups(groups, risks, skippedIds) {
+  function filterOpenGroups(groups, risks, skippedIds, linkedMap) {
     var skipped = skippedIdSet(skippedIds);
+    var linked = normalizeLinkedMap(linkedMap);
     return (groups || []).map(function (g) {
-      if (!g || skipped[g.id]) return null;
+      if (!g || skipped[g.id] || (linked[g.id] && linked[g.id].length)) return null;
       var items = (g.items || []).filter(function (it) {
         return !itemAlreadyCovered(it, risks);
       });
@@ -688,6 +689,44 @@
     return out.slice(0, 100);
   }
 
+  /**
+   * { [groupId]: [{ id, namn }] } — länkar statistikgrupp till befintlig riskfaktor.
+   */
+  function normalizeLinkedMap(map) {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return Object.create(null);
+    var out = Object.create(null);
+    Object.keys(map).slice(0, 100).forEach(function (rawGroupId) {
+      var groupId = trimStr(rawGroupId);
+      if (!groupId) return;
+      var raw = map[rawGroupId];
+      var rows = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? [raw] : []);
+      var seen = Object.create(null);
+      var links = [];
+      rows.forEach(function (row) {
+        if (!row || typeof row !== 'object') return;
+        var id = trimStr(row.id);
+        var namn = trimStr(row.namn);
+        if (!id && !namn) return;
+        var dedupe = id || fold(namn);
+        if (seen[dedupe]) return;
+        seen[dedupe] = true;
+        links.push({ id: id, namn: namn });
+      });
+      if (links.length) out[groupId] = links.slice(0, 20);
+    });
+    return out;
+  }
+
+  function linksForGroup(linkedMap, groupId) {
+    var map = normalizeLinkedMap(linkedMap);
+    var key = trimStr(groupId);
+    return (key && map[key]) || [];
+  }
+
+  function groupIsLinked(linkedMap, groupId) {
+    return linksForGroup(linkedMap, groupId).length > 0;
+  }
+
   function countCoveredItems(group, risks) {
     var items = (group && group.items) || [];
     var n = 0;
@@ -711,10 +750,10 @@
 
   /**
    * Checklist-status per analysförslagsgrupp.
-   * Analyserad (helt eller delvis) vinner över avstådd.
-   * @returns {{status:'analyserad'|'avstadd'|'pending', label:string}|null}
+   * Analyserad (helt eller delvis) vinner över kopplad/avstådd; kopplad vinner över avstådd.
+   * @returns {{status:'analyserad'|'kopplad'|'avstadd'|'pending', label:string, links?:Array}|null}
    */
-  function resolveGroupChecklistStatus(group, risks, skippedIds) {
+  function resolveGroupChecklistStatus(group, risks, skippedIds, linkedMap) {
     if (!group) return null;
     var total = ((group && group.items) || []).length;
     var covered = countCoveredItems(group, risks);
@@ -727,16 +766,25 @@
         label: 'Delvis analyserad (' + covered + '/' + total + ')'
       };
     }
+    var links = linksForGroup(linkedMap, group.id);
+    if (links.length) {
+      var namn = links.map(function (l) { return l.namn; }).filter(Boolean).join(', ');
+      return {
+        status: 'kopplad',
+        label: namn ? ('Kopplad · ' + namn) : 'Kopplad',
+        links: links
+      };
+    }
     if (skippedIdSet(skippedIds)[group.id]) {
       return { status: 'avstadd', label: 'Avstådd' };
     }
     return { status: 'pending', label: 'Ej gjord än' };
   }
 
-  function summarizeChecklistStatuses(groups, risks, skippedIds) {
-    var counts = { analyserad: 0, avstadd: 0, pending: 0, total: 0 };
+  function summarizeChecklistStatuses(groups, risks, skippedIds, linkedMap) {
+    var counts = { analyserad: 0, kopplad: 0, avstadd: 0, pending: 0, total: 0 };
     (groups || []).forEach(function (g) {
-      var row = resolveGroupChecklistStatus(g, risks, skippedIds);
+      var row = resolveGroupChecklistStatus(g, risks, skippedIds, linkedMap);
       if (!row) return;
       counts[row.status] += 1;
       counts.total += 1;
@@ -815,7 +863,11 @@
     shouldShowButtonForField: shouldShowButtonForField,
     existingRiskNameSet: existingRiskNameSet,
     itemAlreadyCovered: itemAlreadyCovered,
+    riskNamn: riskNamn,
     normalizeSkippedGroupIds: normalizeSkippedGroupIds,
+    normalizeLinkedMap: normalizeLinkedMap,
+    linksForGroup: linksForGroup,
+    groupIsLinked: groupIsLinked,
     groupIsFullyCovered: groupIsFullyCovered,
     resolveGroupChecklistStatus: resolveGroupChecklistStatus,
     summarizeChecklistStatuses: summarizeChecklistStatuses
