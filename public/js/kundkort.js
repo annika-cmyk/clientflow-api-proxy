@@ -13609,8 +13609,16 @@ class CustomerCardManager {
     }
 
     async skickaInleed(avtalId) {
+        if (!avtalId) {
+            this.showNotification('Spara utkastet innan du skickar för signering.', 'error');
+            return;
+        }
+        // Stäng förhandsgranskning så signeringsdialogen inte hamnar bakom/under den.
+        if (typeof this.closeUppdragsavtalPreviewModal === 'function') {
+            this.closeUppdragsavtalPreviewModal();
+        }
         const kontaktPersoner = this._kontaktPersoner || [];
-        const valjbara = kontaktPersoner.filter(p => p.epost);
+        const valjbara = kontaktPersoner.filter(p => p && String(p.epost || '').trim());
         const klientansvarig = this._klientansvarigNamn();
         const existing = document.getElementById('inleed-modal');
         if (existing) existing.remove();
@@ -13630,7 +13638,7 @@ class CustomerCardManager {
 
         const modal = document.createElement('div');
         modal.id = 'inleed-modal';
-        modal.className = 'modal-overlay';
+        modal.className = 'modal-overlay inleed-sign-modal';
         modal.innerHTML = `
             <div class="modal-box" style="max-width:520px;">
                 <div class="modal-header">
@@ -13642,7 +13650,7 @@ class CustomerCardManager {
                         <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
                             ${klientansvarig
                                 ? `Byråns underskrift görs av klientansvarig <strong>${this._esc(klientansvarig)}</strong>. Välj vilka kontaktpersoner som ska signera för kunden.`
-                                : 'Ange klientansvarig på kundkortet innan avtalet kan skickas. Välj därefter vilka kontaktpersoner som ska signera för kunden.'}
+                                : 'Ange klientansvarig på kundkortet (Behörighet) innan avtalet kan skickas. Välj därefter vilka kontaktpersoner som ska signera för kunden.'}
                         </p>
                         <div class="inleed-person-list">${personOptions}</div>
                     ` : `
@@ -13654,7 +13662,7 @@ class CustomerCardManager {
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-ghost btn-sm" onclick="document.getElementById('inleed-modal').remove()">Avbryt</button>
-                    <button id="inleed-send-btn" class="btn btn-primary btn-sm" onclick="customerCardManager._genomforSignering('${avtalId}')" ${valjbara.length === 0 || !klientansvarig ? 'disabled' : ''}>
+                    <button id="inleed-send-btn" class="btn btn-primary btn-sm" onclick="customerCardManager._genomforSignering('${avtalId}')">
                         <i class="fas fa-paper-plane"></i> Skicka för signering
                     </button>
                 </div>
@@ -13667,11 +13675,28 @@ class CustomerCardManager {
             checkboxes.forEach((cb, i) => { cb.value = i; });
             if (checkboxes[0]) checkboxes[0].checked = true;
         }
+
+        // Visa tydligt varför utskick inte går – undvik tyst disabled-knapp.
+        if (!klientansvarig || valjbara.length === 0) {
+            const reasons = [];
+            if (!klientansvarig) reasons.push('Klientansvarig saknas på kundkortet (Behörighet).');
+            if (valjbara.length === 0) reasons.push('Minst en kontaktperson med e-post krävs på Roller-kortet.');
+            this._showInleedStatus(reasons.join(' '), 'error');
+        }
     }
 
     async _genomforSignering(avtalId) {
         const valjbara = this._valjbaraSignerare || [];
-        const checked = Array.from(document.querySelectorAll('input[name="signerare-choice"]:checked')) || [];
+        const klientansvarig = this._klientansvarigNamn();
+        if (!klientansvarig) {
+            this._showInleedStatus('Ange klientansvarig på kundkortet (Behörighet) innan avtalet kan skickas.', 'error');
+            return;
+        }
+        if (valjbara.length === 0) {
+            this._showInleedStatus('Lägg till minst en kontaktperson med e-post på Roller-kortet.', 'error');
+            return;
+        }
+        const checked = Array.from(document.querySelectorAll('#inleed-modal input[name="signerare-choice"]:checked')) || [];
         const signerare = checked
             .map(cb => valjbara[parseInt(cb.value, 10)])
             .filter(p => p && p.epost)
@@ -13694,13 +13719,20 @@ class CustomerCardManager {
                 ...getAuthOptsKundkort(),
                 body: JSON.stringify({ signerare, customerId: this.customerId })
             });
-            const data = await resp.json();
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
             if (!resp.ok) {
-                this._showInleedStatus(`Fel: ${data.error || 'Okänt fel'}`, 'error');
+                const msg = data.error || data.message || `Kunde inte skicka (HTTP ${resp.status}).`;
+                this._showInleedStatus(`Fel: ${msg}`, 'error');
+                this.showNotification(msg, 'error');
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Försök igen'; }
                 return;
             }
-            this._showInleedStatus(`✅ ${data.message}`, 'success');
+            this._showInleedStatus(`✅ ${data.message || 'Skickat!'}`, 'success');
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-check"></i> Skickat!'; }
             setTimeout(() => document.getElementById('inleed-modal')?.remove(), 2500);
             const epostLista = signerare.map(s => s.epost).join(', ');
@@ -13709,6 +13741,7 @@ class CustomerCardManager {
             this.loadUppdragsavtal();
         } catch (e) {
             this._showInleedStatus(`Fel: ${e.message}`, 'error');
+            this.showNotification(`Kunde inte skicka uppdragsavtal: ${e.message}`, 'error');
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Försök igen'; }
         }
     }
