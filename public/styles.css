@@ -6329,6 +6329,11 @@ body.kundkort-page #foretagsinformation-content {
 .kyc-lander-geo .kyc-lander-picker { margin-top: 0.35rem; }
 .risker-check-item.is-geo-steered { border-color: #c7d2fe; background: #eef2ff; }
 .risker-check-item.is-geo-steered input { accent-color: #4f46e5; }
+.risker-check-item.is-bolagsform-steered { border-color: #c7d2fe; background: #eef2ff; }
+.risker-check-item.is-bolagsform-steered input { accent-color: #4f46e5; }
+.risker-check-item.is-kyc-kund-steered { border-color: #c7d2fe; background: #eef2ff; }
+.risker-check-item.is-kyc-kund-steered input { accent-color: #4f46e5; }
+.bolagsform-styr-hint { margin: 0.35rem 0 0.6rem; }
 .risker-check-item.is-ubo-steered,
 .riskf-check-item.is-ubo-steered { border-color: #fecaca; background: #fff5f5; }
 .risker-check-item.is-ubo-steered input,

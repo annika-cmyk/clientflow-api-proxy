@@ -5913,6 +5913,10 @@ class CustomerCardManager {
                 this._mergeKundPatchResponse(data, fields);
             }
             this._applyHogriskSni();
+            if (fields.Bolagsform) {
+                this._maybeSteerBolagsformFromCustomer();
+                this._applyBolagsformChecks();
+            }
 
             const nameEl = document.getElementById('customer-name');
             const orgEl = document.getElementById('customer-org-number');
@@ -7290,8 +7294,10 @@ class CustomerCardManager {
             this._renderKycHemvistOnKund();
             this._maybeSteerGeoFromSavedLander();
             this._maybeSteerVerksamhetFromSavedKyc();
+            this._maybeSteerBolagsformFromCustomer();
             this._maybeSteerUboFromSavedKyc();
             this._applyVerksamhetChecksFromKyc();
+            this._applyBolagsformChecks();
             this._refreshRiskprofilForeslagenUi();
 
         } catch (error) {
@@ -7672,6 +7678,7 @@ class CustomerCardManager {
         }
         if ((Array.isArray(typIds) ? typIds : []).includes('kund')) {
             this._mergeSteeredVerksamhetIds(allChecked);
+            this._mergeSteeredBolagsformIds(allChecked);
         }
         return { allChecked, nyaChecked, nyaHogrisk };
     }
@@ -7715,6 +7722,7 @@ class CustomerCardManager {
         }
         if (typId === 'kund') {
             this._mergeSteeredVerksamhetIds(allChecked);
+            this._mergeSteeredBolagsformIds(allChecked);
         }
         const totalChecked = [...allChecked];
 
@@ -12375,6 +12383,7 @@ class CustomerCardManager {
         const motpartRecs = this._riskerForTypId('geografiska_motparter', this._allaRisker || []);
         const next = this._mergeSteeredGeoIds(new Set(this._linkedRiskIds || []));
         this._mergeSteeredVerksamhetIds(next);
+        this._mergeSteeredBolagsformIds(next);
         const fields = { 'risker kopplat till tjänster': [...next] };
         if (landerOpts.onlySweden) fields['Har företaget transaktioner med andra länder?'] = 'Nej';
         else if (labels.length) fields['Har företaget transaktioner med andra länder?'] = 'Ja';
@@ -12408,8 +12417,10 @@ class CustomerCardManager {
             this._renderRiskerForTyp(kundContainer, kundRecs, next, 'kund', { embedded: true });
         }
         this._applyVerksamhetChecksFromKyc();
+        this._applyBolagsformChecks();
         this._renderKycLanderOnGeo();
         this._renderKycHemvistOnKund();
+        this._renderBolagsformStyrHint();
         this._refreshRiskprofilForeslagenUi();
         const kycField = this._kycFieldForRiskerTyp('geografiska_motparter');
         if (kycField && next.size) this._saveKycStatus(kycField, true);
@@ -12488,6 +12499,7 @@ class CustomerCardManager {
         const recs = this._riskerForTypId('kund', this._allaRisker || []);
         const kyc = this._kycVerksamhetState();
         const next = this._mergeSteeredVerksamhetIds(new Set(this._linkedRiskIds || []));
+        this._mergeSteeredBolagsformIds(next);
         const fields = { 'risker kopplat till tjänster': [...next] };
         const result = await this._patchKunddataFields(fields);
         if (!result.ok) return;
@@ -12500,6 +12512,7 @@ class CustomerCardManager {
             this._renderRiskerForTyp(container, recs, next, 'kund', { embedded: true });
         }
         this._applyVerksamhetChecksFromKyc();
+        this._applyBolagsformChecks();
         this._renderKycVerksamhetStyrHint();
         this._refreshRiskprofilForeslagenUi();
         const kycField = this._kycFieldForRiskerTyp('kund');
@@ -12556,6 +12569,123 @@ class CustomerCardManager {
         return out;
     }
 
+
+    _customerBolagsformState() {
+        const Bfs = window.BolagsformStyrning;
+        const fromFields = this.customerData?.fields?.Bolagsform
+            || this.customerData?.fields?.['Bolagsform']
+            || '';
+        const fromKyc = this._savedKycFormular?.bolagsform
+            || document.getElementById('kyc-bolagsform')?.value
+            || '';
+        if (Bfs && Bfs.customerBolagsform) {
+            return Bfs.customerBolagsform(fromFields || fromKyc || this.customerData?.fields || '');
+        }
+        return String(fromFields || fromKyc || '').trim();
+    }
+
+    _mergeSteeredBolagsformIds(allChecked) {
+        const Bfs = window.BolagsformStyrning;
+        const recs = this._riskerForTypId('kund', this._allaRisker || []);
+        if (Bfs && Bfs.mergeIntoLinkedSet) {
+            Bfs.mergeIntoLinkedSet(allChecked, recs, this._customerBolagsformState());
+        }
+        return allChecked;
+    }
+
+    _applyBolagsformChecks() {
+        const Bfs = window.BolagsformStyrning;
+        if (!Bfs || !Bfs.steeredRecordIds) return;
+        const recs = this._riskerForTypId('kund', this._allaRisker || []);
+        const form = this._customerBolagsformState();
+        const steered = new Set(Bfs.steeredRecordIds(recs));
+        const suggested = new Set(Bfs.suggestedRecordIds(recs, form));
+        document.querySelectorAll('input[name="risk-kund"]').forEach((cb) => {
+            if (!steered.has(cb.value)) return;
+            cb.checked = suggested.has(cb.value);
+            cb.disabled = suggested.has(cb.value);
+            const item = cb.closest('.risker-check-item');
+            if (item) item.classList.toggle('is-bolagsform-steered', suggested.has(cb.value));
+        });
+        this._renderBolagsformStyrHint();
+    }
+
+    _renderBolagsformStyrHint() {
+        const Bfs = window.BolagsformStyrning;
+        const container = document.getElementById('ovrigkyc-risker-kund');
+        if (!container || !Bfs || !Bfs.suggestedFactorLabels) return;
+        let el = container.querySelector('.bolagsform-styr-hint');
+        const recs = this._riskerForTypId('kund', this._allaRisker || []);
+        const labels = Bfs.suggestedFactorLabels(recs, this._customerBolagsformState());
+        const form = this._customerBolagsformState();
+        if (!labels.length) {
+            if (el) el.remove();
+            return;
+        }
+        if (!el) {
+            el = document.createElement('p');
+            el.className = 'bolagsform-styr-hint kyc-hint';
+            const selector = container.querySelector('.risker-selector');
+            if (selector) container.insertBefore(el, selector);
+            else container.prepend(el);
+        }
+        el.textContent = form
+            ? `Bolagsform ${form} styr kundresidual: ${labels.join(', ')}.`
+            : `Styr kundresidual: ${labels.join(', ')}.`;
+    }
+
+    _maybeSteerBolagsformFromCustomer() {
+        const Bfs = window.BolagsformStyrning;
+        if (!Bfs || !Bfs.suggestedRecordIds || !this._allaRisker) return;
+        const recs = this._riskerForTypId('kund', this._allaRisker);
+        const form = this._customerBolagsformState();
+        const suggested = Bfs.suggestedRecordIds(recs, form);
+        const steered = new Set(Bfs.steeredRecordIds(recs));
+        const linked = this._linkedRiskIds || new Set();
+        const staleSteered = [...steered].some((id) => linked.has(id) && !suggested.includes(id));
+        if (suggested.some((id) => !linked.has(id)) || staleSteered) {
+            this._scheduleBolagsformFromCustomerSave();
+        }
+    }
+
+    _scheduleBolagsformFromCustomerSave() {
+        clearTimeout(this._bolagsformFromCustomerTimer);
+        this._bolagsformFromCustomerTimer = setTimeout(() => {
+            this._persistBolagsformFromCustomer().catch((err) => {
+                console.warn('Kunde inte styra bolagsform-risk:', err);
+            });
+        }, 350);
+    }
+
+    async _persistBolagsformFromCustomer() {
+        const Bfs = window.BolagsformStyrning;
+        if (!Bfs) return;
+        if (!this._allaRisker) {
+            try { await this.loadKundRisker(); } catch (_) { /* fortsätt */ }
+        }
+        const recs = this._riskerForTypId('kund', this._allaRisker || []);
+        const next = this._mergeSteeredBolagsformIds(new Set(this._linkedRiskIds || []));
+        this._mergeSteeredVerksamhetIds(next);
+        const fields = { 'risker kopplat till tjänster': [...next] };
+        const result = await this._patchKunddataFields(fields);
+        if (!result.ok) return;
+        this._linkedRiskIds = next;
+        if (this.customerData?.fields) {
+            this.customerData.fields['risker kopplat till tjänster'] = [...next];
+        }
+        const container = document.getElementById('ovrigkyc-risker-kund');
+        if (container && this._allaRisker) {
+            this._renderRiskerForTyp(container, recs, next, 'kund', { embedded: true });
+        }
+        this._applyVerksamhetChecksFromKyc();
+        this._applyBolagsformChecks();
+        this._refreshRiskprofilForeslagenUi();
+        const kycField = this._kycFieldForRiskerTyp('kund');
+        if (kycField && Bfs.suggestedRecordIds(recs, this._customerBolagsformState()).length) {
+            this._saveKycStatus(kycField, true);
+        }
+    }
+
     _renderKycHemvistOnKund() {
         const container = document.getElementById('ovrigkyc-risker-kund');
         if (!container) return;
@@ -12567,7 +12697,7 @@ class CustomerCardManager {
             if (selector) container.insertBefore(box, selector);
             else container.prepend(box);
         }
-        const hemvistHelp = 'Hämtas från KYC-formuläret: skatterättslig hemvist hos företag, verklig huvudman och företrädare. Styr geografiska residualfaktorer (Sverige / EU / utanför EU) tillsammans med företagets adress (utsatt område). Utländsk hemvist styr även riskfaktorn «Kunder med utländska huvudmän».';
+        const hemvistHelp = 'Hämtas från KYC-formuläret: skatterättslig hemvist hos verklig huvudman och företrädare. Utländsk hemvist styr riskfaktorn «Kunder med utländska huvudmän».';
         box.innerHTML = `
             <div class="risker-checkgrupp-titel kyc-lander-geo-titel">
                 <span>Skatterättslig hemvist (huvudman och företrädare)</span>
@@ -12578,8 +12708,7 @@ class CustomerCardManager {
                     onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);">?</button>
             </div>
             <div class="kyc-lander-chips kyc-lander-chips--readonly kyc-hemvist-chips"></div>
-            <p class="kyc-lander-geo-empty kyc-hemvist-empty">Ingen hemvist ifylld i KYC-formuläret ännu.</p>
-            <p class="kyc-lander-geo-styr kyc-hemvist-geo-styr"></p>`;
+            <p class="kyc-lander-geo-empty kyc-hemvist-empty">Ingen hemvist ifylld i KYC-formuläret ännu.</p>`;
         const labels = this._kycHemvistLabels();
         const chips = box.querySelector('.kyc-hemvist-chips');
         const empty = box.querySelector('.kyc-hemvist-empty');
@@ -12590,25 +12719,6 @@ class CustomerCardManager {
             }).join('');
         }
         if (empty) empty.hidden = labels.length > 0;
-        const HGS = window.KycHemvistGeoStyrning;
-        const styrEl = box.querySelector('.kyc-hemvist-geo-styr');
-        if (styrEl && HGS && HGS.suggestedFactorLabels) {
-            const opts = this._hemvistGeoOpts();
-            const steered = HGS.suggestedFactorLabels(
-                this._kycStateForHemvistGeo(),
-                opts.utsattStored,
-                opts
-            );
-            const Uts = window.UtsattOmradeStyrning;
-            const parts = [];
-            if (Uts && Uts.hasHit && Uts.hasHit(opts.utsattStored) && Uts.FACTOR) {
-                parts.push(Uts.FACTOR.label);
-            }
-            steered.forEach((l) => parts.push(l));
-            styrEl.textContent = parts.length
-                ? `Styr geografisk residual: ${parts.join(', ')}.`
-                : '';
-        }
     }
 
     // Visa TIN-fältet endast om angiven skatterättslig hemvist inte är Sverige
