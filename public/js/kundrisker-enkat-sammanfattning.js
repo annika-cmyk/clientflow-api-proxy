@@ -1,7 +1,7 @@
 /**
  * Read-only sammanfattning av byråprofil-enkätens kundrelaterade svar
  * på sidan Vilka är våra kunder — med knappar som föreslår analyser
- * och checklist-status (analyserad / avstådd / ej gjord än).
+ * och checklist-status (analyserad / kopplad / avstådd / ej gjord än).
  */
 (function () {
   'use strict';
@@ -9,14 +9,17 @@
   var SECTION_IDS = ['kundstock', 'geografi', 'kundintro'];
   var HOGRISK_NONE = 'Inga högriskbranscher';
   var SKIP_STORAGE_PREFIX = 'kundriskAnalysSkipped:';
+  var LINK_STORAGE_PREFIX = 'kundriskAnalysLinked:';
   var state = {
     profil: null,
     schema: null,
     allGroups: [],
     groups: [],
     openGroupId: null,
+    linkGroupId: null,
     pendingPrefills: [],
     skippedIds: [],
+    linkedMap: {},
     byraResaState: null,
     canEditResa: false,
     byraKey: '',
@@ -388,8 +391,20 @@
     return (Array.isArray(list) ? list : []).map(String).filter(Boolean);
   }
 
+  function normalizeLinked(map) {
+    var Forslag = API();
+    if (Forslag && Forslag.normalizeLinkedMap) {
+      return Forslag.normalizeLinkedMap(map);
+    }
+    return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
+  }
+
   function localSkipKey() {
     return SKIP_STORAGE_PREFIX + (state.byraKey || 'default');
+  }
+
+  function localLinkKey() {
+    return LINK_STORAGE_PREFIX + (state.byraKey || 'default');
   }
 
   function readLocalSkipped() {
@@ -405,6 +420,41 @@
     try {
       localStorage.setItem(localSkipKey(), JSON.stringify(normalizeSkipped(ids)));
     } catch (_) { /* ignore */ }
+  }
+
+  function readLocalLinked() {
+    try {
+      var raw = localStorage.getItem(localLinkKey());
+      return normalizeLinked(raw ? JSON.parse(raw) : {});
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function writeLocalLinked(map) {
+    try {
+      localStorage.setItem(localLinkKey(), JSON.stringify(normalizeLinked(map)));
+    } catch (_) { /* ignore */ }
+  }
+
+  function riskOptionsForPicker() {
+    var Forslag = API();
+    var seen = Object.create(null);
+    var out = [];
+    risksList().forEach(function (risk) {
+      var namn = Forslag && Forslag.riskNamn
+        ? Forslag.riskNamn(risk)
+        : String((risk && risk.fields && (risk.fields.Riskfaktor || risk.fields['Riskfaktor'])) || '').trim();
+      if (!namn) return;
+      var key = namn.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({ id: String((risk && risk.id) || '').trim(), namn: namn });
+    });
+    out.sort(function (a, b) {
+      return a.namn.localeCompare(b.namn, 'sv');
+    });
+    return out;
   }
 
   function formatNamedCounts(rows) {
@@ -472,7 +522,7 @@
     }
     var risks = risksList();
     state.allGroups = Forslag.buildAnalysGroups(profilWithLiveClientflow());
-    state.groups = Forslag.filterOpenGroups(state.allGroups, risks, state.skippedIds);
+    state.groups = Forslag.filterOpenGroups(state.allGroups, risks, state.skippedIds, state.linkedMap);
   }
 
   function allGroupForItem(item) {
@@ -490,7 +540,12 @@
   function statusForGroup(analysGroup) {
     var Forslag = API();
     if (!Forslag || !analysGroup || !Forslag.resolveGroupChecklistStatus) return null;
-    return Forslag.resolveGroupChecklistStatus(analysGroup, risksList(), state.skippedIds);
+    return Forslag.resolveGroupChecklistStatus(
+      analysGroup,
+      risksList(),
+      state.skippedIds,
+      state.linkedMap
+    );
   }
 
   function statusBadgeHtml(statusRow) {
@@ -507,7 +562,7 @@
   function buttonForItem(item, openGroup, statusRow) {
     // Visa Analysera så länge det finns kvarvarande poster (även vid delvis analyserad).
     if (!openGroup) return '';
-    if (statusRow && statusRow.status === 'avstadd') return '';
+    if (statusRow && (statusRow.status === 'avstadd' || statusRow.status === 'kopplad')) return '';
     var optionalCls = openGroup.optional ? ' is-optional' : '';
     var label = openGroup.buttonLabel;
     if (statusRow && /delvis/i.test(statusRow.label || '')) {
@@ -525,9 +580,19 @@
     if (!allGroup || !statusRow) return '';
     if (statusRow.status === 'pending') {
       return (
+        '<button type="button" class="btn btn-ghost btn-sm kundrisker-analys-link" ' +
+          'data-analys-link="' + escapeHtml(allGroup.id) + '" title="Koppla statistiken till en befintlig riskfaktor">' +
+          'Koppla</button>' +
         '<button type="button" class="btn btn-ghost btn-sm kundrisker-analys-skip" ' +
           'data-analys-skip="' + escapeHtml(allGroup.id) + '" title="Markera som avstådd utan att skapa analys">' +
           'Avstå</button>'
+      );
+    }
+    if (statusRow.status === 'kopplad') {
+      return (
+        '<button type="button" class="btn btn-ghost btn-sm kundrisker-analys-unlink" ' +
+          'data-analys-unlink="' + escapeHtml(allGroup.id) + '" title="Ångra koppling — visa förslaget igen">' +
+          'Ångra koppling</button>'
       );
     }
     if (statusRow.status === 'avstadd') {
@@ -543,14 +608,57 @@
   function checklistSummaryHtml() {
     var Forslag = API();
     if (!Forslag || !Forslag.summarizeChecklistStatuses || !state.allGroups.length) return '';
-    var c = Forslag.summarizeChecklistStatuses(state.allGroups, risksList(), state.skippedIds);
+    var c = Forslag.summarizeChecklistStatuses(
+      state.allGroups,
+      risksList(),
+      state.skippedIds,
+      state.linkedMap
+    );
     if (!c.total) return '';
+    var koppladHtml = c.kopplad
+      ? '<span class="kundrisker-enkat-checklist-item is-kopplad">' + c.kopplad + ' kopplade</span>'
+      : '';
     return (
       '<p class="kundrisker-enkat-checklist" role="status">' +
         '<span class="kundrisker-enkat-checklist-item is-analyserad">' + c.analyserad + ' analyserade</span>' +
+        koppladHtml +
         '<span class="kundrisker-enkat-checklist-item is-avstadd">' + c.avstadd + ' avstådda</span>' +
         '<span class="kundrisker-enkat-checklist-item is-pending">' + c.pending + ' ej gjorda än</span>' +
       '</p>'
+    );
+  }
+
+  function linkPanelHtml(allGroup) {
+    if (!allGroup || state.linkGroupId !== allGroup.id) return '';
+    var options = riskOptionsForPicker();
+    var optionsHtml = options.length
+      ? options.map(function (opt) {
+          return (
+            '<label class="kundrisker-analys-check">' +
+              '<input type="radio" name="kundrisker-link-' + escapeHtml(allGroup.id) + '" ' +
+                'data-link-risk-id="' + escapeHtml(opt.id) + '" ' +
+                'data-link-risk-namn="' + escapeHtml(opt.namn) + '">' +
+              '<span class="kundrisker-analys-check-label"><strong>' +
+                escapeHtml(opt.namn) +
+              '</strong></span>' +
+            '</label>'
+          );
+        }).join('')
+      : '<p class="kundrisker-analys-panel-hint">Inga riskfaktorer finns ännu. Skapa en analys först, eller använd Analysera.</p>';
+    return (
+      '<div class="kundrisker-analys-panel kundrisker-link-panel" data-link-panel="' +
+        escapeHtml(allGroup.id) + '">' +
+        '<p class="kundrisker-analys-panel-hint">Välj en befintlig riskfaktor som redan täcker den här statistiken — utan att skapa en ny analys.</p>' +
+        '<div class="kundrisker-analys-checks">' + optionsHtml + '</div>' +
+        '<div class="kundrisker-analys-actions">' +
+          (options.length
+            ? '<button type="button" class="btn btn-primary btn-sm" data-link-confirm="' +
+              escapeHtml(allGroup.id) + '">Koppla till vald</button>'
+            : '') +
+          '<button type="button" class="btn btn-ghost btn-sm" data-link-cancel="' +
+            escapeHtml(allGroup.id) + '">Stäng</button>' +
+        '</div>' +
+      '</div>'
     );
   }
 
@@ -858,6 +966,7 @@
   function renderSummary(root, summary) {
     refreshGroups();
     var panelRendered = {};
+    var linkPanelRendered = {};
     state.summary = summary;
 
     var groupsHtml = summary.groups.map(function (g) {
@@ -872,6 +981,10 @@
         if (openGroup && state.openGroupId === openGroup.id && !panelRendered[openGroup.id]) {
           panelRendered[openGroup.id] = true;
           panel = panelHtml(openGroup);
+        }
+        if (allGroup && state.linkGroupId === allGroup.id && !linkPanelRendered[allGroup.id]) {
+          linkPanelRendered[allGroup.id] = true;
+          panel += linkPanelHtml(allGroup);
         }
         var rowStatusCls = statusRow ? ' is-status-' + statusRow.status : '';
         var fromCf = itemUsesClientflow(item);
@@ -915,7 +1028,7 @@
             '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
           '</div>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Alla uppgifter från byråprofil-enkäten om vilka byråns kunder är — i samma chip- och sektionsformat som Statistik för riskbedömning. Där live-data finns används Clientflow-siffror (klickbara). Övriga enkät-svar visas som etiketter — klicka <strong>Ändra</strong> för att uppdatera dem direkt här. Använd <strong>Analysera</strong> för analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
+        '<p class="kundrisker-enkat-lead">Alla uppgifter från byråprofil-enkäten om vilka byråns kunder är — i samma chip- och sektionsformat som Statistik för riskbedömning. Där live-data finns används Clientflow-siffror (klickbara). Övriga enkät-svar visas som etiketter — klicka <strong>Ändra</strong> för att uppdatera dem direkt här. Använd <strong>Analysera</strong> för analyskort, <strong>Koppla</strong> om en befintlig riskfaktor redan täcker statistiken, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
       '</div>';
@@ -1052,14 +1165,31 @@
     if (state.openGroupId && state.skippedIds.indexOf(state.openGroupId) >= 0) {
       state.openGroupId = null;
     }
-    persistSkippedToByraResa();
+    if (state.linkGroupId && state.skippedIds.indexOf(state.linkGroupId) >= 0) {
+      state.linkGroupId = null;
+    }
+    persistChecklistToByraResa();
     renderSummary(root, summary);
   }
 
-  function persistSkippedToByraResa() {
+  function setLinked(map, root, summary) {
+    state.linkedMap = normalizeLinked(map);
+    writeLocalLinked(state.linkedMap);
+    if (state.linkGroupId && state.linkedMap[state.linkGroupId]) {
+      state.linkGroupId = null;
+    }
+    if (state.openGroupId && state.linkedMap[state.openGroupId]) {
+      state.openGroupId = null;
+    }
+    persistChecklistToByraResa();
+    renderSummary(root, summary);
+  }
+
+  function persistChecklistToByraResa() {
     if (!state.byraResaState) return;
     var nextState = Object.assign({}, state.byraResaState, {
-      kundriskAnalysSkipped: state.skippedIds.slice()
+      kundriskAnalysSkipped: state.skippedIds.slice(),
+      kundriskAnalysLinked: normalizeLinked(state.linkedMap)
     });
     state.byraResaState = nextState;
     if (!state.canEditResa) return;
@@ -1074,6 +1204,7 @@
     root.querySelectorAll('[data-analys-group].kundrisker-analys-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-analys-group');
+        state.linkGroupId = null;
         state.openGroupId = state.openGroupId === id ? null : id;
         renderSummary(root, summary);
       });
@@ -1085,6 +1216,13 @@
         if (!id) return;
         var list = state.skippedIds.slice();
         if (list.indexOf(id) < 0) list.push(id);
+        // Avstå ersätter eventuell koppling för samma grupp.
+        if (state.linkedMap[id]) {
+          var withoutLink = Object.assign({}, state.linkedMap);
+          delete withoutLink[id];
+          state.linkedMap = normalizeLinked(withoutLink);
+          writeLocalLinked(state.linkedMap);
+        }
         setSkipped(list, root, summary);
       });
     });
@@ -1094,6 +1232,62 @@
         var id = btn.getAttribute('data-analys-unskip');
         if (!id) return;
         setSkipped(state.skippedIds.filter(function (x) { return x !== id; }), root, summary);
+      });
+    });
+
+    root.querySelectorAll('[data-analys-link]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-analys-link');
+        if (!id) return;
+        state.openGroupId = null;
+        state.linkGroupId = state.linkGroupId === id ? null : id;
+        renderSummary(root, summary);
+      });
+    });
+
+    root.querySelectorAll('[data-analys-unlink]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-analys-unlink');
+        if (!id) return;
+        var next = Object.assign({}, state.linkedMap);
+        delete next[id];
+        setLinked(next, root, summary);
+      });
+    });
+
+    root.querySelectorAll('[data-link-cancel]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.linkGroupId = null;
+        renderSummary(root, summary);
+      });
+    });
+
+    root.querySelectorAll('[data-link-confirm]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-link-confirm');
+        if (!id) return;
+        var panel = root.querySelector('[data-link-panel="' + id + '"]');
+        if (!panel) return;
+        var picked = panel.querySelector('input[type="radio"]:checked');
+        if (!picked) {
+          window.alert('Välj en riskfaktor att koppla till.');
+          return;
+        }
+        var riskId = picked.getAttribute('data-link-risk-id') || '';
+        var riskNamn = picked.getAttribute('data-link-risk-namn') || '';
+        if (!riskId && !riskNamn) {
+          window.alert('Välj en riskfaktor att koppla till.');
+          return;
+        }
+        var next = Object.assign({}, state.linkedMap);
+        next[id] = [{ id: riskId, namn: riskNamn }];
+        // Koppling ersätter avstå för samma grupp.
+        var skipped = state.skippedIds.filter(function (x) { return x !== id; });
+        if (skipped.length !== state.skippedIds.length) {
+          state.skippedIds = normalizeSkipped(skipped);
+          writeLocalSkipped(state.skippedIds);
+        }
+        setLinked(next, root, summary);
       });
     });
 
@@ -1219,20 +1413,28 @@
         state.canEditResa = data.canEdit !== false;
         state.byraResaState = data.state || null;
         state.byraKey = String(data.recordId || '').trim() || state.byraKey;
-        var fromServer = normalizeSkipped(
+        var skippedServer = normalizeSkipped(
           data.state && data.state.kundriskAnalysSkipped
         );
-        var fromLocal = readLocalSkipped();
+        var skippedLocal = readLocalSkipped();
+        var linkedServer = normalizeLinked(
+          data.state && data.state.kundriskAnalysLinked
+        );
+        var linkedLocal = readLocalLinked();
         if (state.canEditResa) {
-          state.skippedIds = fromServer;
-          writeLocalSkipped(fromServer);
+          state.skippedIds = skippedServer;
+          state.linkedMap = linkedServer;
+          writeLocalSkipped(skippedServer);
+          writeLocalLinked(linkedServer);
         } else {
           // Medarbetare kan inte PUT:a byråresa — lokal spegling per byrå.
-          state.skippedIds = fromLocal.length ? fromLocal : fromServer;
+          state.skippedIds = skippedLocal.length ? skippedLocal : skippedServer;
+          state.linkedMap = Object.keys(linkedLocal).length ? linkedLocal : linkedServer;
         }
       })
       .catch(function () {
         state.skippedIds = readLocalSkipped();
+        state.linkedMap = readLocalLinked();
       });
   }
 
