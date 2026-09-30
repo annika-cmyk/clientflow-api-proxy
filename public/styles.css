@@ -7804,6 +7804,7 @@ button.document-list-date--editable:focus-visible {
 .ua-pdf-preview-box .document-preview-body {
     flex: 1;
     overflow: hidden;
+    min-height: 0;
 }
 .ua-pdf-preview-footer {
     justify-content: flex-end;
@@ -7829,7 +7830,8 @@ button.document-list-date--editable:focus-visible {
 .document-preview-frame {
     width: 100%;
     flex: 1;
-    min-height: 70vh;
+    min-height: 0;
+    height: 100%;
     border: 0;
     background: #f8fafc;
 }
@@ -13951,6 +13953,11 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 /* =====================================================
    Inleed signeringsmodal
    ===================================================== */
+#inleed-modal.modal-overlay,
+#kyc-inleed-modal.modal-overlay,
+.inleed-sign-modal.modal-overlay {
+    z-index: 11000 !important;
+}
 .inleed-person-list {
     display: flex;
     flex-direction: column;

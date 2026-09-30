@@ -24831,8 +24831,8 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       const missingName = !sender.name;
       return res.status(400).json({
         error: missingName
-          ? 'Kunden saknar klientansvarig. Ange klientansvarig på kundkortet innan uppdragsavtalet kan skickas för signering.'
-          : `Klientansvarig ${sender.name} saknar e-post i byråns användarlista. Lägg till e-post på användaren innan avtalet kan skickas.`
+          ? 'Kunden saknar klientansvarig. Ange klientansvarig på kundkortet (Behörighet) innan uppdragsavtalet kan skickas för signering.'
+          : `Kunde inte koppla klientansvarig "${sender.name}" till en användare med e-post i byråns användarlista. Kontrollera att namnet stämmer med Full Name under Byrå → Användare.`
       });
     }
     const byraSigner = {
@@ -25005,7 +25005,11 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
       );
       console.log('\u2705 Airtable uppdaterad: Avtalsstatus, InleedDokumentId, Utskickningsdatum');
-      await patchAvtalReceiptMeta(airtableAccessToken, id, receiptMeta);
+      try {
+        await patchAvtalReceiptMeta(airtableAccessToken, id, receiptMeta);
+      } catch (receiptErr) {
+        console.warn('Uppdragsavtal: kunde inte spara kvitto-meta (utskick ok):', receiptErr.message);
+      }
     } catch (e) {
       console.error('\u274c Airtable PATCH misslyckades:', e.response?.status, e.response?.data?.error || e.message);
       if (e.response?.status === 422) {
@@ -25015,6 +25019,18 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
         error: 'Kunde inte uppdatera avtalet i Airtable.',
         details: e.response?.data?.error?.message || e.message
       });
+    }
+
+    if (byraSigner.email) {
+      sendKlientansvarigNotifyEmail({
+        toEmail: byraSigner.email,
+        toName: byraSigner.name,
+        byraNamn: byraSigner.byra,
+        kind: 'uppdragsavtal',
+        kundnamn,
+        signerNames: signerareList.map((s) => s.namn),
+        replyTo: byraSigner.email
+      }).catch((e) => console.warn('Uppdragsavtal-notis till klientansvarig:', e.message));
     }
 
     res.json({
