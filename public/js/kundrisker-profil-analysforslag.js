@@ -105,6 +105,10 @@
 
   function bolagsformItems(profil) {
     var rows = parseCounted(profil.vanligasteBolagsformer);
+    var forms = rows.filter(function (r) { return r.form; }).map(function (r) { return r.form; });
+    var mergeName = forms.length > 1
+      ? ('Kunder med bolagsformerna ' + forms.join(', '))
+      : (forms[0] ? ('Kunder med bolagsform ' + forms[0]) : '');
     return rows.filter(function (r) { return r.form; }).map(function (r) {
       var label = displayCount(r);
       return makeItem({
@@ -118,6 +122,7 @@
           (r.count ? ' (ca ' + r.count + ' kunder)' : '') +
           ' i kundstocken. Olika bolagsformer medför olika risker kring ägarstruktur, ansvar och identifiering av verklig huvudman.',
         ptTf: 'Båda',
+        mergeName: mergeName,
         sourceKeys: ['vanligasteBolagsformer']
       });
     });

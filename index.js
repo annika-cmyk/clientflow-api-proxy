@@ -191,6 +191,7 @@ const utsattOmradeKund = require('./lib/utsatta-omraden-kund');
 const utsattOmradeStyrning = require('./lib/utsatt-omrade-styrning');
 const kycHemvistGeoStyrning = require('./lib/kyc-hemvist-geo-styrning');
 const kycVerksamhetStyrning = require('./lib/kyc-verksamhet-styrning');
+const bolagsformStyrning = require('./lib/bolagsform-styrning');
 const bolagsverketKund = require('./lib/bolagsverket-kund');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
@@ -5712,6 +5713,19 @@ async function maybePatchKycVerksamhetRisk(customerRecord, kyc, token, baseId) {
   return { 'risker kopplat till tjänster': after };
 }
 
+
+async function maybePatchBolagsformRisk(customerRecord, bolagsformOrFields, token, baseId) {
+  const byraId = String(customerRecord?.fields?.['Byrå ID'] || '').trim();
+  if (!byraId || !token) return null;
+  const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+  const bolagRecs = bolagsformStyrning.bolagsformRecordsFromList(byraRisker);
+  if (!bolagRecs.length) return null;
+  const before = customerRecord?.fields?.['risker kopplat till tjänster'] || [];
+  const after = bolagsformStyrning.mergeLinkedIds(before, bolagRecs, bolagsformOrFields);
+  if (!bolagsformStyrning.linkedIdsChanged(before, after)) return null;
+  return { 'risker kopplat till tjänster': after };
+}
+
 async function maybePatchUboRisk(customerRecord, kyc, token, baseId) {
   const byraId = String(customerRecord?.fields?.['Byrå ID'] || '').trim();
   if (!byraId || !token) return null;
@@ -7142,6 +7156,21 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
         if (hemvistGeoPatch) Object.assign(cleanedFields, hemvistGeoPatch);
       } catch (e) {
         console.warn('⚠️ Utsatt geo-risk koppling:', e.message);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(cleanedFields, 'Bolagsform')) {
+      try {
+        const mergedForBolag = { ...(customerRecord.fields || {}), ...cleanedFields };
+        const bolagRiskPatch = await maybePatchBolagsformRisk(
+          { ...customerRecord, fields: mergedForBolag },
+          cleanedFields.Bolagsform || mergedForBolag,
+          airtableAccessToken,
+          airtableBaseId
+        );
+        if (bolagRiskPatch) Object.assign(cleanedFields, bolagRiskPatch);
+      } catch (e) {
+        console.warn('⚠️ Bolagsform-risk koppling:', e.message);
       }
     }
 
@@ -19408,7 +19437,21 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
         airtableAccessToken,
         baseId
       );
-      if (hemvistGeoPatch) combinedRiskPatch = { ...(combinedRiskPatch || {}), ...hemvistGeoPatch };
+      if (hemvistGeoPatch) {
+        combinedRiskPatch = { ...(combinedRiskPatch || {}), ...hemvistGeoPatch };
+        customerForPatch = {
+          ...customerForPatch,
+          fields: { ...customerForPatch.fields, ...hemvistGeoPatch }
+        };
+      }
+      const bolagForm = kycData.bolagsform || customerForPatch.fields?.Bolagsform || '';
+      const bolagPatch = await maybePatchBolagsformRisk(
+        customerForPatch,
+        bolagForm || customerForPatch.fields,
+        airtableAccessToken,
+        baseId
+      );
+      if (bolagPatch) combinedRiskPatch = { ...(combinedRiskPatch || {}), ...bolagPatch };
       if (combinedRiskPatch) {
         await axios.patch(
           `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
