@@ -110,8 +110,12 @@ const { REDOVISNINGSBYRA_AI_RULES } = require('./lib/redovisningsbyra-ai-kontext
 const {
   formatOvrigRiskfaktorSubjectBlock,
   formatOvrigExtraUnderlagBlock,
+  formatOvrigSubjectScopeRules,
+  resolveOvrigAtgardAiRules,
+  resolveOvrigExtraUnderlagAiRules,
+  ovrigAtgardSchemaHint,
   readOvrigExtraUnderlag,
-  OVRIG_EXTRA_UNDERLAG_AI_RULES
+  isBolagsformRiskfaktorNamn
 } = require('./lib/ai-ovrig-riskfaktor-prompt');
 const {
   OVRIG_COMPLIANCE_FRAME,
@@ -26965,13 +26969,20 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
       ? '\nKUNSKAPSBAS: Använd KÄLLUTDRAG i användarmeddelandet som primär källa. Hitta inte på vaga rapportnamn.\n'
       : '');
   const vectorStoreForRun = hasKallaUtdrag ? null : byraAnalysVector;
+  const bolagsformScope = isBolagsformRiskfaktorNamn(riskfaktor);
+  const subjectScopeRules = formatOvrigSubjectScopeRules(riskfaktor);
+  const atgardAiRules = resolveOvrigAtgardAiRules(riskfaktor, AtgardKonkret.AI_RULES);
+  const extraUnderlagAiRules = resolveOvrigExtraUnderlagAiRules(riskfaktor);
+  const atgardSchemaHint = ovrigAtgardSchemaHint(riskfaktor);
+  const cacheScopeSuffix = bolagsformScope ? '-bolagsform' : '';
   // Statiska regler i instructions (återanvänds via prompt cache). Variabelt underlag i input.
+  // Bolagsform: scope-/åtgärdsregler överstyr Capego-/systemdetaljer i övriga regelblock.
   const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
 ${OVRIG_COMPLIANCE_FRAME}
 
 ${OVRIG_HARD_PRIORITY_RULES}
-
+${subjectScopeRules}
 ${REDOVISNINGSBYRA_AI_RULES}
 
 Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst). Utgå alltid från riskfaktorns benämning i användarmeddelandet — typen är bara kategori.
@@ -26980,9 +26991,9 @@ Väg in BYRÅPROFIL i användarmeddelandet när du kalibrerar sannolikhet, konse
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 ${AiTjanstAnalys.PEDAGOGISK_ANALYS_AI_RULES}
-${AtgardKonkret.AI_RULES}
+${atgardAiRules}
 ${AiFaltGranskning.MOTIVERING_AI_RULES}
-${OVRIG_EXTRA_UNDERLAG_AI_RULES}
+${extraUnderlagAiRules}
 ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
@@ -26995,7 +27006,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvensEfter": 1,
   "motiveringInneboende": "4-8 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning (branschens generella risk; sänk inte inneboende p.g.a. kundspecifika mildrande detaljer). Förklara mekanismen i klarspråk.",
   "motiveringResidual": "4-8 meningar: hur åtgärderna OCH konkreta fakta från extra underlag (om finns) sänkt S och/eller K — inte bara «strikta kontroller». Koppla till dokumenterade kontroller.",
-  "atgard": "4-8 meningar eller flera kontroller: VAD kontrolleras, VEM, NÄR, VAR det dokumenteras, VARFÖR det minskar PT/TF. Riskbaserat stickprov/avvikelser — inte «vid varje transaktion» eller påhittade trösklar (t.ex. över 1000 kr). När extra underlag finns: använd dess fakta. Inte Inför/öka/bör. Inte Capego-boilerplate utan underlagsfakta.",
+  "atgard": "${atgardSchemaHint}",
   "hot": [ { "titel": "Kort hot-titel", "beskrivning": "3-6 meningar: hur risken typiskt syns i bokföring/export/intäkter (PT/TF) och vad byrån kan upptäcka/dokumentera — upptäckts-/compliance-perspektiv, inte brottsinstruktion.", "kalla": "valfri exakt källa med dokument+år/avsnitt" } ],
   "sarbarheter": [ { "titel": "Kort sårbarhetstitel", "beskrivning": "3-5 meningar: varför byrån kan vara exponerad och vad medarbetaren ska tänka på." } ]${reviewMode ? `,
   "granskning": {
@@ -27092,7 +27103,7 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
 
     let aiText = await runOvrigAi(
       userPrompt,
-      reviewMode ? 'cf-ovrig-riskfaktor-rev' : 'cf-ovrig-riskfaktor-gen'
+      reviewMode ? `cf-ovrig-riskfaktor-rev${cacheScopeSuffix}` : `cf-ovrig-riskfaktor-gen${cacheScopeSuffix}`
     );
     let result = parseAssistantJson(aiText);
     let refusalRetryUsed = false;
@@ -27106,7 +27117,7 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       const softUserPrompt = `${OVRIG_COMPLIANCE_FRAME}\n\n${userPrompt}\n\nSvara ENDAST med giltigt JSON-objekt enligt schemat.`;
       aiText = await runOvrigAi(
         softUserPrompt,
-        reviewMode ? 'cf-ovrig-riskfaktor-soft-rev' : 'cf-ovrig-riskfaktor-soft-gen',
+        reviewMode ? `cf-ovrig-riskfaktor-soft-rev${cacheScopeSuffix}` : `cf-ovrig-riskfaktor-soft-gen${cacheScopeSuffix}`,
         { temperature: 0.2 }
       );
       result = parseAssistantJsonOrThrow(aiText, 'AI');
@@ -27136,7 +27147,7 @@ Analysera riskfaktorn ovan. Följ instruktionerna och svara med JSON.`;
       try {
         aiText = await runOvrigAi(
           `${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}\n\n${repairPrompt}\n`,
-          reviewMode ? 'cf-ovrig-riskfaktor-fix-rev' : 'cf-ovrig-riskfaktor-fix-gen',
+          reviewMode ? `cf-ovrig-riskfaktor-fix-rev${cacheScopeSuffix}` : `cf-ovrig-riskfaktor-fix-gen${cacheScopeSuffix}`,
           { vectorStoreId: null, temperature: 0.2 }
         );
         const repaired = parseAssistantJson(aiText);
