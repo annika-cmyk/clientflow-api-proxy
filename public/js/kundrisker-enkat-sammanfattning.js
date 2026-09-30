@@ -505,12 +505,18 @@
   }
 
   function buttonForItem(item, openGroup, statusRow) {
-    if (!openGroup || !statusRow || statusRow.status !== 'pending') return '';
+    // Visa Analysera så länge det finns kvarvarande poster (även vid delvis analyserad).
+    if (!openGroup) return '';
+    if (statusRow && statusRow.status === 'avstadd') return '';
     var optionalCls = openGroup.optional ? ' is-optional' : '';
+    var label = openGroup.buttonLabel;
+    if (statusRow && /delvis/i.test(statusRow.label || '')) {
+      label = label.replace(/^Analysera/, 'Fortsätt analysera') || label;
+    }
     return (
       '<button type="button" class="btn btn-secondary btn-sm kundrisker-analys-btn' + optionalCls + '" ' +
         'data-analys-group="' + escapeHtml(openGroup.id) + '">' +
-        escapeHtml(openGroup.buttonLabel) +
+        escapeHtml(label) +
       '</button>'
     );
   }
