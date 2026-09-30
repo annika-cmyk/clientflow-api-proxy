@@ -189,6 +189,7 @@ const senasteRiskbedomningDatum = require('./lib/senaste-riskbedomning-datum');
 const arKartlaggning = require('./lib/ar-kartlaggning');
 const utsattOmradeKund = require('./lib/utsatta-omraden-kund');
 const utsattOmradeStyrning = require('./lib/utsatt-omrade-styrning');
+const kycHemvistGeoStyrning = require('./lib/kyc-hemvist-geo-styrning');
 const kycVerksamhetStyrning = require('./lib/kyc-verksamhet-styrning');
 const bolagsverketKund = require('./lib/bolagsverket-kund');
 const amlaNews = require('./lib/amla-news');
@@ -5678,6 +5679,25 @@ async function maybePatchUtsattGeoRisk(customerRecord, stored, token, baseId) {
   return { 'risker kopplat till tjänster': after };
 }
 
+async function maybePatchHemvistGeoRisk(customerRecord, kyc, utsattStored, token, baseId) {
+  const byraId = String(customerRecord?.fields?.['Byrå ID'] || '').trim();
+  if (!byraId || !token) return null;
+  const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+  const geoRecs = kycHemvistGeoStyrning.geoRecordsFromList(byraRisker);
+  if (!geoRecs.length) return null;
+  const addr = utsattOmradeKund.customerAddressFromFields(customerRecord?.fields || {});
+  const stored = utsattStored != null
+    ? utsattStored
+    : kycHemvistGeoStyrning.parseUtsattStored(customerRecord?.fields?.[utsattOmradeKund.FIELD]);
+  const opts = {
+    addressImpliesSweden: kycHemvistGeoStyrning.addressImpliesSweden(stored, addr)
+  };
+  const before = customerRecord?.fields?.['risker kopplat till tjänster'] || [];
+  const after = kycHemvistGeoStyrning.mergeLinkedIds(before, geoRecs, kyc, stored, opts);
+  if (!kycHemvistGeoStyrning.linkedIdsChanged(before, after)) return null;
+  return { 'risker kopplat till tjänster': after };
+}
+
 async function maybePatchKycVerksamhetRisk(customerRecord, kyc, token, baseId) {
   const byraId = String(customerRecord?.fields?.['Byrå ID'] || '').trim();
   if (!byraId || !token) return null;
@@ -6896,6 +6916,21 @@ app.post('/api/kunddata/:id/utsatt-omrade', authenticateToken, async (req, res) 
     const patchFields = { [utsattOmradeKund.FIELD]: json };
     const geoRiskPatch = await maybePatchUtsattGeoRisk(customerRecord, stored, airtableAccessToken, airtableBaseId);
     if (geoRiskPatch) Object.assign(patchFields, geoRiskPatch);
+    const customerAfterUtsatt = geoRiskPatch
+      ? { ...customerRecord, fields: { ...customerRecord.fields, ...geoRiskPatch, [utsattOmradeKund.FIELD]: json } }
+      : { ...customerRecord, fields: { ...customerRecord.fields, [utsattOmradeKund.FIELD]: json } };
+    let kycForHemvist = {};
+    try {
+      kycForHemvist = JSON.parse(customerRecord.fields?.['KYC-formular (JSON)'] || '{}') || {};
+    } catch (_) { kycForHemvist = {}; }
+    const hemvistGeoPatch = await maybePatchHemvistGeoRisk(
+      customerAfterUtsatt,
+      kycForHemvist,
+      stored,
+      airtableAccessToken,
+      airtableBaseId
+    );
+    if (hemvistGeoPatch) Object.assign(patchFields, hemvistGeoPatch);
     let patchRes;
     try {
       patchRes = await axios.patch(url, { fields: patchFields, typecast: true }, {
@@ -6926,7 +6961,7 @@ app.post('/api/kunddata/:id/utsatt-omrade', authenticateToken, async (req, res) 
       stored,
       record: patchRes.data,
       field: utsattOmradeKund.FIELD,
-      geoRiskLinked: !!geoRiskPatch
+      geoRiskLinked: !!(geoRiskPatch || hemvistGeoPatch)
     });
   } catch (error) {
     console.error('❌ POST utsatt-omrade:', error.response?.data || error.message);
@@ -7085,6 +7120,26 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
         const stored = utsattOmradeKund.parseStored(cleanedFields[utsattOmradeKund.FIELD]);
         const geoRiskPatch = await maybePatchUtsattGeoRisk(customerRecord, stored, airtableAccessToken, airtableBaseId);
         if (geoRiskPatch) Object.assign(cleanedFields, geoRiskPatch);
+        const customerAfterUtsatt = {
+          ...customerRecord,
+          fields: {
+            ...customerRecord.fields,
+            ...(geoRiskPatch || {}),
+            [utsattOmradeKund.FIELD]: cleanedFields[utsattOmradeKund.FIELD]
+          }
+        };
+        let kycForHemvist = {};
+        try {
+          kycForHemvist = JSON.parse(customerRecord.fields?.['KYC-formular (JSON)'] || '{}') || {};
+        } catch (_) { kycForHemvist = {}; }
+        const hemvistGeoPatch = await maybePatchHemvistGeoRisk(
+          customerAfterUtsatt,
+          kycForHemvist,
+          stored,
+          airtableAccessToken,
+          airtableBaseId
+        );
+        if (hemvistGeoPatch) Object.assign(cleanedFields, hemvistGeoPatch);
       } catch (e) {
         console.warn('⚠️ Utsatt geo-risk koppling:', e.message);
       }
@@ -19339,7 +19394,21 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
         airtableAccessToken,
         baseId
       );
-      if (uboPatch) combinedRiskPatch = { ...(combinedRiskPatch || {}), ...uboPatch };
+      if (uboPatch) {
+        combinedRiskPatch = { ...(combinedRiskPatch || {}), ...uboPatch };
+        customerForPatch = {
+          ...customerForPatch,
+          fields: { ...customerForPatch.fields, ...uboPatch }
+        };
+      }
+      const hemvistGeoPatch = await maybePatchHemvistGeoRisk(
+        customerForPatch,
+        kycData,
+        null,
+        airtableAccessToken,
+        baseId
+      );
+      if (hemvistGeoPatch) combinedRiskPatch = { ...(combinedRiskPatch || {}), ...hemvistGeoPatch };
       if (combinedRiskPatch) {
         await axios.patch(
           `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
