@@ -12697,7 +12697,7 @@ class CustomerCardManager {
             if (selector) container.insertBefore(box, selector);
             else container.prepend(box);
         }
-        const hemvistHelp = 'Hämtas från KYC-formuläret: skatterättslig hemvist hos företag, verklig huvudman och företrädare. Styr geografiska residualfaktorer (Sverige / EU / utanför EU) tillsammans med företagets adress (utsatt område). Utländsk hemvist styr även riskfaktorn «Kunder med utländska huvudmän».';
+        const hemvistHelp = 'Hämtas från KYC-formuläret: skatterättslig hemvist hos verklig huvudman och företrädare. Utländsk hemvist styr riskfaktorn «Kunder med utländska huvudmän».';
         box.innerHTML = `
             <div class="risker-checkgrupp-titel kyc-lander-geo-titel">
                 <span>Skatterättslig hemvist (huvudman och företrädare)</span>
@@ -12708,8 +12708,7 @@ class CustomerCardManager {
                     onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);">?</button>
             </div>
             <div class="kyc-lander-chips kyc-lander-chips--readonly kyc-hemvist-chips"></div>
-            <p class="kyc-lander-geo-empty kyc-hemvist-empty">Ingen hemvist ifylld i KYC-formuläret ännu.</p>
-            <p class="kyc-lander-geo-styr kyc-hemvist-geo-styr"></p>`;
+            <p class="kyc-lander-geo-empty kyc-hemvist-empty">Ingen hemvist ifylld i KYC-formuläret ännu.</p>`;
         const labels = this._kycHemvistLabels();
         const chips = box.querySelector('.kyc-hemvist-chips');
         const empty = box.querySelector('.kyc-hemvist-empty');
@@ -12720,25 +12719,6 @@ class CustomerCardManager {
             }).join('');
         }
         if (empty) empty.hidden = labels.length > 0;
-        const HGS = window.KycHemvistGeoStyrning;
-        const styrEl = box.querySelector('.kyc-hemvist-geo-styr');
-        if (styrEl && HGS && HGS.suggestedFactorLabels) {
-            const opts = this._hemvistGeoOpts();
-            const steered = HGS.suggestedFactorLabels(
-                this._kycStateForHemvistGeo(),
-                opts.utsattStored,
-                opts
-            );
-            const Uts = window.UtsattOmradeStyrning;
-            const parts = [];
-            if (Uts && Uts.hasHit && Uts.hasHit(opts.utsattStored) && Uts.FACTOR) {
-                parts.push(Uts.FACTOR.label);
-            }
-            steered.forEach((l) => parts.push(l));
-            styrEl.textContent = parts.length
-                ? `Styr geografisk residual: ${parts.join(', ')}.`
-                : '';
-        }
     }
 
     // Visa TIN-fältet endast om angiven skatterättslig hemvist inte är Sverige
