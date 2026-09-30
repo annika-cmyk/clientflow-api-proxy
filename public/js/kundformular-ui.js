@@ -312,8 +312,8 @@
           <div>
             <h3 class="kundformular-title">Kundformulär</h3>
             <p class="kundformular-lead">${customerMode
-              ? 'Uppgifter till er redovisningsbyrå — neutral faktayta utan riskpoäng eller interna bedömningar.'
-              : 'Exakt samma formulär som kunden ser och skickar in — neutral faktayta utan riskpoäng.'}</p>
+              ? 'Uppgifter till er redovisningsbyrå — neutral faktayta utan riskpoäng eller interna bedömningar. Detta är inte KYC-formuläret (det formella CDD-intygandet).'
+              : 'Neutral faktainsamling från kunden — separat från KYC-formuläret, som är det formella CDD-intygandet med BankID.'}</p>
           </div>
           <div class="kundformular-header-status">
             <span class="kundformular-status kundformular-status--${esc(statusClass(summary.status))}">${esc(summary.statusLabel || summary.status || 'Utkast')}</span>
