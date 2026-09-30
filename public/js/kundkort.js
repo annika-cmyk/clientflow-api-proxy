@@ -11000,12 +11000,24 @@ class CustomerCardManager {
             }
             this._renderKundformular(data);
             this._updateKundformularTabStatus(data.summary);
+            if (action === 'sync_to_kyc') {
+                try {
+                    if (data.tjansterSync?.linkedIds && this.customerData?.fields) {
+                        this.customerData.fields['Kundens utvalda tjänster'] = data.tjansterSync.linkedIds;
+                        this._aktivaTjansterIds = new Set(data.tjansterSync.linkedIds);
+                    }
+                    await this.loadServices();
+                    this._kycFormularFetched = false;
+                } catch (svcErr) {
+                    console.warn('Efter KYC-synk: kunde inte ladda om tjänster', svcErr);
+                }
+            }
             const inviteUrl = data.inviteUrl || data.summary?.inviteUrl || '';
             const msg = action === 'prefill'
                 ? 'Prefillat från kundkort / KYC'
                 : (action === 'sync_to_kyc'
                   ? (data.syncedFields?.length
-                    ? `Synkat ${data.syncedFields.length} fält till KYC-utkast`
+                    ? `Synkat ${data.syncedFields.length} fält till KYC-utkast${data.tjansterSync?.changed ? ' (tjänster uppdaterade på riskbedömningen)' : ''}`
                     : 'Synkat till KYC-utkast')
                   : (action === 'mark_answered'
                     ? 'Markerat som besvarat'
@@ -11462,6 +11474,7 @@ class CustomerCardManager {
                                 <div class="uppdrag-field">
                                     <label>Byråns tjänster</label>
                                     <textarea id="kyc-tjanster" class="uppdrag-input uppdrag-textarea" rows="2" placeholder="Vilka av byråns tjänster avses användas?">${esc(savedTjanster)}</textarea>
+                                    <p class="kyc-hint">Matchande tjänster från byråns katalog sparas automatiskt på riskbedömningen (Kundens utvalda tjänster).</p>
                                 </div>
                                 <div class="uppdrag-field">
                                     <label>Pengarnas ursprung</label>
@@ -12564,18 +12577,37 @@ class CustomerCardManager {
                 const err = await resp.json().catch(() => ({}));
                 throw new Error(err.error || `HTTP ${resp.status}`);
             }
+            const saveResult = await resp.json().catch(() => ({}));
             if (this.customerData?.fields) {
                 this.customerData.fields['Verksamhet'] = data.verksamhet;
                 this.customerData.fields['Kostnader'] = data.kostnader;
                 this.customerData.fields['Intäkterna'] = data.intakterna;
             }
+            if (saveResult?.tjansterSync?.linkedIds) {
+                if (this.customerData?.fields) {
+                    this.customerData.fields['Kundens utvalda tjänster'] = saveResult.tjansterSync.linkedIds;
+                }
+                this._aktivaTjansterIds = new Set(saveResult.tjansterSync.linkedIds);
+            }
+            if (saveResult?.kyc?.tjanster != null) {
+                data.tjanster = saveResult.kyc.tjanster;
+            }
             this._savedKycFormular = Object.assign({}, this._savedKycFormular || {}, data);
             this._kycFormularFetched = true;
-            this.showNotification('KYC-formuläret sparat!', 'success');
+            const unmatched = saveResult?.tjansterSync?.unmatched || [];
+            if (unmatched.length) {
+                this.showNotification(
+                    `KYC sparat. Tjänster som inte finns i byråns katalog togs inte med på riskbedömningen: ${unmatched.join(', ')}.`,
+                    'warning'
+                );
+            } else {
+                this.showNotification('KYC-formuläret sparat!', 'success');
+            }
             try {
                 await this._persistGeoFromLander({ skipKycPost: true });
                 await this._persistUtlandskaUboFromKyc();
                 await this._persistVerksamhetFromKyc({ skipKycPost: true });
+                await this.loadServices();
                 await this.loadKYCFormular();
             } catch (refreshErr) {
                 console.warn('KYC sparat men vyn kunde inte uppdateras helt:', refreshErr);
