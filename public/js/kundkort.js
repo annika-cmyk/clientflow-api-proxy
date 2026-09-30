@@ -11085,6 +11085,8 @@ class CustomerCardManager {
                 const data = await res.json();
                 savedKyc = data.kyc || {};
                 this._kycInleed = data.inleed || null;
+                this._kycInviteUrl = data.inviteUrl || data.invite?.inviteUrl || '';
+                this._kycInvite = data.invite || null;
                 if (data.customerFields && this.customerData?.fields) {
                     Object.assign(this.customerData.fields, data.customerFields);
                 }
@@ -11092,6 +11094,8 @@ class CustomerCardManager {
         } catch (e) {
             console.warn('Kunde inte hämta sparat KYC-formulär:', e.message);
             this._kycInleed = null;
+            this._kycInviteUrl = '';
+            this._kycInvite = null;
         }
 
         this._savedKycFormular = savedKyc;
@@ -11280,6 +11284,9 @@ class CustomerCardManager {
         const utanforBannerText = kycUi.kycUtanforBannerText
             ? kycUi.kycUtanforBannerText(kycUtfordDatum)
             : 'KYC-formulär finns utanför ClientFlow.';
+        const fillBanner = kycUi.kycFillBannerText
+            ? kycUi.kycFillBannerText(kycStatus, saved)
+            : '';
         const statusBannerHtml = !showSeparateBanner ? '' : kycUtanfor ? `
             <div class="uppdrag-banner uppdrag-banner--ok" id="kyc-utanfor-status-banner">
                 <i class="fas fa-check-circle"></i>
@@ -11291,16 +11298,34 @@ class CustomerCardManager {
             </div>` : kycStatus === 'Skickat till kund' ? `
             <div class="uppdrag-banner uppdrag-banner--vantar">
                 <i class="fas fa-clock"></i>
-                KYC-formuläret utskickat och väntar signering.
+                KYC-formuläret utskickat och väntar BankID-signering.
+            </div>` : (kycStatus === 'Skickat för ifyllnad' || kycStatus === 'Besvarat av kund') ? `
+            <div class="uppdrag-banner uppdrag-banner--vantar">
+                <i class="fas fa-clock"></i>
+                ${esc(fillBanner || (kycStatus === 'Besvarat av kund'
+                    ? 'Kunden har besvarat KYC-formuläret.'
+                    : 'KYC-formuläret skickat till kund för ifyllnad.'))}
             </div>` : kycStatus === 'Sparat' ? `
             <div class="uppdrag-banner uppdrag-banner--utkast">
                 <i class="fas fa-save"></i>
-                Utkast sparat — ej utskickat för signering.
+                Utkast sparat — ej utskickat.
             </div>` : `
             <div class="uppdrag-banner uppdrag-banner--ny">
                 <i class="fas fa-info-circle"></i>
-                Fyll i KYC-formuläret. Data hämtas automatiskt från kundkortet men kan redigeras.
+                Fyll i KYC-formuläret (formellt CDD-intygande). Separat från kundformuläret. Data hämtas från kundkortet men kan redigeras.
             </div>`;
+
+        const kycInviteUrl = this._kycInviteUrl || saved._inviteUrl || '';
+        const kycInviteActive = kycStatus === 'Skickat för ifyllnad' && !!kycInviteUrl;
+        const kycInviteBoxHtml = kycInviteActive ? `
+            <div class="kundformular-invite-box" role="status" style="margin:0 0 1rem;">
+              <strong><i class="fas fa-link"></i> Kundlänk för KYC-ifyllnad</strong>
+              <div class="kundformular-invite-row" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-top:0.5rem;">
+                <input type="text" class="uppdrag-input" id="kyc-invite-url-input" readonly value="${esc(kycInviteUrl)}" style="flex:1;min-width:200px;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.copyKycInviteLink()"><i class="fas fa-copy"></i> Kopiera</button>
+              </div>
+              <p class="uppdrag-hint" style="margin:0.5rem 0 0;">När kunden skickat in skapas PDF automatiskt och skickas till Inleed för BankID med de valda signerarna.</p>
+            </div>` : '';
 
         const idagStr = new Date().toLocaleDateString('sv-SE');
         const senastUppdaterad = saved.updatedAt ? new Date(saved.updatedAt).toLocaleDateString('sv-SE') : '';
@@ -11330,9 +11355,11 @@ class CustomerCardManager {
                 <div class="uppdrag-doc-header">
                     <div class="uppdrag-doc-titel">KYC — KUNDKÄNNEDOMSFORMULÄR</div>
                     <div class="uppdrag-doc-välkommen">
-                        Formuläret används för att uppfylla penningtvättslagen (2017:630) och dokumentera kundkännedom. Vissa uppgifter hämtas automatiskt från företagsinformationen men kan redigeras.
+                        Formellt CDD-intygande enligt penningtvättslagen (2017:630). <strong>Inte samma sak som kundformuläret</strong> — kundformuläret är en neutral faktainsamling; KYC är det undertecknade intygandet. Skicka antingen till kunden för ifyllnad (länk) eller direkt till Inleed för BankID.
                     </div>
                 </div>
+
+                ${kycInviteBoxHtml}
 
                 <form id="kyc-formular-form" onsubmit="return false;">
 
@@ -11587,18 +11614,21 @@ class CustomerCardManager {
                         <button type="button" class="btn btn-primary" onclick="customerCardManager.saveKYCFormular()">
                             <i class="fas fa-save"></i> Spara KYC-formulär
                         </button>
-                        ${saved.status ? `
+                        ${saved.status || saved.foretagsnamn ? `
                         <button type="button" class="btn btn-secondary" onclick="customerCardManager.downloadKYCFormularPdf()">
                             <i class="fas fa-file-pdf"></i> Ladda ner PDF
                         </button>
-                        <button type="button" class="btn btn-inleed" onclick="customerCardManager.skickaKYCFormularInleed()">
-                            <i class="fas fa-pen-nib"></i> Skicka för signering (InLeed)
+                        <button type="button" class="btn btn-secondary" onclick="customerCardManager.skickaKYCFormularTillKund()" title="Skapa länk så kunden fyller i KYC; därefter PDF + Inleed BankID">
+                            <i class="fas fa-paper-plane"></i> Skicka till kund
+                        </button>
+                        <button type="button" class="btn btn-inleed" onclick="customerCardManager.skickaKYCFormularInleed()" title="Skicka nuvarande PDF direkt till Inleed för BankID">
+                            <i class="fas fa-pen-nib"></i> Skicka för signering (Inleed)
                         </button>
                         ${(kycInleedId && (kycStatus === 'Skickat till kund' || kycStatus === 'Signerat')) ? `
                         <button type="button" class="btn btn-secondary" onclick="customerCardManager.hamtaSigneratKYCFormular()" title="Hämta färdigsignerat KYC-dokument från Inleed">
                             <i class="fas fa-download"></i> Hämta signerat dokument
                         </button>` : ''}
-                        ` : '<span class="uppdrag-hint" style="margin:0;">Spara formuläret först för att kunna generera PDF.</span>'}
+                        ` : '<span class="uppdrag-hint" style="margin:0;">Spara formuläret först för att kunna generera PDF eller skicka.</span>'}
                         ${senastUppdaterad ? `<span class="uppdrag-hint" style="margin:0 0 0 auto;">Senast uppdaterad: <strong>${esc(senastUppdaterad)}</strong></span>` : ''}
                     </div>
 
@@ -12547,7 +12577,13 @@ class CustomerCardManager {
                 : (this._savedKycFormular?.status || ''),
             inleedDokumentId: this._savedKycFormular?.inleedDokumentId || '',
             utskickningsdatum: this._savedKycFormular?.utskickningsdatum || '',
-            signeringsdatum: this._savedKycFormular?.signeringsdatum || ''
+            signeringsdatum: this._savedKycFormular?.signeringsdatum || '',
+            inviteToken: this._savedKycFormular?.inviteToken || '',
+            inviteExpiresAt: this._savedKycFormular?.inviteExpiresAt || null,
+            inviteSentAt: this._savedKycFormular?.inviteSentAt || null,
+            pendingSignerare: this._savedKycFormular?.pendingSignerare || [],
+            customerAnsweredAt: this._savedKycFormular?.customerAnsweredAt || null,
+            answeredByCustomer: this._savedKycFormular?.answeredByCustomer || false
         };
     }
 
@@ -12683,6 +12719,9 @@ class CustomerCardManager {
                     <button class="modal-close" onclick="document.getElementById('kyc-inleed-modal').remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body">
+                    <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
+                        Skickar nuvarande KYC-PDF direkt till Inleed. Vill du att kunden fyller i först? Använd <strong>Skicka till kund</strong> i stället.
+                    </p>
                     ${valjbara.length > 0 ? `
                         <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
                             Välj vilka kontaktpersoner som ska signera KYC-formuläret via BankID.
@@ -12708,6 +12747,135 @@ class CustomerCardManager {
         if (valjbara.length > 0) {
             const checkboxes = modal.querySelectorAll('input[name="kyc-signerare-choice"]');
             if (checkboxes[0]) checkboxes[0].checked = true;
+        }
+    }
+
+    async skickaKYCFormularTillKund() {
+        const kontaktPersoner = this._kontaktPersoner || [];
+        const valjbara = kontaktPersoner.filter(p => p.epost);
+        const existing = document.getElementById('kyc-kund-invite-modal');
+        if (existing) existing.remove();
+
+        const personOptions = valjbara.length > 0
+            ? valjbara.map((p, idx) => `
+                <label class="inleed-person-option">
+                    <input type="checkbox" name="kyc-kund-signerare-choice" value="${idx}">
+                    <div class="inleed-person-info">
+                        <span class="inleed-person-name">${this._esc(p.namn)}</span>
+                        ${(p.roller?.length || p.roll) ? `<span class="inleed-person-roll">${this._esc((p.roller || (p.roll ? [p.roll] : [])).join(', '))}</span>` : ''}
+                        <span class="inleed-person-contact"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>
+                    </div>
+                </label>`).join('')
+            : '';
+
+        const modal = document.createElement('div');
+        modal.id = 'kyc-kund-invite-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:520px;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-paper-plane" style="color:var(--accent)"></i> Skicka KYC till kund för ifyllnad</h3>
+                    <button class="modal-close" onclick="document.getElementById('kyc-kund-invite-modal').remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
+                        Kunden får en länk och fyller i KYC-formuläret. När svaret kommer skapas PDF automatiskt och skickas till Inleed för BankID med de valda personerna.
+                    </p>
+                    ${valjbara.length > 0 ? `
+                        <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">Välj mottagare / kommande BankID-signerare:</p>
+                        <div class="inleed-person-list">${personOptions}</div>
+                    ` : `
+                        <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
+                            Inga kontaktpersoner med e-post. Lägg till kontaktpersoner på fliken Företagsinformation.
+                        </p>
+                    `}
+                    <div id="kyc-kund-invite-status-msg" style="display:none;margin-top:1rem;padding:0.75rem;border-radius:8px;font-size:0.9rem;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('kyc-kund-invite-modal').remove()">Avbryt</button>
+                    <button id="kyc-kund-invite-send-btn" class="btn btn-primary btn-sm" onclick="customerCardManager._genomforKYCSkickaTillKund()" ${valjbara.length === 0 ? 'disabled' : ''}>
+                        <i class="fas fa-link"></i> Skapa kundlänk
+                    </button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+        this._kycKundInviteSignerare = valjbara;
+        if (valjbara.length > 0) {
+            const checkboxes = modal.querySelectorAll('input[name="kyc-kund-signerare-choice"]');
+            if (checkboxes[0]) checkboxes[0].checked = true;
+        }
+    }
+
+    async _genomforKYCSkickaTillKund() {
+        const valjbara = this._kycKundInviteSignerare || [];
+        const checked = Array.from(document.querySelectorAll('input[name="kyc-kund-signerare-choice"]:checked')) || [];
+        const signerare = checked
+            .map(cb => valjbara[parseInt(cb.value, 10)])
+            .filter(p => p && p.epost)
+            .map(p => ({ namn: p.namn || '', epost: p.epost || '', personnr: p.personnr || '', telefon: p.telefon || '' }));
+
+        if (signerare.length === 0) {
+            this._showKycKundInviteStatus('Välj minst en kontaktperson.', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('kyc-kund-invite-send-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skapar länk...'; }
+
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const resp = await fetch(`${baseUrl}/api/kyc-formular/${this.customerId}/skicka-till-kund`, {
+                method: 'POST',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({
+                    signerare,
+                    email: signerare[0].epost,
+                    mottagareNamn: signerare[0].namn
+                })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+                this._showKycKundInviteStatus(`Fel: ${data.error || 'Okänt fel'}`, 'error');
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-link"></i> Försök igen'; }
+                return;
+            }
+            this._kycInviteUrl = data.inviteUrl || '';
+            if (data.inviteUrl && navigator.clipboard?.writeText) {
+                try { await navigator.clipboard.writeText(data.inviteUrl); } catch (_) {}
+            }
+            this._showKycKundInviteStatus(data.message || 'Länk skapad.', 'success');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-check"></i> Klart'; }
+            this.showNotification(data.message || 'KYC-länk skapad', 'success');
+            setTimeout(() => document.getElementById('kyc-kund-invite-modal')?.remove(), 1800);
+            this.loadKYCFormular();
+        } catch (e) {
+            this._showKycKundInviteStatus(`Fel: ${e.message}`, 'error');
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-link"></i> Försök igen'; }
+        }
+    }
+
+    _showKycKundInviteStatus(msg, type) {
+        const el = document.getElementById('kyc-kund-invite-status-msg');
+        if (!el) return;
+        const colors = { success: '#dcfce7', error: '#fee2e2', info: '#eff6ff' };
+        const textColors = { success: '#166534', error: '#991b1b', info: '#1e40af' };
+        el.style.display = 'block';
+        el.style.background = colors[type] || colors.info;
+        el.style.color = textColors[type] || textColors.info;
+        el.textContent = msg;
+    }
+
+    async copyKycInviteLink() {
+        const url = this._kycInviteUrl || document.getElementById('kyc-invite-url-input')?.value || '';
+        if (!url) {
+            this.showNotification('Ingen aktiv KYC-länk.', 'warning');
+            return;
+        }
+        try {
+            if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
+            this.showNotification('KYC-länk kopierad.', 'success');
+        } catch (e) {
+            this.showNotification('Kunde inte kopiera länken.', 'error');
         }
     }
 
