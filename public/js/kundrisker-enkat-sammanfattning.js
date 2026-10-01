@@ -2681,7 +2681,11 @@
       nestedRiskChipHtml: nestedRiskChipHtml,
       isOfficialHogriskRiskNamn: isOfficialHogriskRiskNamn,
       nestedRiskChipClass: nestedRiskChipClass,
-      openLinkFromRisk: openLinkFromRisk
+      openLinkFromRisk: openLinkFromRisk,
+      sourceBadgeHtml: sourceBadgeHtml,
+      renderCardBlock: renderCardBlock,
+      itemUsesClientflow: itemUsesClientflow,
+      cardSourceBadgesHtml: cardSourceBadgesHtml
     }
   };
 })();
