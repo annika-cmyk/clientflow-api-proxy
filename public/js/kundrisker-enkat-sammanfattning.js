@@ -104,7 +104,9 @@
     editingKey: null,
     editDraft: null,
     editSaving: false,
-    editError: ''
+    editError: '',
+    /** Valda analysposter via checkbox på statistik-chips: { [itemId]: groupId } */
+    chipSelection: Object.create(null)
   };
 
   function API() {
@@ -225,7 +227,127 @@
     return 'Svar från byråprofil-enkäten.';
   }
 
-  function namedListChips(typ, rows, titelPrefix) {
+  function foldChip(value) {
+    return String(value == null ? '' : value)
+      .trim()
+      .toLowerCase()
+      .normalize('NFC')
+      .replace(/\s+/g, ' ');
+  }
+
+  function formNameFromAnalysItem(item) {
+    var rf = String((item && item.riskfaktor) || '').trim();
+    var m =
+      rf.match(/^Kunder med bolagsform(?:erna)?\s+(.+)$/i) ||
+      rf.match(/^Kunder i högriskbransch:\s*(.+)$/i) ||
+      rf.match(/^Kunder i bransch:\s*(.+)$/i);
+    if (m) {
+      var forms = m[1].split(/\s*,\s*/).map(function (p) { return p.trim(); }).filter(Boolean);
+      return forms.length === 1 ? forms[0] : '';
+    }
+    var label = String((item && item.label) || '');
+    var parts = label.split(/\s*·\s*/);
+    return (parts[0] || '').trim();
+  }
+
+  function openItemsForField(fieldKey) {
+    var key = String(fieldKey || '');
+    if (!key) return [];
+    var out = [];
+    (state.groups || []).forEach(function (g) {
+      if (!g || (g.fieldKeys || []).indexOf(key) < 0) return;
+      (g.items || []).forEach(function (it) {
+        out.push({ group: g, item: it });
+      });
+    });
+    return out;
+  }
+
+  function findOpenChipMatch(namn, fieldKey) {
+    var wanted = foldChip(namn);
+    if (!wanted && !fieldKey) return null;
+    var candidates = fieldKey ? openItemsForField(fieldKey) : [];
+    if (!candidates.length) {
+      (state.groups || []).forEach(function (g) {
+        (g.items || []).forEach(function (it) {
+          candidates.push({ group: g, item: it });
+        });
+      });
+    }
+    if (!wanted && candidates.length === 1) return candidates[0];
+    for (var i = 0; i < candidates.length; i++) {
+      var row = candidates[i];
+      var form = formNameFromAnalysItem(row.item);
+      if (form && foldChip(form) === wanted) return row;
+      if (foldChip(row.item.label).indexOf(wanted) === 0) return row;
+    }
+    return null;
+  }
+
+  function pruneChipSelection() {
+    var valid = Object.create(null);
+    (state.groups || []).forEach(function (g) {
+      (g.items || []).forEach(function (it) {
+        if (it && it.id) valid[it.id] = g.id;
+      });
+    });
+    var next = Object.create(null);
+    Object.keys(state.chipSelection || {}).forEach(function (id) {
+      if (valid[id]) next[id] = valid[id];
+    });
+    state.chipSelection = next;
+  }
+
+  function selectedChipCount() {
+    return Object.keys(state.chipSelection || {}).length;
+  }
+
+  function chipCheckHtml(match) {
+    if (!match || !match.item || !match.group) return '';
+    var id = match.item.id;
+    var checked = state.chipSelection[id] ? ' checked' : '';
+    return (
+      '<label class="statistik-stat-chip-check" title="Välj för analys">' +
+        '<input type="checkbox" data-chip-analys-item="' + escapeHtml(id) + '" ' +
+          'data-chip-analys-group="' + escapeHtml(match.group.id) + '"' + checked + '>' +
+        '<span class="statistik-stat-chip-check-ui" aria-hidden="true"></span>' +
+        '<span class="sr-only">Välj ' + escapeHtml(match.item.label || 'post') + ' för analys</span>' +
+      '</label>'
+    );
+  }
+
+  function selectableChipHtml(opts) {
+    var match = opts.match || null;
+    var selected = !!(match && state.chipSelection[match.item.id]);
+    var check = match ? chipCheckHtml(match) : '';
+    var cls =
+      'statistik-stat-chip' +
+      (opts.staticChip ? ' statistik-stat-chip--static' : '') +
+      (match ? ' statistik-stat-chip--selectable' : '') +
+      (selected ? ' is-chip-selected' : '');
+    if (opts.button) {
+      return (
+        '<span class="' + cls + '">' +
+          check +
+          '<button type="button" class="statistik-stat-chip-hit" ' +
+            'data-typ="' + escapeHtml(opts.typ || '') + '" ' +
+            'data-namn="' + escapeHtml(opts.namn || '') + '" ' +
+            'data-titel="' + escapeHtml(opts.titel || '') + '" ' +
+            'title="' + escapeHtml(opts.title || 'Klicka för att se kunder') + '">' +
+            escapeHtml(opts.label || '') +
+          '</button>' +
+        '</span>'
+      );
+    }
+    return (
+      '<span class="' + cls + '">' +
+        check +
+        '<span class="statistik-stat-chip-hit">' + escapeHtml(opts.label || '') + '</span>' +
+      '</span>'
+    );
+  }
+
+  function namedListChips(typ, rows, titelPrefix, fieldKey) {
     if (!rows || !rows.length) return '';
     return (
       '<div class="statistik-stat-chips">' +
@@ -233,35 +355,48 @@
         var namn = r.namn || r.form || '';
         var antal = r.antal != null ? r.antal : r.count;
         var label = antal != null && antal !== '' ? namn + ' · ' + antal : namn;
-        return (
-          '<button type="button" class="statistik-stat-chip" ' +
-            'data-typ="' + escapeHtml(typ) + '" ' +
-            'data-namn="' + escapeHtml(namn) + '" ' +
-            'data-titel="' + escapeHtml((titelPrefix ? titelPrefix + namn : namn)) + '" ' +
-            'title="Klicka för att se kunder">' +
-            escapeHtml(label) +
-          '</button>'
-        );
+        var match = findOpenChipMatch(namn, fieldKey);
+        return selectableChipHtml({
+          button: true,
+          typ: typ,
+          namn: namn,
+          titel: titelPrefix ? titelPrefix + namn : namn,
+          label: label,
+          title: 'Klicka för att se kunder',
+          match: match
+        });
       }).join('') +
       '</div>'
     );
   }
 
-  function staticValueChips(display) {
+  function staticValueChips(display, fieldKey) {
     var text = String(display || '').trim();
     if (!text) return '<p class="stat-list-empty">Inget svar.</p>';
     var parts = text.split(/\s*,\s*/).map(function (p) { return p.trim(); }).filter(Boolean);
+    var openForField = fieldKey ? openItemsForField(fieldKey) : [];
     if (parts.length <= 1) {
+      var singleMatch =
+        findOpenChipMatch(parts[0] || text, fieldKey) ||
+        (openForField.length === 1 ? openForField[0] : null);
       return (
         '<div class="statistik-stat-chips">' +
-          '<span class="statistik-stat-chip statistik-stat-chip--static">' + escapeHtml(text) + '</span>' +
+          selectableChipHtml({
+            staticChip: true,
+            label: text,
+            match: singleMatch
+          }) +
         '</div>'
       );
     }
     return (
       '<div class="statistik-stat-chips">' +
       parts.map(function (p) {
-        return '<span class="statistik-stat-chip statistik-stat-chip--static">' + escapeHtml(p) + '</span>';
+        return selectableChipHtml({
+          staticChip: true,
+          label: p,
+          match: findOpenChipMatch(p, fieldKey)
+        });
       }).join('') +
       '</div>'
     );
@@ -277,31 +412,42 @@
       return {
         html:
           '<div class="statistik-stat-chips">' +
-            '<button type="button" class="statistik-stat-chip" data-typ="alla" data-titel="Alla kunder" title="Klicka för att se kunder">' +
-              escapeHtml('Antal kunder · ' + stat.antalKunder) +
-            '</button>' +
+            selectableChipHtml({
+              button: true,
+              typ: 'alla',
+              titel: 'Alla kunder',
+              label: 'Antal kunder · ' + stat.antalKunder,
+              title: 'Klicka för att se kunder',
+              match: null
+            }) +
           '</div>',
         fromClientflow: true
       };
     }
     if (typ === 'bolagsform' && Array.isArray(stat.bolagsform) && stat.bolagsform.length) {
-      return { html: namedListChips('bolagsform', stat.bolagsform), fromClientflow: true };
+      return { html: namedListChips('bolagsform', stat.bolagsform, '', key), fromClientflow: true };
     }
     if (typ === 'kund-bransch' && Array.isArray(stat.kundBranschBuckets) && stat.kundBranschBuckets.length) {
-      return { html: namedListChips('kund-bransch', stat.kundBranschBuckets), fromClientflow: true };
+      return { html: namedListChips('kund-bransch', stat.kundBranschBuckets, '', key), fromClientflow: true };
     }
     if (typ === 'hogriskbransch') {
       var hr = stat.högriskbransch || stat.hogriskbransch || [];
-      if (hr.length) return { html: namedListChips('hogriskbransch', hr), fromClientflow: true };
+      if (hr.length) return { html: namedListChips('hogriskbransch', hr, '', key), fromClientflow: true };
     }
     if (typ === 'pep-sanktion' && typeof stat.antalPepEllerSanktion === 'number') {
+      var pepMatch = findOpenChipMatch('PEP', key) ||
+        (openItemsForField(key).length === 1 ? openItemsForField(key)[0] : null);
       return {
         html:
           '<div class="statistik-stat-chips">' +
-            '<button type="button" class="statistik-stat-chip" data-typ="pep-sanktion" ' +
-              'data-titel="PEP eller anhörig till PEP" title="Klicka för att se kunder">' +
-              escapeHtml('PEP eller anhörig till PEP · ' + stat.antalPepEllerSanktion) +
-            '</button>' +
+            selectableChipHtml({
+              button: true,
+              typ: 'pep-sanktion',
+              titel: 'PEP eller anhörig till PEP',
+              label: 'PEP eller anhörig till PEP · ' + stat.antalPepEllerSanktion,
+              title: 'Klicka för att se kunder',
+              match: pepMatch
+            }) +
           '</div>',
         fromClientflow: true
       };
@@ -316,7 +462,7 @@
         })
         .filter(Boolean);
       if (rows.length) {
-        return { html: namedListChips('riskniva', rows, 'Residualrisk: '), fromClientflow: true };
+        return { html: namedListChips('riskniva', rows, 'Residualrisk: ', key), fromClientflow: true };
       }
     }
     return null;
@@ -325,33 +471,40 @@
   function countedChipsHtml(item) {
     var live = clientflowChipsForItem(item);
     if (live) return live.html;
+    var key = item.key || '';
 
     var typ = drillTypForField(null, item);
-    if (!typ || !state.profil) return staticValueChips(item.display);
+    if (!typ || !state.profil) return staticValueChips(item.display, key);
     if (typ === 'pep-sanktion') {
       var pepRaw = state.profil[item.key];
       pepRaw = Array.isArray(pepRaw) ? pepRaw.join(', ') : String(pepRaw || '').trim();
-      if (!/^ja/i.test(pepRaw)) return staticValueChips(item.display);
+      if (!/^ja/i.test(pepRaw)) return staticValueChips(item.display, key);
+      var pepMatch = findOpenChipMatch('PEP', key) ||
+        (openItemsForField(key).length === 1 ? openItemsForField(key)[0] : null);
       return (
         '<div class="statistik-stat-chips">' +
-          '<button type="button" class="statistik-stat-chip" ' +
-            'data-typ="pep-sanktion" ' +
-            'data-titel="PEP eller anhörig till PEP" ' +
-            'title="Klicka för kundlista från Clientflow">' +
-            escapeHtml(item.display) +
-          '</button>' +
+          selectableChipHtml({
+            button: true,
+            typ: 'pep-sanktion',
+            titel: 'PEP eller anhörig till PEP',
+            label: item.display,
+            title: 'Klicka för kundlista från Clientflow',
+            match: pepMatch
+          }) +
         '</div>'
       );
     }
     var raw = state.profil[item.key];
     raw = Array.isArray(raw) ? raw.join(', ') : String(raw || '').trim();
-    if (!raw) return staticValueChips(item.display);
-    if (typ === 'hogriskbransch' && raw === HOGRISK_NONE) return staticValueChips(HOGRISK_NONE);
+    if (!raw) return staticValueChips(item.display, key);
+    if (typ === 'hogriskbransch' && raw === HOGRISK_NONE) return staticValueChips(HOGRISK_NONE, key);
     var rows = parseCounted(raw);
-    if (!rows.length) return staticValueChips(item.display);
+    if (!rows.length) return staticValueChips(item.display, key);
     return namedListChips(
       typ,
-      rows.map(function (r) { return { namn: r.form, antal: r.count }; })
+      rows.map(function (r) { return { namn: r.form, antal: r.count }; }),
+      '',
+      key
     );
   }
 
@@ -359,7 +512,7 @@
     if (drillTypForField(null, item) || item.key === 'antalKunder') {
       return countedChipsHtml(item);
     }
-    return staticValueChips(item.display);
+    return staticValueChips(item.display, item.key);
   }
 
   function sourceBadgeHtml(fromClientflow) {
@@ -1299,8 +1452,64 @@
     );
   }
 
+  function chipAnalysBarHtml() {
+    var n = selectedChipCount();
+    if (!n) return '';
+    var label = n === 1 ? '1 vald' : n + ' valda';
+    return (
+      '<div class="kundrisker-chip-analys-bar" role="region" aria-label="Skapa analys från valda chips">' +
+        '<span class="kundrisker-chip-analys-bar-count">' + escapeHtml(label) + '</span>' +
+        '<button type="button" class="btn btn-primary btn-sm" data-chip-analys-create>Skapa analys</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-chip-analys-clear>Rensa</button>' +
+      '</div>'
+    );
+  }
+
+  function prefillsFromChipSelection() {
+    var Forslag = API();
+    if (!Forslag) return [];
+    var byGroup = Object.create(null);
+    Object.keys(state.chipSelection || {}).forEach(function (itemId) {
+      var groupId = state.chipSelection[itemId];
+      if (!groupId) return;
+      var group = (state.groups || []).find(function (g) { return g.id === groupId; });
+      if (!group) return;
+      var item = (group.items || []).find(function (it) { return it.id === itemId; });
+      if (!item) return;
+      if (!byGroup[groupId]) byGroup[groupId] = { group: group, items: [] };
+      byGroup[groupId].items.push(item);
+    });
+    var prefills = [];
+    Object.keys(byGroup).forEach(function (groupId) {
+      var row = byGroup[groupId];
+      var items = row.items;
+      var group = row.group;
+      if (!items.length) return;
+      var preferSplit =
+        group.defaultMode === 'split' ||
+        items.some(function (it) { return it.recommendedSeparate; });
+      if (items.length === 1) {
+        if (preferSplit && Forslag.buildSplitPrefills) {
+          prefills = prefills.concat(Forslag.buildSplitPrefills(items));
+        } else {
+          prefills.push(Forslag.buildMergedPrefill(items));
+        }
+        return;
+      }
+      if (preferSplit) {
+        prefills = prefills.concat(Forslag.buildSplitPrefills(items));
+      } else if (group.allowMerge !== false) {
+        prefills.push(Forslag.buildMergedPrefill(items));
+      } else {
+        prefills = prefills.concat(Forslag.buildSplitPrefills(items));
+      }
+    });
+    return prefills.filter(Boolean);
+  }
+
   function renderSummary(root, summary) {
     refreshGroups();
+    pruneChipSelection();
     var panelRendered = {};
     var linkPanelRendered = {};
     state.summary = summary;
@@ -1325,13 +1534,56 @@
             '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
           '</div>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Uppgifter från byråprofilen och Clientflow samlade i kort: bolagsformer, branscher, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Där live-data finns används Clientflow-siffror (klickbara). Klicka <strong>Ändra</strong> för att uppdatera enkät-svar. Använd <strong>Analysera</strong> för analyskort, <strong>Koppla</strong> om en befintlig riskfaktor redan täcker statistiken, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
+        '<p class="kundrisker-enkat-lead">Uppgifter från byråprofilen och Clientflow samlade i kort: bolagsformer, branscher, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Där live-data finns används Clientflow-siffror (klickbara chips). Bocka i chips för att välja poster och skapa analys via den flytande knappen, eller använd <strong>Analysera</strong>, <strong>Koppla</strong> och <strong>Avstå</strong> per område.</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + cardsHtml + '</div>' +
+        chipAnalysBarHtml() +
       '</div>';
 
     bindPanelEvents(root, summary);
+    bindChipSelection(root, summary);
     bindBranschChips(root);
+  }
+
+  function bindChipSelection(root, summary) {
+    root.querySelectorAll('[data-chip-analys-item]').forEach(function (input) {
+      input.addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+      input.addEventListener('change', function (e) {
+        e.stopPropagation();
+        var itemId = input.getAttribute('data-chip-analys-item');
+        var groupId = input.getAttribute('data-chip-analys-group');
+        if (!itemId || !groupId) return;
+        if (input.checked) state.chipSelection[itemId] = groupId;
+        else delete state.chipSelection[itemId];
+        renderSummary(root, summary);
+      });
+    });
+    root.querySelectorAll('.statistik-stat-chip-check').forEach(function (label) {
+      label.addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+    });
+    var createBtn = root.querySelector('[data-chip-analys-create]');
+    if (createBtn) {
+      createBtn.addEventListener('click', function () {
+        var prefills = prefillsFromChipSelection();
+        if (!prefills.length) {
+          window.alert('Välj minst en post att analysera.');
+          return;
+        }
+        state.chipSelection = Object.create(null);
+        openPrefills(prefills);
+      });
+    }
+    var clearBtn = root.querySelector('[data-chip-analys-clear]');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        state.chipSelection = Object.create(null);
+        renderSummary(root, summary);
+      });
+    }
   }
 
   function bindBranschChips(root) {
@@ -1344,8 +1596,11 @@
       Modal.bindBranschTriggers(root);
       return;
     }
-    root.querySelectorAll('.statistik-stat-chip, .kundrisker-bransch-chip').forEach(function (btn) {
+    root.querySelectorAll(
+      '.statistik-stat-chip-hit[data-typ], .statistik-stat-chip[data-typ], .kundrisker-bransch-chip'
+    ).forEach(function (btn) {
       btn.addEventListener('click', function (e) {
+        if (e.target && e.target.closest && e.target.closest('.statistik-stat-chip-check')) return;
         e.preventDefault();
         e.stopPropagation();
         if (!Modal) return;
@@ -1806,6 +2061,18 @@
     mount: mount,
     refresh: refresh,
     drillTypForField: drillTypForField,
-    getState: function () { return state; }
+    getState: function () { return state; },
+    /** Test-/debughjälpare för chip-val och flytande Skapa analys. */
+    __test: {
+      formNameFromAnalysItem: formNameFromAnalysItem,
+      findOpenChipMatch: findOpenChipMatch,
+      openItemsForField: openItemsForField,
+      namedListChips: namedListChips,
+      selectableChipHtml: selectableChipHtml,
+      prefillsFromChipSelection: prefillsFromChipSelection,
+      chipAnalysBarHtml: chipAnalysBarHtml,
+      refreshGroups: refreshGroups,
+      pruneChipSelection: pruneChipSelection
+    }
   };
 })();

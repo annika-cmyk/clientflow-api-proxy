@@ -340,10 +340,17 @@
   function bindStatChips(root) {
     bindChrome();
     const scope = root || document;
-    scope.querySelectorAll('.statistik-stat-chip, .kundrisker-bransch-chip').forEach((el) => {
+    // .statistik-stat-chip-hit: klickbar etikett när chip har checkbox för analysval.
+    // .statistik-stat-chip[data-typ]: äldre knappar utan checkbox-wrapper.
+    scope.querySelectorAll(
+      '.statistik-stat-chip-hit[data-typ], .statistik-stat-chip[data-typ], .kundrisker-bransch-chip'
+    ).forEach((el) => {
       if (el._statChipBound) return;
       el._statChipBound = true;
       el.addEventListener('click', function (e) {
+        if (e.target && e.target.closest && e.target.closest('.statistik-stat-chip-check')) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         handleRowClick(el);

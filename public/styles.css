@@ -20493,12 +20493,121 @@ body.byra-resa-page .risk-header h1 {
 }
 .statistik-stat-chip--static {
   cursor: default;
+}
+.statistik-stat-chip--static:not(.statistik-stat-chip--selectable) {
   pointer-events: none;
 }
 .statistik-stat-chip--static:hover,
 .statistik-stat-chip--static:focus-visible {
   background: #f8fafc;
   border-color: #cbd5e1;
+}
+.statistik-stat-chip--selectable {
+  gap: 0.35rem;
+  padding-left: 0.45rem;
+}
+.statistik-stat-chip--selectable.is-chip-selected {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #14532d;
+}
+.statistik-stat-chip-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.statistik-stat-chip-check input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.statistik-stat-chip-check-ui {
+  display: inline-block;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 1.5px solid #94a3b8;
+  border-radius: 0.25rem;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.02);
+}
+.statistik-stat-chip-check input:checked + .statistik-stat-chip-check-ui {
+  border-color: #15803d;
+  background: #15803d;
+  box-shadow: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E");
+  background-size: 0.7rem 0.7rem;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+.statistik-stat-chip-check:hover .statistik-stat-chip-check-ui,
+.statistik-stat-chip-check input:focus-visible + .statistik-stat-chip-check-ui {
+  border-color: #0f766e;
+}
+.statistik-stat-chip-hit {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  margin: 0;
+  padding: 0.22rem 0.55rem 0.22rem 0;
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  line-height: inherit;
+  white-space: nowrap;
+}
+.statistik-stat-chip--static .statistik-stat-chip-hit {
+  cursor: default;
+  padding-right: 0.3rem;
+}
+.statistik-stat-chip--selectable:not(.statistik-stat-chip--static) {
+  padding-right: 0.35rem;
+}
+.kundrisker-chip-analys-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 1200;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  padding: 0.55rem 0.75rem 0.55rem 1rem;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #f8fafc;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.28);
+}
+.kundrisker-chip-analys-bar-count {
+  font-size: 0.88rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.kundrisker-chip-analys-bar .btn-primary {
+  background: #fff;
+  border-color: #fff;
+  color: #0f172a;
+  font-weight: 700;
+}
+.kundrisker-chip-analys-bar .btn-primary:hover {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #14532d;
+}
+.kundrisker-chip-analys-bar .btn-ghost {
+  color: #e2e8f0;
+  border-color: transparent;
+}
+.kundrisker-chip-analys-bar .btn-ghost:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
 }
 .kundrisker-enkat .statistik-stat-chips {
   margin-top: 0.1rem;
