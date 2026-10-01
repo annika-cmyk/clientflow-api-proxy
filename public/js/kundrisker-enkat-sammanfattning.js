@@ -262,12 +262,17 @@
 
   function formNameFromAnalysItem(item) {
     var rf = String((item && item.riskfaktor) || '').trim();
-    var m =
-      rf.match(/^Kunder med bolagsform(?:erna)?\s+(.+)$/i) ||
+    // Branschnamn kan innehålla kommatecken ("Kultur, media och underhållning") —
+    // ta hela resten efter prefixet, dela inte på komma.
+    var bransch =
       rf.match(/^Kunder i högriskbransch:\s*(.+)$/i) ||
       rf.match(/^Kunder i bransch:\s*(.+)$/i);
+    if (bransch) return String(bransch[1] || '').trim();
+
+    var m = rf.match(/^Kunder med bolagsform(?:erna)?\s+(.+)$/i);
     if (m) {
       var forms = m[1].split(/\s*,\s*/).map(function (p) { return p.trim(); }).filter(Boolean);
+      // Enbart exakt en bolagsform → chip-match; sammanslagna poster matchas via label.
       return forms.length === 1 ? forms[0] : '';
     }
     var label = String((item && item.label) || '');
