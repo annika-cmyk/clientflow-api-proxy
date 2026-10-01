@@ -19033,6 +19033,59 @@ h5.ar-subsection-title {
     gap: 0.55rem;
     justify-content: flex-end;
 }
+.tjanst-mall-hogrisk-badge,
+.tjanst-mall-merge-badge {
+    display: inline-flex;
+    align-items: center;
+    margin: 0.2rem 0.35rem 0 0;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+.tjanst-mall-hogrisk-badge {
+    color: #991b1b;
+    background: #fee2e2;
+    border: 1px solid #fecaca;
+}
+.tjanst-mall-merge-badge {
+    color: #1e3a5f;
+    background: #e0f2fe;
+    border: 1px solid #bae6fd;
+}
+.tjanst-mall-card.is-hogrisk-tjanst {
+    border-color: rgba(185, 28, 28, 0.28);
+}
+.tjanst-mall-hogrisk-hint {
+    margin: 0 0 0.55rem;
+    color: #991b1b;
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.tjanst-mall-ai-recommend {
+    font-weight: 700;
+}
+.tjanst-mall-choice.is-analyserad {
+    display: inline-flex;
+    margin: 0;
+    gap: 0;
+}
+.tjanst-mall-analyserad-btn {
+    font-weight: 700;
+    cursor: pointer;
+}
+.tjanst-mall-analyserad-btn.is-hogrisk {
+    background: #faf5ff;
+    border: 1px solid #d8b4fe;
+    color: #6b21a8;
+}
+.tjanst-mall-analyserad-btn.is-hogrisk:hover {
+    background: #f3e8ff;
+    border-color: #c084fc;
+    color: #581c87;
+}
 .tjanst-utforande-katalog {
     display: grid;
     gap: 0.75rem;

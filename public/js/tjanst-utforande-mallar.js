@@ -780,12 +780,74 @@
     return 'custom:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
+  /** Officiella högrisktjänster (Länsstyrelsen / NRA-kopplade mallar och namn). */
+  var HOGRISK_MALL_IDS = {
+    betalningsuppdrag: true,
+    'formella-intyg': true
+  };
+  var HOGRISK_NAME_RES = [
+    /betalningsuppdrag/i,
+    /bolagsbildning/i,
+    /nominee/i,
+    /styrelseuppdrag/i,
+    /säte\b|postadress|brevlåde/i,
+    /bolagsverket/i,
+    /generalfullmakt/i,
+    /ombud.*skatte|skatteprocess/i,
+    /formella intyg/i
+  ];
+
+  function normalizeMergedFrom(list) {
+    const seen = new Set();
+    const out = [];
+    (Array.isArray(list) ? list : []).forEach((row) => {
+      if (!row) return;
+      const id = String(row.id || '').trim();
+      const namn = String(row.namn || '').trim();
+      if (!id && !namn) return;
+      const key = id || foldName(namn);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push({ id: id, namn: namn || id });
+    });
+    return out.slice(0, 20);
+  }
+
+  function nameLooksHighRisk(namn) {
+    const text = String(namn || '').trim();
+    if (!text) return false;
+    return HOGRISK_NAME_RES.some((re) => re.test(text));
+  }
+
+  function isOfficialHighRiskService(templateOrId, entry) {
+    const template = templateOrId && typeof templateOrId === 'object'
+      ? templateOrId
+      : templateById(templateOrId);
+    const id = String((template && template.id) || templateOrId || '').trim();
+    if (id && HOGRISK_MALL_IDS[id]) return true;
+    if (nameLooksHighRisk(template && template.name)) return true;
+    if (nameLooksHighRisk(entry && entry.namn)) return true;
+    const merged = normalizeMergedFrom(entry && entry.mergedFrom);
+    for (let i = 0; i < merged.length; i++) {
+      if (merged[i].id && HOGRISK_MALL_IDS[merged[i].id]) return true;
+      if (nameLooksHighRisk(merged[i].namn)) return true;
+      const src = templateById(merged[i].id);
+      if (src && nameLooksHighRisk(src.name)) return true;
+    }
+    return false;
+  }
+
   function customTemplate(entry) {
+    const mergedFrom = normalizeMergedFrom(entry && entry.mergedFrom);
+    const desc = mergedFrom.length
+      ? ('Sammanslagen från: ' + mergedFrom.map((m) => m.namn).join(', '))
+      : '';
     return {
       id: (entry && entry.id) || createCustomId(),
       name: (entry && entry.namn) || 'Egen tjänst',
-      description: '',
-      aiQuestionSupport: false,
+      description: desc,
+      aiQuestionSupport: mergedFrom.length > 0,
+      mergedFrom: mergedFrom,
       questions: [],
       extraQuestions: [EGEN_BESKRIVNING]
     };
@@ -795,6 +857,16 @@
     if (!id) return null;
     if (isCustomId(id)) return customTemplate({ id: id });
     return SERVICE_TEMPLATES.find((t) => t.id === id) || null;
+  }
+
+  /** Template med entry-kontext (sammanslagna källor, eget namn). */
+  function templateForEntry(entry, fallbackId) {
+    const id = String((entry && entry.id) || fallbackId || '').trim();
+    if (!id) return null;
+    if (isCustomId(id)) {
+      return customTemplate(Object.assign({}, entry || {}, { id: id }));
+    }
+    return templateById(id);
   }
 
   function resolveTemplateId(namn) {
@@ -855,7 +927,59 @@
     return stats.concat(BASE_QUESTIONS, extra);
   }
 
-  function groupQuestionsForTemplate(template) {
+  function serviceSpecificQuestions(template) {
+    if (!template) return [];
+    if (template.replaceBaseQuestions) return (template.questions || []).slice();
+    if (template.aiQuestionSupport === false) return (template.extraQuestions || []).slice();
+    return (template.questions || template.extraQuestions || []).slice();
+  }
+
+  /**
+   * Frågor för en katalogpost. Vid sammanslagning: statistik + bas + alla
+   * tjänstespecifika frågor från källmallarna (deduplicerade på id).
+   */
+  function questionsForEntry(entry, template) {
+    const tpl = template || templateForEntry(entry);
+    const mergedFrom = normalizeMergedFrom(entry && entry.mergedFrom);
+    if (!mergedFrom.length) return questionsForTemplate(tpl);
+
+    const seen = Object.create(null);
+    const out = [];
+    function pushAll(list) {
+      (list || []).forEach((q) => {
+        if (!q || !q.id || seen[q.id]) return;
+        seen[q.id] = true;
+        out.push(q);
+      });
+    }
+    pushAll(STATISTIK_QUESTIONS);
+    pushAll(BASE_QUESTIONS);
+    let specificCount = 0;
+    mergedFrom.forEach((src) => {
+      const srcTpl = templateById(src.id);
+      if (!srcTpl) return;
+      const before = out.length;
+      pushAll(serviceSpecificQuestions(srcTpl));
+      specificCount += out.length - before;
+    });
+    if (!specificCount) pushAll([EGEN_BESKRIVNING]);
+    return out;
+  }
+
+  function groupQuestionsForTemplate(template, entry) {
+    const mergedFrom = normalizeMergedFrom(entry && entry.mergedFrom);
+    if (mergedFrom.length) {
+      const all = questionsForEntry(entry, template);
+      const statsIds = Object.create(null);
+      STATISTIK_QUESTIONS.forEach((q) => { if (q && q.id) statsIds[q.id] = true; });
+      const baseIds = Object.create(null);
+      BASE_QUESTIONS.forEach((q) => { if (q && q.id) baseIds[q.id] = true; });
+      return {
+        stats: all.filter((q) => statsIds[q.id]),
+        base: all.filter((q) => baseIds[q.id]),
+        extra: all.filter((q) => !statsIds[q.id] && !baseIds[q.id])
+      };
+    }
     const extra = extraQuestionsForTemplate(template);
     const stats = STATISTIK_QUESTIONS.slice();
     if (template && template.replaceBaseQuestions) {
@@ -909,7 +1033,8 @@
       id: mallId,
       aktiv: false,
       answers: {},
-      kommentarer: {}
+      kommentarer: {},
+      mergedFrom: []
     }, extra || {});
   }
 
@@ -928,12 +1053,17 @@
   }
 
   function normalizeEntryAnswers(entry) {
-    if (!entry || !entry.answers || typeof entry.answers !== 'object') return entry;
+    if (!entry || typeof entry !== 'object') return entry;
     const answers = {};
-    Object.keys(entry.answers).forEach((key) => {
-      answers[key] = normalizeAnswerValue(entry.answers[key]);
+    if (entry.answers && typeof entry.answers === 'object') {
+      Object.keys(entry.answers).forEach((key) => {
+        answers[key] = normalizeAnswerValue(entry.answers[key]);
+      });
+    }
+    return Object.assign({}, entry, {
+      answers: answers,
+      mergedFrom: normalizeMergedFrom(entry.mergedFrom)
     });
-    return Object.assign({}, entry, { answers: answers });
   }
 
   function getEntry(state, mallId) {
@@ -995,7 +1125,7 @@
 
   /**
    * Slå ihop flera katalogtjänster till en ny egen tjänst.
-   * Källorna tas bort från katalogen (standardmallar kan läggas till igen).
+   * Källorna tas bort från katalogen men sparas i mergedFrom så AI får alla frågor.
    */
   function mergeServices(state, mallIds, newNamn) {
     const ids = (Array.isArray(mallIds) ? mallIds : [])
@@ -1013,24 +1143,42 @@
     }
     let next = parseState(state);
     const cards = listCatalogCards(next);
-    const picked = unique.map((id) => {
+    const picked = [];
+    unique.forEach((id) => {
       const card = cards.find((c) => c.template && c.template.id === id);
-      return card
-        ? { id, namn: String((card.template && card.template.name) || id).trim() }
-        : null;
-    }).filter(Boolean);
-    if (picked.length < 2) {
+      if (!card) return;
+      const namn = String((card.template && card.template.name) || id).trim();
+      // Bevara nested mergedFrom om en redan sammanslagen tjänst slås ihop igen.
+      const nested = normalizeMergedFrom(card.entry && card.entry.mergedFrom);
+      if (nested.length) {
+        nested.forEach((row) => picked.push(row));
+      } else {
+        picked.push({ id: id, namn: namn });
+      }
+    });
+    const mergedFrom = normalizeMergedFrom(picked);
+    if (mergedFrom.length < 2) {
       return { state: next, id: '', error: 'Välj minst två tjänster som finns i katalogen.' };
     }
     const namn = String(newNamn || '').trim() ||
-      picked.map((p) => p.namn).join(' och ');
+      mergedFrom.map((p) => p.namn).join(' och ');
     const added = addCustomService(next, namn);
-    next = added.state;
-    picked.forEach((p) => {
-      next = removeEntry(next, p.id);
+    next = upsertEntry(added.state, added.id, {
+      namn: namn,
+      mergedFrom: mergedFrom,
+      aktiv: false
+    });
+    unique.forEach((id) => {
+      next = removeEntry(next, id);
     });
     if (!next.katalogVal) next.katalogVal = 'egna';
-    return { state: next, id: added.id, namn: namn, sourceIds: picked.map((p) => p.id) };
+    return {
+      state: next,
+      id: added.id,
+      namn: namn,
+      sourceIds: mergedFrom.map((p) => p.id),
+      mergedFrom: mergedFrom
+    };
   }
 
   /**
@@ -1096,7 +1244,10 @@
     Object.keys(parsed.tjanster).forEach((id) => {
       if (!isCustomId(id)) return;
       const entry = normalizeEntryAnswers(parsed.tjanster[id]);
-      cards.push({ template: customTemplate({ id: id, namn: entry.namn }), entry: entry });
+      cards.push({
+        template: customTemplate(Object.assign({}, entry, { id: id })),
+        entry: entry
+      });
     });
     return cards;
   }
@@ -1108,8 +1259,8 @@
   }
 
   function formatAnswersForAi(template, entry) {
-    const questions = questionsForTemplate(template);
     const normalized = normalizeEntryAnswers(entry || emptyEntry(template && template.id));
+    const questions = questionsForEntry(normalized, template);
     const answers = normalized.answers || {};
     const comments = (normalized && normalized.kommentarer) || {};
     const rows = [];
@@ -1229,11 +1380,15 @@
     templateById: templateById,
     resolveTemplateId: resolveTemplateId,
     resolveTemplate: resolveTemplate,
+    templateForEntry: templateForEntry,
     tjanstNamesMatch: tjanstNamesMatch,
+    normalizeMergedFrom: normalizeMergedFrom,
+    isOfficialHighRiskService: isOfficialHighRiskService,
     extraQuestionsForTemplate: extraQuestionsForTemplate,
     questionIsVisible: questionIsVisible,
     wantsClientflowStatistik: wantsClientflowStatistik,
     questionsForTemplate: questionsForTemplate,
+    questionsForEntry: questionsForEntry,
     groupQuestionsForTemplate: groupQuestionsForTemplate,
     emptyState: emptyState,
     parseState: parseState,
