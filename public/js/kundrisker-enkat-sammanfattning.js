@@ -924,6 +924,21 @@
     return out;
   }
 
+  /** Officiell högriskanalys (Samordningsfunktionen) — lila chip, inte grön. */
+  function isOfficialHogriskRiskNamn(namn) {
+    var s = String(namn || '').trim();
+    return /^Kunder i högriskbransch\b/i.test(s)
+      || /^Andel kunder i högriskbransch/i.test(s)
+      || /^Byrån har kunder inom högriskbransch/i.test(s);
+  }
+
+  function nestedRiskChipClass(namn) {
+    if (isOfficialHogriskRiskNamn(namn)) {
+      return 'kundrisker-enkat-nested-chip is-analyserad is-hogrisk';
+    }
+    return 'kundrisker-enkat-nested-chip btn btn-sm btn-success is-analyserad';
+  }
+
   function nestedRiskChipHtml(risk) {
     var Forslag = API();
     var namn = Forslag && Forslag.riskNamn
@@ -937,9 +952,12 @@
         level = scored.residualLevel || scored.level || '';
       }
     } catch (_) { /* ignore */ }
+    var hogrisk = isOfficialHogriskRiskNamn(namn);
     return (
-      '<button type="button" class="kundrisker-enkat-nested-chip" data-nested-risk-id="' +
-        escapeHtml(risk.id) + '" title="Öppna analys">' +
+      '<button type="button" class="' + nestedRiskChipClass(namn) + '" data-nested-risk-id="' +
+        escapeHtml(risk.id) + '"' +
+        (hogrisk ? ' data-hogrisk-analys="1"' : '') +
+        ' title="' + (hogrisk ? 'Högriskanalys — öppna' : 'Öppna analys') + '">' +
         '<span class="kundrisker-enkat-nested-chip-name">' + escapeHtml(namn || 'Riskfaktor') + '</span>' +
         (level ? '<span class="kundrisker-enkat-nested-chip-level">' + escapeHtml(level) + '</span>' : '') +
       '</button>'
@@ -2480,7 +2498,10 @@
       refreshGroups: refreshGroups,
       pruneChipSelection: pruneChipSelection,
       cardsForCurrentPage: cardsForCurrentPage,
-      COMPOSITE_CARDS: COMPOSITE_CARDS
+      COMPOSITE_CARDS: COMPOSITE_CARDS,
+      nestedRiskChipHtml: nestedRiskChipHtml,
+      isOfficialHogriskRiskNamn: isOfficialHogriskRiskNamn,
+      nestedRiskChipClass: nestedRiskChipClass
     }
   };
 })();
