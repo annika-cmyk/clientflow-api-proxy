@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="styles.css?v=20261001nestedgreen">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body data-risk-page-scope="verksamhet" data-enkat-page="verksamhet">
+<body data-risk-page-scope="verksamhet">
 
     <div class="app-container">
         <div class="sidebar-container"></div>
@@ -20,21 +20,22 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Verksamhetsspecifika riskfaktorer</h1>
-                        <p class="risk-header-sub">Byråns organisation och kundernas branscher — underlag för verksamhetsspecifik riskbedömning</p>
+                        <p class="risk-header-sub">Byråns organisation och interna omständigheter — underlag för verksamhetsspecifik riskbedömning</p>
                         <div class="risk-header-body">
                             <p>
-                                Här samlar ni <strong>verksamhetsspecifika</strong> omständigheter: byråns storlek, kompetens, outsourcing och kontrollmiljö, samt statistik om <strong>kundernas branscher</strong> (inkl. högrisk enligt Samordningsfunktionen). Kundkategorier och kundens geografi ligger kvar på
+                                Här samlar ni <strong>verksamhetsspecifika</strong> omständigheter: byråns storlek, kompetens, outsourcing och kontrollmiljö. Kundstockens sammansättning (antal kunder, branscher, residualrisk m.m.) ligger på
                                 <a href="kundrisker-mm.html">Vilka är våra kunder</a>. Distributionskanaler bedöms på
                                 <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.
                             </p>
                             <h3>Tänk särskilt på:</h3>
                             <ul>
                                 <li>Hur byråns organisation och arbetssätt påverkar möjligheten att upptäcka missbruk av redovisningstjänster.</li>
-                                <li>Vilka huvudbranscher kunderna finns i, och vilka som räknas som högrisk för penningtvätt eller terrorfinansiering.</li>
                                 <li>Outsourcing, personalomsättning och utbildning som påverkar den inre sårbarheten.</li>
+                                <li>Ekonomiska beroenden och andra interna faktorer som kan påverka riskmedvetenheten.</li>
                             </ul>
                             <p class="risk-header-note">
-                                Analysera branscherna och verksamhetsspecifika faktorer här. Tjänster bedöms under
+                                Analysera verksamhetsspecifika faktorer här. Kundstatistik och branscher bedöms under
+                                <a href="kundrisker-mm.html">Vilka är våra kunder</a>. Tjänster bedöms under
                                 <a href="riskbedomning-byra.html">Byråns tjänster</a>.
                             </p>
                         </div>
@@ -69,12 +70,6 @@
                             Fyll i byråprofilens interna steg så kan vi föreslå verksamhetsspecifika risker att bedöma.
                         </p>
                     </div>
-                </div>
-            </section>
-
-            <section class="kundrisker-enkat-section" id="kundrisker-enkat-section" aria-label="Branschstatistik från byråprofilen">
-                <div class="container">
-                    <div id="kundrisker-enkat-root"></div>
                 </div>
             </section>
 
@@ -145,23 +140,6 @@
         </div>
     </footer>
 
-    <div id="statistik-kunder-modal-overlay" class="statistik-kunder-modal-overlay" style="display:none;" aria-hidden="true">
-        <div class="statistik-kunder-modal statistik-kunder-modal--wide" role="dialog" aria-labelledby="statistik-kunder-modal-title">
-            <div class="statistik-kunder-modal-header">
-                <button type="button" class="statistik-kunder-modal-back" id="statistik-kunder-modal-back" style="display:none;" aria-label="Tillbaka">← Tillbaka</button>
-                <h4 id="statistik-kunder-modal-title">Kunder</h4>
-                <button type="button" class="statistik-kunder-modal-close" id="statistik-kunder-modal-close" aria-label="Stäng">&times;</button>
-            </div>
-            <div class="statistik-kunder-modal-body">
-                <div class="statistik-kunder-modal-loading" id="statistik-kunder-modal-loading" style="display:none;">Laddar kunder...</div>
-                <div id="statistik-bransch-drilldown" class="statistik-bransch-drilldown" style="display:none;"></div>
-                <ul class="statistik-kunder-lista" id="statistik-kunder-lista"></ul>
-                <p class="statistik-kunder-modal-empty" id="statistik-kunder-modal-empty" style="display:none;">Inga kunder hittades.</p>
-                <p class="statistik-kunder-modal-error" id="statistik-kunder-modal-error" style="display:none;"></p>
-            </div>
-        </div>
-    </div>
-
     <script src="js/config.js" defer></script>
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
@@ -181,11 +159,7 @@
     <script src="js/ai-falt-granskning.js?v=17" defer></script>
     <script src="js/eu-hogrisk-lander.js?v=5" defer></script>
     <script src="js/byra-profil-risk-forslag.js?v=4" defer></script>
-    <script src="js/byra-profil-analys-koppling.js?v=4" defer></script>
+    <script src="js/byra-profil-analys-koppling.js?v=5" defer></script>
     <script src="js/ovriga-riskfaktorer.js?v=59" defer></script>
-    <script src="js/kund-bransch-aggregat.js?v=20261001branschmerge" defer></script>
-    <script src="js/statistik-kunder-modal.js?v=4" defer></script>
-    <script src="js/kundrisker-profil-analysforslag.js?v=8" defer></script>
-    <script src="js/kundrisker-enkat-sammanfattning.js?v=22" defer></script>
 </body>
 </html>

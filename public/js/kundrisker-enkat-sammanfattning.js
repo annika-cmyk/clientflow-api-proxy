@@ -20,8 +20,8 @@
       icon: 'fa-users',
       desc: 'Totalt antal pågående kunder.',
       keys: ['antalKunder'],
-      /** Visas på verksamhetssidan (kontext till branschsammanfattning), inte på Vilka är våra kunder — där antal redan syns via Byråns tjänster. */
-      pages: ['verksamhet']
+      /** Clientflow kundstock — endast under Vilka är våra kunder (inte verksamhetsspecifika). */
+      pages: ['kundrisker']
     },
     {
       id: 'branscher',
@@ -34,7 +34,15 @@
       blockLabels: {
         kundernasBranscher: 'Alla branscher'
       },
-      pages: ['verksamhet']
+      pages: ['kundrisker']
+    },
+    {
+      id: 'residualrisk',
+      title: 'Kundernas residualrisk',
+      icon: 'fa-shield-halved',
+      desc: 'Fördelning av kunder per residualrisknivå.',
+      keys: ['kundResidualriskFordelning'],
+      pages: ['kundrisker']
     },
     {
       id: 'bolagsformer',
@@ -902,21 +910,24 @@
     // Byråns geografiska marknad visas under Övriga / distribution — inte som kundkort.
     usedKeys.geografiskMarknad = true;
 
-    // Övriga ifyllda fält (t.ex. residualrisk) som egna enkla kort.
-    allFields.forEach(function (field) {
-      if (!field || usedKeys[field.key] || field.requiredWhen) return;
-      var block = buildBlockFromField(field, profil, allFields, null);
-      if (!block) return;
-      usedKeys[field.key] = true;
-      answeredCount += 1;
-      cards.push({
-        id: 'extra-' + field.key,
-        title: field.label || field.key,
-        icon: iconForKey(field.key),
-        desc: '',
-        blocks: [block]
+    // Övriga ifyllda kundstock-fält som egna enkla kort — bara på Vilka är våra kunder.
+    // Verksamhetsspecifika ska inte få Clientflow-kundaggregat som «extra»-kort.
+    if (enkatPageId() === 'kundrisker') {
+      allFields.forEach(function (field) {
+        if (!field || usedKeys[field.key] || field.requiredWhen) return;
+        var block = buildBlockFromField(field, profil, allFields, null);
+        if (!block) return;
+        usedKeys[field.key] = true;
+        answeredCount += 1;
+        cards.push({
+          id: 'extra-' + field.key,
+          title: field.label || field.key,
+          icon: iconForKey(field.key),
+          desc: '',
+          blocks: [block]
+        });
       });
-    });
+    }
 
     return {
       hasAnswers: answeredCount > 0,
@@ -1921,11 +1932,9 @@
     }
     _lastNestedRiskIds = collectNestedRiskIds({ cards: cards });
 
-    var page = enkatPageId();
-    var headTitle = page === 'verksamhet' ? 'Verksamhetsspecifika riskfaktorer' : 'Vilka är våra kunder';
-    var lead = page === 'verksamhet'
-      ? 'Branschstatistik från byråprofilen och Clientflow. Högriskbranscher markeras enligt Samordningsfunktionen. Bocka i chips eller använd Analysera, Koppla och Avstå. Analyserade riskfaktorer visas under respektive kort.'
-      : 'Uppgifter från byråprofilen och Clientflow samlade i kort: bolagsformer, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Branschstatistik ligger under Verksamhetsspecifika riskfaktorer. Där live-data finns används Clientflow-siffror (klickbara chips). Analyserade riskfaktorer visas under respektive kort.';
+    var headTitle = 'Vilka är våra kunder';
+    var lead =
+      'Uppgifter från byråprofilen och Clientflow samlade i kort: antal kunder, branscher (högrisk enligt Samordningsfunktionen), residualrisk, bolagsformer, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Där live-data finns används Clientflow-siffror (klickbara chips). Analyserade riskfaktorer visas under respektive kort.';
 
     var cardsHtml =
       '<div class="statistik-sections kundrisker-enkat-stat-sections kundrisker-enkat-cards">' +
@@ -1940,9 +1949,7 @@
           '<h3>' + escapeHtml(headTitle) + '</h3>' +
           '<div class="kundrisker-enkat-head-links">' +
             '<a class="kundrisker-enkat-edit" href="statistik-riskbedomning.html">Öppna all statistik</a>' +
-            '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=' +
-              (page === 'verksamhet' ? 'kundstock' : 'kundstock') +
-            '">Ändra i enkäten</a>' +
+            '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
           '</div>' +
         '</div>' +
         '<p class="kundrisker-enkat-lead">' + lead + '</p>' +
