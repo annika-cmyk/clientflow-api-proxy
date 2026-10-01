@@ -48,12 +48,43 @@
     return fold(value) === 'ja';
   }
 
+  /**
+   * Parsar "Namn: 12, Annat: 3" utan att dela namn som innehåller komma
+   * (t.ex. "Kultur, media och underhållning: 20").
+   * Om inga räknade poster finns faller vi tillbaka till delimiter-split.
+   */
   function parseCounted(raw) {
     var text = trimStr(raw);
     if (!text) return [];
+
+    var ends = [];
+    var re = /[:·\-–]\s*(\d+)\s*(?=,|;|\||$)/g;
+    var m;
+    while ((m = re.exec(text))) {
+      ends.push({ count: m[1], countStart: m.index, countEnd: m.index + m[0].length });
+    }
+
+    if (ends.length) {
+      var seen = Object.create(null);
+      var out = [];
+      var cursor = 0;
+      ends.forEach(function (end) {
+        var form = text.slice(cursor, end.countStart).replace(/^[,;|\s]+/, '').trim();
+        cursor = end.countEnd;
+        if (!form) return;
+        var key = fold(form);
+        if (seen[key]) {
+          if (!seen[key].count) seen[key].count = end.count;
+          return;
+        }
+        var row = { form: form, count: end.count };
+        seen[key] = row;
+        out.push(row);
+      });
+      return out;
+    }
+
     return text.split(/[,;\n|]+/).map(function (part) {
-      var m = String(part || '').trim().match(/^(.+?)\s*[:·\-–]\s*(\d+)\s*$/);
-      if (m) return { form: m[1].trim(), count: m[2] };
       var bare = String(part || '').trim();
       return bare ? { form: bare, count: '' } : null;
     }).filter(Boolean);
