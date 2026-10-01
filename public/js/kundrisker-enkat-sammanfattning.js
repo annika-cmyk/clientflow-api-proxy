@@ -10,6 +10,82 @@
   var HOGRISK_NONE = 'Inga högriskbranscher';
   var SKIP_STORAGE_PREFIX = 'kundriskAnalysSkipped:';
   var LINK_STORAGE_PREFIX = 'kundriskAnalysLinked:';
+  /** Sammansatta statistik-kort (ordning + vilka enkätfält som ingår). */
+  var COMPOSITE_CARDS = [
+    {
+      id: 'antal',
+      title: 'Antal kunder',
+      icon: 'fa-users',
+      desc: 'Totalt antal pågående kunder.',
+      keys: ['antalKunder']
+    },
+    {
+      id: 'bolagsformer',
+      title: 'Bolagsformer i kundstocken',
+      icon: 'fa-building',
+      desc: 'Fördelning av juridiska former bland kunderna.',
+      keys: ['vanligasteBolagsformer']
+    },
+    {
+      id: 'branscher',
+      title: 'Kundernas branscher',
+      icon: 'fa-layer-group',
+      desc: 'Alla branscher i kundstocken. Högriskbranscher specificeras separat, och andelen kunder i högriskbransch visas i procent.',
+      keys: ['kundernasBranscher', 'branscherKundstock', 'andelHogriskbransch'],
+      blockLabels: {
+        kundernasBranscher: 'Alla branscher',
+        branscherKundstock: 'Högriskbranscher',
+        andelHogriskbransch: 'Andel kunder i högriskbransch'
+      }
+    },
+    {
+      id: 'betalning',
+      title: 'Betalningsmönster',
+      icon: 'fa-credit-card',
+      desc: 'Kontantintensiva kunder och typiska betalningssätt i kundstocken.',
+      keys: ['andelKontantintensiva', 'betalningsmonster'],
+      blockLabels: {
+        andelKontantintensiva: 'Kontantintensiva kunder',
+        betalningsmonster: 'Betalningsmönster'
+      }
+    },
+    {
+      id: 'personkopplingar',
+      title: 'Personkopplingar',
+      icon: 'fa-user-secret',
+      desc: 'Komplexa ägarstrukturer, utländska ägare samt kunder eller anhöriga som är PEP eller finns på sanktionslistor.',
+      keys: ['komplexaAgarstrukturer', 'utlandskaAgare', 'pepKunder'],
+      blockLabels: {
+        komplexaAgarstrukturer: 'Komplexa ägarstrukturer',
+        utlandskaAgare: 'Utländska ägare',
+        pepKunder: 'PEP eller sanktionslistor'
+      }
+    },
+    {
+      id: 'geografi',
+      title: 'Kundernas geografi',
+      icon: 'fa-map-marker-alt',
+      desc: 'Geografisk marknad, internationell handel, sanktions-/högriskländer och kunder i utsatta områden.',
+      keys: ['geografiskMarknad', 'andelInternationellHandel', 'sanktionslander', 'kunderIUtsattaOmraden'],
+      blockLabels: {
+        geografiskMarknad: 'Geografisk marknad',
+        andelInternationellHandel: 'Andel kunder med internationell handel',
+        sanktionslander: 'Sanktionsländer / högriskländer',
+        kunderIUtsattaOmraden: 'Kunder i utsatta områden'
+      }
+    },
+    {
+      id: 'ursprung',
+      title: 'Kundens ursprung och introduktion',
+      icon: 'fa-handshake',
+      desc: 'Hur nya kunder kommer in och andelen nystartade bolag i kundstocken.',
+      keys: ['kundIntroduktion', 'andelNystartadeBolag'],
+      blockLabels: {
+        kundIntroduktion: 'Hur nya kunder kommer in',
+        andelNystartadeBolag: 'Andel nystartade bolag'
+      }
+    }
+  ];
   var state = {
     profil: null,
     schema: null,
@@ -335,48 +411,162 @@
     return null;
   }
 
-  function buildSummary(profil, schema) {
+  function allSchemaFields(schema) {
     var fieldsByKey = {};
     (schema.fields || []).forEach(function (f) {
       if (f && f.key) fieldsByKey[f.key] = f;
     });
-    var groups = [];
-    var answeredCount = 0;
-
+    var ordered = [];
+    var seen = Object.create(null);
     SECTION_IDS.forEach(function (sectionId) {
       var section = (schema.sections || []).find(function (s) { return s && s.id === sectionId; });
       if (!section) return;
-      var keys = Array.isArray(section.fieldKeys) ? section.fieldKeys : [];
-      var sectionFields = keys.map(function (k) { return fieldsByKey[k]; }).filter(Boolean);
-      var merged = {};
-      var items = [];
+      (Array.isArray(section.fieldKeys) ? section.fieldKeys : []).forEach(function (k) {
+        if (!fieldsByKey[k] || seen[k]) return;
+        seen[k] = true;
+        ordered.push(fieldsByKey[k]);
+      });
+    });
+    Object.keys(fieldsByKey).forEach(function (k) {
+      if (seen[k]) return;
+      ordered.push(fieldsByKey[k]);
+    });
+    return ordered;
+  }
 
-      sectionFields.forEach(function (field) {
-        if (!field || merged[field.key]) return;
-        if (field.requiredWhen) return;
-        var antalField = companionAntal(field, sectionFields);
-        if (antalField) merged[antalField.key] = true;
-        if (!isAnswered(profil[field.key], field)) return;
-        var display = formatDisplay(field, profil[field.key]);
-        if (antalField && isAnswered(profil[antalField.key], antalField)) {
-          display = display + ' · ca ' + String(profil[antalField.key]).trim();
-        }
-        items.push({
-          key: field.key,
-          label: field.label || field.key,
-          display: display,
-          antalKey: antalField ? antalField.key : null,
-          fieldType: field.type || ''
-        });
+  function buildBlockFromField(field, profil, allFields, labelOverride) {
+    if (!field || field.requiredWhen) return null;
+    var antalField = companionAntal(field, allFields);
+    if (!isAnswered(profil[field.key], field)) return null;
+    var display = formatDisplay(field, profil[field.key]);
+    if (antalField && isAnswered(profil[antalField.key], antalField)) {
+      display = display + ' · ca ' + String(profil[antalField.key]).trim();
+    }
+    return {
+      key: field.key,
+      label: labelOverride || field.label || field.key,
+      display: display,
+      antalKey: antalField ? antalField.key : null,
+      fieldType: field.type || ''
+    };
+  }
+
+  function buildSummary(profil, schema) {
+    var allFields = allSchemaFields(schema || {});
+    var fieldsByKey = {};
+    allFields.forEach(function (f) {
+      if (f && f.key) fieldsByKey[f.key] = f;
+    });
+    var usedKeys = Object.create(null);
+    var cards = [];
+    var answeredCount = 0;
+
+    COMPOSITE_CARDS.forEach(function (def) {
+      var blocks = [];
+      (def.keys || []).forEach(function (key) {
+        usedKeys[key] = true;
+        var antalCompanion = fieldsByKey[key] && companionAntal(fieldsByKey[key], allFields);
+        if (antalCompanion) usedKeys[antalCompanion.key] = true;
+        var block = buildBlockFromField(
+          fieldsByKey[key],
+          profil,
+          allFields,
+          (def.blockLabels && def.blockLabels[key]) || null
+        );
+        if (!block) return;
+        // Visa andel högrisk även när värdet saknas men andra branschfält finns — nej, bara ifyllda.
+        blocks.push(block);
         answeredCount += 1;
       });
-
-      if (items.length) {
-        groups.push({ id: section.id, title: section.title || sectionId, items: items });
-      }
+      if (!blocks.length) return;
+      cards.push({
+        id: def.id,
+        title: def.title,
+        icon: def.icon || 'fa-chart-bar',
+        desc: def.desc || '',
+        blocks: blocks
+      });
     });
 
-    return { hasAnswers: answeredCount > 0, answeredCount: answeredCount, groups: groups };
+    // Övriga ifyllda fält (t.ex. residualrisk) som egna enkla kort.
+    allFields.forEach(function (field) {
+      if (!field || usedKeys[field.key] || field.requiredWhen) return;
+      var block = buildBlockFromField(field, profil, allFields, null);
+      if (!block) return;
+      usedKeys[field.key] = true;
+      answeredCount += 1;
+      cards.push({
+        id: 'extra-' + field.key,
+        title: field.label || field.key,
+        icon: iconForKey(field.key),
+        desc: '',
+        blocks: [block]
+      });
+    });
+
+    return {
+      hasAnswers: answeredCount > 0,
+      answeredCount: answeredCount,
+      groups: [{ id: 'sammansatt', title: '', items: cards }],
+      cards: cards
+    };
+  }
+
+  function uniqueAnalysGroupsForCard(card) {
+    var seen = Object.create(null);
+    var rows = [];
+    ((card && card.blocks) || []).forEach(function (block) {
+      var g = allGroupForItem(block);
+      if (!g || seen[g.id]) return;
+      seen[g.id] = true;
+      rows.push({ group: g, block: block });
+    });
+    return rows;
+  }
+
+  function aggregateCardStatus(card) {
+    var Forslag = API();
+    if (!Forslag || !Forslag.resolveGroupChecklistStatus) return null;
+    var risks = risksList();
+    var rows = [];
+    ((card && card.blocks) || []).forEach(function (block) {
+      var g = allGroupForItem(block);
+      if (!g) return;
+      if (rows.some(function (r) { return r.groupId === g.id; })) return;
+      var status = Forslag.resolveGroupChecklistStatus(g, risks, state.skippedIds, state.linkedMap);
+      if (!status) return;
+      rows.push({ groupId: g.id, status: status });
+    });
+    if (!rows.length) return null;
+    var analyserad = rows.filter(function (r) { return r.status.status === 'analyserad'; });
+    var kopplad = rows.filter(function (r) { return r.status.status === 'kopplad'; });
+    var avstadd = rows.filter(function (r) { return r.status.status === 'avstadd'; });
+    var pending = rows.filter(function (r) { return r.status.status === 'pending'; });
+    var done = analyserad.length + kopplad.length;
+    if (done === rows.length) {
+      if (analyserad.length && !kopplad.length) {
+        if (analyserad.length === 1) return analyserad[0].status;
+        return { status: 'analyserad', label: 'Analyserad' };
+      }
+      if (kopplad.length && !analyserad.length) {
+        if (kopplad.length === 1) return kopplad[0].status;
+        return { status: 'kopplad', label: 'Kopplad' };
+      }
+      return { status: 'analyserad', label: 'Analyserad' };
+    }
+    if (done > 0) {
+      return {
+        status: 'analyserad',
+        label: 'Delvis analyserad (' + done + '/' + rows.length + ')'
+      };
+    }
+    if (avstadd.length === rows.length) {
+      return { status: 'avstadd', label: 'Avstådd' };
+    }
+    if (pending.length) {
+      return { status: 'pending', label: 'Ej gjord än' };
+    }
+    return rows[0].status;
   }
 
   function risksList() {
@@ -963,61 +1153,168 @@
   }
 
 
+  function findBlockByKey(summary, key) {
+    if (!key || !summary) return null;
+    var found = null;
+    function consider(block) {
+      if (!found && block && block.key === key) found = block;
+    }
+    ((summary.cards) || []).forEach(function (card) {
+      ((card && card.blocks) || []).forEach(consider);
+    });
+    if (found) return found;
+    ((summary.groups) || []).forEach(function (g) {
+      ((g && g.items) || []).forEach(function (it) {
+        consider(it);
+        ((it && it.blocks) || []).forEach(consider);
+      });
+    });
+    return found;
+  }
+
+  function cardSourceBadgesHtml(card) {
+    var hasCf = false;
+    var hasBp = false;
+    ((card && card.blocks) || []).forEach(function (block) {
+      if (itemUsesClientflow(block)) hasCf = true;
+      else hasBp = true;
+    });
+    var html = '';
+    if (hasCf) html += sourceBadgeHtml(true);
+    if (hasBp) html += sourceBadgeHtml(false);
+    return html;
+  }
+
+  function actionsHtmlForGroup(allGroup, openGroup, statusRow) {
+    if (!allGroup && !openGroup) return '';
+    var btn = buttonForItem(null, openGroup, statusRow);
+    var skipBtn = skipActionsHtml(allGroup, statusRow);
+    return btn + skipBtn;
+  }
+
+  function renderCardBlock(block, opts) {
+    opts = opts || {};
+    var allGroup = opts.allGroup || null;
+    var openGroup = opts.openGroup || null;
+    var statusRow = opts.statusRow || null;
+    var showBlockActions = !!opts.showBlockActions;
+    var showBlockStatus = !!opts.showBlockStatus;
+    var panel = opts.panel || '';
+    var fromCf = itemUsesClientflow(block);
+    var blockActions = '';
+    if (showBlockActions || showBlockStatus) {
+      var actionBits = '';
+      if (showBlockStatus) actionBits += statusBadgeHtml(statusRow);
+      if (showBlockActions) actionBits += actionsHtmlForGroup(allGroup, openGroup, statusRow);
+      if (actionBits) {
+        blockActions = '<div class="kundrisker-enkat-stat-actions">' + actionBits + '</div>';
+      }
+    }
+    var multi = !!opts.multiBlock;
+    return (
+      '<div class="kundrisker-enkat-card-block' + (multi ? ' is-multi' : '') + '" data-field-key="' +
+        escapeHtml(block.key) + '"' +
+        (allGroup ? ' data-analys-group-id="' + escapeHtml(allGroup.id) + '"' : '') + '>' +
+        (multi
+          ? '<div class="kundrisker-enkat-card-block-head">' +
+              '<h4 class="kundrisker-enkat-card-block-title">' + escapeHtml(block.label) + '</h4>' +
+              blockActions +
+            '</div>'
+          : (blockActions
+              ? '<div class="kundrisker-enkat-card-block-head is-actions-only">' + blockActions + '</div>'
+              : '')) +
+        '<div class="stat-list">' + valueAreaHtml(block) + '</div>' +
+        panel +
+      '</div>'
+    );
+  }
+
+  function renderCompositeCard(card, panelRendered, linkPanelRendered) {
+    var groupRows = uniqueAnalysGroupsForCard(card);
+    var multiGroup = groupRows.length > 1;
+    var multiBlock = ((card && card.blocks) || []).length > 1;
+    var cardStatus = aggregateCardStatus(card);
+    var headerActions = '';
+    if (!multiGroup && groupRows.length === 1) {
+      var only = groupRows[0];
+      var onlyOpen = openGroupForItem(only.block);
+      var onlyStatus = statusForGroup(only.group);
+      var bits = statusBadgeHtml(cardStatus || onlyStatus) +
+        actionsHtmlForGroup(only.group, onlyOpen, onlyStatus);
+      if (bits) {
+        headerActions = '<div class="kundrisker-enkat-stat-actions">' + bits + '</div>';
+      }
+    } else if (cardStatus) {
+      headerActions =
+        '<div class="kundrisker-enkat-stat-actions">' + statusBadgeHtml(cardStatus) + '</div>';
+    }
+
+    var panels = '';
+    var blocksHtml = ((card && card.blocks) || []).map(function (block) {
+      var allGroup = allGroupForItem(block);
+      var openGroup = openGroupForItem(block);
+      var statusRow = statusForGroup(allGroup);
+      var panel = '';
+      if (openGroup && state.openGroupId === openGroup.id && !panelRendered[openGroup.id]) {
+        panelRendered[openGroup.id] = true;
+        panel = panelHtml(openGroup);
+      }
+      if (allGroup && state.linkGroupId === allGroup.id && !linkPanelRendered[allGroup.id]) {
+        linkPanelRendered[allGroup.id] = true;
+        panel += linkPanelHtml(allGroup);
+      }
+      // En analysgrupp för flera block (t.ex. Personkopplingar): paneler i kortfoten.
+      if (!multiGroup && panel) {
+        panels += panel;
+        panel = '';
+      }
+      return renderCardBlock(block, {
+        allGroup: allGroup,
+        openGroup: openGroup,
+        statusRow: statusRow,
+        showBlockActions: multiGroup,
+        showBlockStatus: false,
+        panel: panel,
+        multiBlock: multiBlock
+      });
+    }).join('');
+
+    var rowStatusCls = cardStatus ? ' is-status-' + cardStatus.status : '';
+    var hasAnalys = groupRows.length > 0;
+    return (
+      '<section class="statistik-section kundrisker-enkat-stat-section kundrisker-enkat-card' +
+        (hasAnalys ? ' has-analys' : '') + rowStatusCls + '" data-card-id="' + escapeHtml(card.id) + '">' +
+        '<div class="kundrisker-enkat-stat-head">' +
+          '<h3><i class="fas ' + escapeHtml(card.icon || 'fa-chart-bar') + '"></i> ' +
+            escapeHtml(card.title) + ' ' + cardSourceBadgesHtml(card) +
+          '</h3>' +
+          headerActions +
+        '</div>' +
+        (card.desc
+          ? '<p class="statistik-section-desc">' + escapeHtml(card.desc) + '</p>'
+          : '') +
+        '<div class="kundrisker-enkat-card-blocks">' + blocksHtml + '</div>' +
+        panels +
+      '</section>'
+    );
+  }
+
   function renderSummary(root, summary) {
     refreshGroups();
     var panelRendered = {};
     var linkPanelRendered = {};
     state.summary = summary;
+    var cards = summary.cards || [];
+    if (!cards.length && summary.groups && summary.groups[0] && summary.groups[0].items) {
+      cards = summary.groups[0].items;
+    }
 
-    var groupsHtml = summary.groups.map(function (g) {
-      var sections = g.items.map(function (item) {
-        var allGroup = allGroupForItem(item);
-        var openGroup = openGroupForItem(item);
-        var statusRow = statusForGroup(allGroup);
-        var btn = buttonForItem(item, openGroup, statusRow);
-        var skipBtn = skipActionsHtml(allGroup, statusRow);
-        var badge = statusBadgeHtml(statusRow);
-        var panel = '';
-        if (openGroup && state.openGroupId === openGroup.id && !panelRendered[openGroup.id]) {
-          panelRendered[openGroup.id] = true;
-          panel = panelHtml(openGroup);
-        }
-        if (allGroup && state.linkGroupId === allGroup.id && !linkPanelRendered[allGroup.id]) {
-          linkPanelRendered[allGroup.id] = true;
-          panel += linkPanelHtml(allGroup);
-        }
-        var rowStatusCls = statusRow ? ' is-status-' + statusRow.status : '';
-        var fromCf = itemUsesClientflow(item);
-        var actions = '';
-        if (badge || btn || skipBtn) {
-          actions =
-            '<div class="kundrisker-enkat-stat-actions">' +
-              badge + btn + skipBtn +
-            '</div>';
-        }
-        return (
-          '<section class="statistik-section kundrisker-enkat-stat-section' +
-            (allGroup ? ' has-analys' : '') + rowStatusCls + '" data-field-key="' + escapeHtml(item.key) + '"' +
-            (allGroup ? ' data-analys-group-id="' + escapeHtml(allGroup.id) + '"' : '') + '>' +
-            '<div class="kundrisker-enkat-stat-head">' +
-              '<h3><i class="fas ' + escapeHtml(iconForKey(item.key)) + '"></i> ' +
-                escapeHtml(item.label) + ' ' + sourceBadgeHtml(fromCf) +
-              '</h3>' +
-              actions +
-            '</div>' +
-            '<p class="statistik-section-desc">' + escapeHtml(descForItem(item, fromCf)) + '</p>' +
-            '<div class="stat-list">' + valueAreaHtml(item) + '</div>' +
-            panel +
-          '</section>'
-        );
-      }).join('');
-      return (
-        '<div class="kundrisker-enkat-group">' +
-          '<h4 class="kundrisker-enkat-group-title">' + escapeHtml(g.title) + '</h4>' +
-          '<div class="statistik-sections kundrisker-enkat-stat-sections">' + sections + '</div>' +
-        '</div>'
-      );
-    }).join('');
+    var cardsHtml =
+      '<div class="statistik-sections kundrisker-enkat-stat-sections kundrisker-enkat-cards">' +
+      cards.map(function (card) {
+        return renderCompositeCard(card, panelRendered, linkPanelRendered);
+      }).join('') +
+      '</div>';
 
     root.innerHTML =
       '<div class="kundrisker-enkat kundrisker-enkat--stat">' +
@@ -1028,9 +1325,9 @@
             '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
           '</div>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Alla uppgifter från byråprofil-enkäten om vilka byråns kunder är — i samma chip- och sektionsformat som Statistik för riskbedömning. Där live-data finns används Clientflow-siffror (klickbara). Övriga enkät-svar visas som etiketter — klicka <strong>Ändra</strong> för att uppdatera dem direkt här. Använd <strong>Analysera</strong> för analyskort, <strong>Koppla</strong> om en befintlig riskfaktor redan täcker statistiken, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
+        '<p class="kundrisker-enkat-lead">Uppgifter från byråprofilen och Clientflow samlade i kort: bolagsformer, branscher, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Där live-data finns används Clientflow-siffror (klickbara). Klicka <strong>Ändra</strong> för att uppdatera enkät-svar. Använd <strong>Analysera</strong> för analyskort, <strong>Koppla</strong> om en befintlig riskfaktor redan täcker statistiken, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
         checklistSummaryHtml() +
-        '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
+        '<div class="kundrisker-enkat-groups">' + cardsHtml + '</div>' +
       '</div>';
 
     bindPanelEvents(root, summary);
@@ -1323,12 +1620,7 @@
         e.preventDefault();
         e.stopPropagation();
         var key = btn.getAttribute('data-inline-open');
-        var item = null;
-        (summary.groups || []).forEach(function (g) {
-          (g.items || []).forEach(function (it) {
-            if (it.key === key) item = it;
-          });
-        });
+        var item = findBlockByKey(summary, key);
         if (!item) return;
         startEdit(item);
         renderSummary(root, summary);
