@@ -364,7 +364,7 @@ class RiskAssessmentManager {
                             Lägg till egna tjänster
                         </button>
                     </div>
-                    <p class="tjanst-katalog-val-note">Standardtjänsterna är samma förvalda mallar som i ClientFlow (bokföring, bokslut, deklaration m.fl.). Ni kan alltid justera listan efteråt.</p>
+                    <p class="tjanst-katalog-val-note">Listan är förslag ni kan bocka i. Ni kan också slå ihop tjänster (t.ex. löpande bokföring och momsredovisning) eller skapa egna. Vi rekommenderar att ni utgår från fördefinierade tjänster när det går — då kan AI ställa mer specifika frågor och ge bättre stöd.</p>
                 </div>`;
             host.querySelectorAll('[data-katalog-val]').forEach((btn) => {
                 btn.addEventListener('click', () => {
@@ -1199,6 +1199,76 @@ class RiskAssessmentManager {
         this.scheduleUtforandeSave();
     }
 
+    ensureTjanstMergePanel() {
+        let panel = document.getElementById('tjanst-merge-panel');
+        if (panel) return panel;
+        const footer = document.getElementById('tjanst-katalog-footer');
+        if (!footer || !footer.parentElement) return null;
+        panel = document.createElement('div');
+        panel.id = 'tjanst-merge-panel';
+        panel.className = 'tjanst-merge-panel';
+        panel.hidden = true;
+        footer.parentElement.insertBefore(panel, footer.nextSibling);
+        return panel;
+    }
+
+    closeTjanstMergePanel() {
+        const panel = document.getElementById('tjanst-merge-panel');
+        if (panel) panel.hidden = true;
+    }
+
+    openTjanstMergePanel() {
+        const Mallar = window.TjanstUtforandeMallar;
+        const panel = this.ensureTjanstMergePanel();
+        if (!Mallar || !panel) return;
+        const cards = Mallar.listCatalogCards(this.utforandeState) || [];
+        if (cards.length < 2) {
+            this.showNotification('Lägg till minst två tjänster i katalogen innan ni slår ihop.', 'info');
+            return;
+        }
+        const options = cards.map((c) => {
+            const id = this.esc(c.template.id);
+            const namn = this.esc(c.template.name || c.template.id);
+            return `<label><input type="checkbox" data-merge-id="${id}"> <span>${namn}</span></label>`;
+        }).join('');
+        panel.hidden = false;
+        panel.innerHTML = `
+            <h4>Slå ihop tjänster</h4>
+            <p>Välj minst två tjänster som ni vill hantera som en enda tjänst på byrån (t.ex. löpande bokföring och momsredovisning). De valda tas bort från listan och ersätts av den nya tjänsten.</p>
+            <div class="tjanst-merge-list">${options}</div>
+            <label class="tjanst-merge-name">
+                <span>Namn på den sammanslagna tjänsten</span>
+                <input type="text" class="form-input" id="tjanst-merge-namn" placeholder="t.ex. Löpande bokföring och momsredovisning">
+            </label>
+            <div class="tjanst-merge-actions">
+                <button type="button" class="btn btn-ghost btn-sm" data-merge-cancel>Avbryt</button>
+                <button type="button" class="btn btn-primary btn-sm" data-merge-confirm>Slå ihop</button>
+            </div>`;
+        panel.querySelector('[data-merge-cancel]')?.addEventListener('click', () => this.closeTjanstMergePanel());
+        panel.querySelector('[data-merge-confirm]')?.addEventListener('click', () => this.confirmTjanstMerge());
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    confirmTjanstMerge() {
+        const Mallar = window.TjanstUtforandeMallar;
+        const panel = document.getElementById('tjanst-merge-panel');
+        if (!Mallar || !panel || !Mallar.mergeServices) return;
+        const ids = [...panel.querySelectorAll('input[data-merge-id]:checked')]
+            .map((el) => el.getAttribute('data-merge-id'))
+            .filter(Boolean);
+        const namn = document.getElementById('tjanst-merge-namn')?.value || '';
+        const result = Mallar.mergeServices(this.utforandeState, ids, namn);
+        if (result.error) {
+            this.showNotification(result.error, 'error');
+            return;
+        }
+        this.utforandeState = result.state;
+        this.closeTjanstMergePanel();
+        this.renderUtforandeKatalog();
+        this.scheduleUtforandeSave();
+        this.showNotification(`Skapade sammanslagen tjänst: ${result.namn}`, 'success');
+    }
+
     async deleteUtforandeTjanst(mallId, namn) {
         const Mallar = window.TjanstUtforandeMallar;
         if (!Mallar || !mallId) return;
@@ -1402,6 +1472,7 @@ class RiskAssessmentManager {
         document.getElementById('tjanst-utforande-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
         document.getElementById('tjanst-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
         document.getElementById('tjanst-add-standard')?.addEventListener('click', () => this.addStandardUtforandeTjanst());
+        document.getElementById('tjanst-merge')?.addEventListener('click', () => this.openTjanstMergePanel());
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
         });

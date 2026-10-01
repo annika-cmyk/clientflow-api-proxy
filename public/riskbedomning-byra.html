@@ -241,6 +241,11 @@
                     <div class="tjanst-utforande-head">
                         <div>
                             <h3>Vilka tjänster erbjuder ni?</h3>
+                            <p class="tjanst-utforande-lead" id="tjanst-utforande-lead">
+                                Listan är förslag ni kan bocka i. Lägg till övriga tjänster, slå ihop flera till en
+                                (t.ex. löpande bokföring och momsredovisning) eller skapa helt egna.
+                                Vi rekommenderar att ni utgår från fördefinierade tjänster när det går — då kan AI ställa mer specifika frågor och ge bättre stöd.
+                            </p>
                         </div>
                         <button type="button" class="btn-add-row" id="tjanst-utforande-add-custom" hidden>
                             <i class="fas fa-plus"></i>
@@ -250,8 +255,9 @@
                     <div id="tjanst-utforande-katalog" class="tjanst-utforande-katalog">
                         <p class="tjanst-panel-hint">Laddar tjänstemallar…</p>
                     </div>
-                    <div id="tjanst-katalog-footer" class="tjanst-katalog-footer" role="group" aria-label="Lägg till tjänst" hidden>
+                    <div id="tjanst-katalog-footer" class="tjanst-katalog-footer" role="group" aria-label="Lägg till eller slå ihop tjänst" hidden>
                         <button type="button" class="btn btn-secondary" id="tjanst-add-standard" data-add-standard-tjanst>Lägg till standardtjänst</button>
+                        <button type="button" class="btn btn-secondary" id="tjanst-merge" data-merge-tjanst>Slå ihop tjänster</button>
                         <button type="button" class="btn btn-primary" id="tjanst-add-custom" data-add-custom-tjanst>Skapa egen tjänst</button>
                     </div>
                     <div id="atgard-typ-granskning" class="atgard-typ-granskning" hidden></div>
@@ -353,11 +359,11 @@
     <script src="js/tjanst-tf-tackning.js?v=1" defer></script>
     <script src="js/hot-aml-tf.js?v=3" defer></script>
     <script src="js/tjanst-forutsattning.js?v=3" defer></script>
-    <script src="js/byra-profil-analys-koppling.js?v=2" defer></script>
+    <script src="js/byra-profil-analys-koppling.js?v=3" defer></script>
     <script src="js/byra-profil-tjanst-forslag.js?v=1" defer></script>
-    <script src="js/tjanst-utforande-mallar.js?v=10" defer></script>
+    <script src="js/tjanst-utforande-mallar.js?v=11" defer></script>
     <script src="js/ai-prompt-debug.js?v=1" defer></script>
     <script src="js/ai-falt-granskning.js?v=17" defer></script>
-    <script src="js/riskbedomning-byra.v5.js?v=73" defer></script>
+    <script src="js/riskbedomning-byra.v5.js?v=74" defer></script>
 </body>
 </html>
