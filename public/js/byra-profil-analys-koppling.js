@@ -31,7 +31,7 @@
     shortLabel: 'Verksamhetsspecifika riskfaktorer',
     pageTitle: 'Verksamhetsspecifika riskfaktorer',
     hint:
-      'Svaren här används som underlag för verksamhetsspecifika riskfaktorer och branschstatistik.'
+      'Svaren här används som underlag för verksamhetsspecifika riskfaktorer utifrån byråns interna profil.'
   };
 
   /**
