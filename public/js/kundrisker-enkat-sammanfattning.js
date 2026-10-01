@@ -260,6 +260,26 @@
       .replace(/\s+/g, ' ');
   }
 
+  /**
+   * True när chipet har meningsfull data att analysera.
+   * Nej / tomt / noll kunder → ingen kryssruta.
+   */
+  function chipHasAnalysableData(text, opts) {
+    if (opts && opts.antal != null && opts.antal !== '') {
+      var n = Number(opts.antal);
+      if (Number.isFinite(n) && n <= 0) return false;
+    }
+    var raw = String(text == null ? '' : text).trim();
+    if (!raw) return false;
+    var folded = foldChip(raw);
+    if (folded === 'nej' || folded === 'no') return false;
+    if (folded === foldChip(HOGRISK_NONE)) return false;
+    if (/^(0|0\s*%)$/.test(folded)) return false;
+    var trailing = raw.match(/[·•\-–—:]\s*(?:ca\s+)?(\d+)\s*%?\s*$/i);
+    if (trailing && Number(trailing[1]) === 0) return false;
+    return true;
+  }
+
   function formNameFromAnalysItem(item) {
     var rf = String((item && item.riskfaktor) || '').trim();
     // Branschnamn kan innehålla kommatecken ("Kultur, media och underhållning") —
@@ -276,7 +296,7 @@
       return forms.length === 1 ? forms[0] : '';
     }
     var label = String((item && item.label) || '');
-    var parts = label.split(/\s*·\s*/);
+    var parts = label.split(/\s*[·•]\s*|\s+-\s+/);
     return (parts[0] || '').trim();
   }
 
@@ -287,6 +307,9 @@
     (state.groups || []).forEach(function (g) {
       if (!g || (g.fieldKeys || []).indexOf(key) < 0) return;
       (g.items || []).forEach(function (it) {
+        var sources = (it && it.sourceKeys) || [];
+        // Multi-fält-grupper (t.ex. ägarskap/PEP): visa bara poster för just detta fält.
+        if (sources.length && sources.indexOf(key) < 0) return;
         out.push({ group: g, item: it });
       });
     });
@@ -296,6 +319,10 @@
   function findOpenChipMatch(namn, fieldKey) {
     var wanted = foldChip(namn);
     if (!wanted && !fieldKey) return null;
+    var Forslag = API();
+    var wantedBolag = Forslag && Forslag.bolagsformKey
+      ? Forslag.bolagsformKey(namn)
+      : '';
     var candidates = fieldKey ? openItemsForField(fieldKey) : [];
     if (!candidates.length) {
       (state.groups || []).forEach(function (g) {
@@ -309,8 +336,27 @@
       var row = candidates[i];
       var form = formNameFromAnalysItem(row.item);
       if (form && foldChip(form) === wanted) return row;
-      if (foldChip(row.item.label).indexOf(wanted) === 0) return row;
+      if (wantedBolag && form && Forslag.bolagsformKey(form) === wantedBolag) return row;
+      if (
+        wantedBolag &&
+        Forslag.bolagsformKeyFromItem &&
+        Forslag.bolagsformKeyFromItem(row.item) === wantedBolag
+      ) {
+        return row;
+      }
+      var labelFold = foldChip(row.item.label);
+      if (wanted && labelFold.indexOf(wanted) === 0) return row;
+      if (wantedBolag && Forslag.bolagsformKey(row.item.label) === wantedBolag) return row;
     }
+    return null;
+  }
+
+  function resolveChipMatch(namn, fieldKey, display) {
+    if (!chipHasAnalysableData(display != null ? display : namn)) return null;
+    var match = findOpenChipMatch(namn, fieldKey);
+    if (match) return match;
+    var openForField = fieldKey ? openItemsForField(fieldKey) : [];
+    if (openForField.length === 1) return openForField[0];
     return null;
   }
 
@@ -396,9 +442,16 @@
         var label = antal != null && antal !== '' ? namn + ' · ' + antal : namn;
         var isHr = !!r.hogrisk || typ === 'hogriskbransch';
         var matchKey = isHr ? 'branscherKundstock' : (fieldKey || '');
-        var match = findOpenChipMatch(namn, matchKey);
-        if (!match && fieldKey && matchKey !== fieldKey) {
-          match = findOpenChipMatch(namn, fieldKey);
+        var match = null;
+        if (chipHasAnalysableData(label, { antal: antal })) {
+          match = findOpenChipMatch(namn, matchKey);
+          if (!match && fieldKey && matchKey !== fieldKey) {
+            match = findOpenChipMatch(namn, fieldKey);
+          }
+          if (!match && fieldKey) {
+            var openForField = openItemsForField(fieldKey);
+            if (openForField.length === 1) match = openForField[0];
+          }
         }
         return selectableChipHtml({
           button: true,
@@ -451,17 +504,13 @@
     var text = String(display || '').trim();
     if (!text) return '<p class="stat-list-empty">Inget svar.</p>';
     var parts = text.split(/\s*,\s*/).map(function (p) { return p.trim(); }).filter(Boolean);
-    var openForField = fieldKey ? openItemsForField(fieldKey) : [];
     if (parts.length <= 1) {
-      var singleMatch =
-        findOpenChipMatch(parts[0] || text, fieldKey) ||
-        (openForField.length === 1 ? openForField[0] : null);
       return (
         '<div class="statistik-stat-chips">' +
           selectableChipHtml({
             staticChip: true,
             label: text,
-            match: singleMatch
+            match: resolveChipMatch(parts[0] || text, fieldKey, text)
           }) +
         '</div>'
       );
@@ -472,7 +521,7 @@
         return selectableChipHtml({
           staticChip: true,
           label: p,
-          match: findOpenChipMatch(p, fieldKey)
+          match: resolveChipMatch(p, fieldKey, p)
         });
       }).join('') +
       '</div>'
@@ -514,8 +563,11 @@
       if (hr.length) return { html: namedListChips('hogriskbransch', hr, '', key), fromClientflow: true };
     }
     if (typ === 'pep-sanktion' && typeof stat.antalPepEllerSanktion === 'number') {
-      var pepMatch = findOpenChipMatch('PEP', key) ||
-        (openItemsForField(key).length === 1 ? openItemsForField(key)[0] : null);
+      var pepCount = Number(stat.antalPepEllerSanktion) || 0;
+      var pepLabel = 'PEP eller anhörig till PEP · ' + pepCount;
+      var pepMatch = pepCount > 0
+        ? resolveChipMatch('PEP', key, pepLabel)
+        : null;
       return {
         html:
           '<div class="statistik-stat-chips">' +
@@ -523,7 +575,7 @@
               button: true,
               typ: 'pep-sanktion',
               titel: 'PEP eller anhörig till PEP',
-              label: 'PEP eller anhörig till PEP · ' + stat.antalPepEllerSanktion,
+              label: pepLabel,
               title: 'Klicka för att se kunder',
               match: pepMatch
             }) +
@@ -558,8 +610,7 @@
       var pepRaw = state.profil[item.key];
       pepRaw = Array.isArray(pepRaw) ? pepRaw.join(', ') : String(pepRaw || '').trim();
       if (!/^ja/i.test(pepRaw)) return staticValueChips(item.display, key);
-      var pepMatch = findOpenChipMatch('PEP', key) ||
-        (openItemsForField(key).length === 1 ? openItemsForField(key)[0] : null);
+      var pepMatch = resolveChipMatch('PEP', key, item.display);
       return (
         '<div class="statistik-stat-chips">' +
           selectableChipHtml({
@@ -603,8 +654,12 @@
     return staticValueChips(item.display, item.key);
   }
 
-  function sourceBadgeHtml(fromClientflow) {
+  function sourceBadgeHtml(fromClientflow, opts) {
+    opts = opts || {};
     if (fromClientflow) {
+      if (opts.justerad) {
+        return '<span class="statistik-source-badge statistik-source-badge--justerad" title="Aggregerat från Clientflow och justerat manuellt">Clientflow · justerad</span>';
+      }
       return '<span class="statistik-source-badge" title="Aggregerat från pågående kunder i Clientflow">Clientflow</span>';
     }
     return '<span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span>';
@@ -1122,8 +1177,8 @@
 
   function formatNamedCounts(rows) {
     return (rows || []).map(function (r) {
-      var namn = String((r && r.namn) || '').trim();
-      var antal = Number(r && r.antal);
+      var namn = String((r && (r.namn || r.form)) || '').trim();
+      var antal = Number(r && (r.antal != null ? r.antal : r.count));
       if (!namn || !Number.isFinite(antal) || antal <= 0) return '';
       return namn + ': ' + Math.round(antal);
     }).filter(Boolean).join(', ');
@@ -1674,6 +1729,8 @@
     var showBlockStatus = !!opts.showBlockStatus;
     var panel = opts.panel || '';
     var fromCf = itemUsesClientflow(block);
+    var showSourceBadge = opts.showSourceBadge !== false;
+    var sourceBadge = showSourceBadge ? (' ' + sourceBadgeHtml(fromCf)) : '';
     var blockActions = '';
     if (showBlockActions || showBlockStatus) {
       var actionBits = '';
@@ -1685,17 +1742,24 @@
     }
     var multi = !!opts.multiBlock;
     return (
-      '<div class="kundrisker-enkat-card-block' + (multi ? ' is-multi' : '') + '" data-field-key="' +
+      '<div class="kundrisker-enkat-card-block' + (multi ? ' is-multi' : '') +
+        (fromCf ? ' is-source-clientflow' : ' is-source-byraprofil') +
+        '" data-field-key="' +
         escapeHtml(block.key) + '"' +
-        (allGroup ? ' data-analys-group-id="' + escapeHtml(allGroup.id) + '"' : '') + '>' +
+        (allGroup ? ' data-analys-group-id="' + escapeHtml(allGroup.id) + '"' : '') +
+        ' data-source="' + (fromCf ? 'clientflow' : 'byraprofil') + '">' +
         (multi
           ? '<div class="kundrisker-enkat-card-block-head">' +
-              '<h4 class="kundrisker-enkat-card-block-title">' + escapeHtml(block.label) + '</h4>' +
+              '<h4 class="kundrisker-enkat-card-block-title">' + escapeHtml(block.label) + sourceBadge + '</h4>' +
               blockActions +
             '</div>'
           : (blockActions
               ? '<div class="kundrisker-enkat-card-block-head is-actions-only">' + blockActions + '</div>'
               : '')) +
+        // Enblockskort: källbadge syns i kortets h3. Flerblock: badge per blockrubrik ovan.
+        (!multi && showSourceBadge && opts.showSingleBlockSourceBadge
+          ? '<div class="kundrisker-enkat-card-block-source">' + sourceBadgeHtml(fromCf) + '</div>'
+          : '') +
         '<div class="stat-list">' + valueAreaHtml(block) + '</div>' +
         panel +
       '</div>'
@@ -1749,12 +1813,14 @@
     var blocksHtml = ((card && card.blocks) || []).map(function (block) {
       // Vid flera analysgrupper i samma kort (t.ex. branscher + högrisk) ligger
       // Analysera/Koppla/Avstå i kortets header — inte per block.
+      // Vid blandade källor i samma kort: badge per block så Clientflow vs Byråprofil syns.
       return renderCardBlock(block, {
         allGroup: allGroupForItem(block),
         openGroup: openGroupForItem(block),
         statusRow: statusForGroup(allGroupForItem(block)),
         showBlockActions: multiBlock && !multiGroup,
         showBlockStatus: false,
+        showSourceBadge: multiBlock,
         panel: '',
         multiBlock: multiBlock
       });
@@ -2598,9 +2664,12 @@
     /** Test-/debughjälpare för chip-val och flytande Skapa analys. */
     __test: {
       formNameFromAnalysItem: formNameFromAnalysItem,
+      chipHasAnalysableData: chipHasAnalysableData,
       findOpenChipMatch: findOpenChipMatch,
+      resolveChipMatch: resolveChipMatch,
       openItemsForField: openItemsForField,
       namedListChips: namedListChips,
+      staticValueChips: staticValueChips,
       selectableChipHtml: selectableChipHtml,
       mergeBranschRowsForDisplay: mergeBranschRowsForDisplay,
       prefillsFromChipSelection: prefillsFromChipSelection,

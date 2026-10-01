@@ -135,6 +135,7 @@
   function bolagsformKey(raw) {
     var cleaned = trimStr(raw)
       .replace(/\s*[·•].*$/, '')
+      .replace(/\s*[\-–—]\s*\d+\s*$/, '')
       .replace(/\s*:\s*\d+\s*$/, '')
       .replace(/\s*\(\s*ca\s*[^)]*\)\s*$/i, '');
     var key = fold(cleaned);
@@ -169,8 +170,8 @@
         .forEach(add);
       return out;
     }
-    // Äldre merge-namn från etiketter: «AB · 50; Enskild firma · 20»
-    if (/[;|]/.test(raw) || /·/.test(raw)) {
+    // Äldre merge-namn från etiketter: «AB · 50; Enskild firma · 20» eller «AB - 50; …»
+    if (/[;|]/.test(raw) || /[·•]/.test(raw) || /\s[\-–—]\s*\d/.test(raw)) {
       raw.split(/\s*;\s*|\s*\|\s*/).forEach(function (part) {
         add(part);
       });
@@ -1004,6 +1005,9 @@
     shouldShowButtonForField: shouldShowButtonForField,
     existingRiskNameSet: existingRiskNameSet,
     itemAlreadyCovered: itemAlreadyCovered,
+    bolagsformKey: bolagsformKey,
+    bolagsformKeyFromItem: bolagsformKeyFromItem,
+    formsCoveredByRiskName: formsCoveredByRiskName,
     riskNamn: riskNamn,
     normalizeSkippedGroupIds: normalizeSkippedGroupIds,
     normalizeLinkedMap: normalizeLinkedMap,
