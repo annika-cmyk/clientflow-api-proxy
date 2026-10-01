@@ -30,24 +30,47 @@ class RiskFactorsManager {
         return this.pageScope === 'kundrisker';
     }
 
+    isVerksamhetPage() {
+        return this.pageScope === 'verksamhet';
+    }
+
+    isOvrigaPage() {
+        return this.pageScope === 'ovriga' || (!this.isKundriskerPage() && !this.isVerksamhetPage());
+    }
+
     kundRiskTypLabel() {
         return 'Riskfaktorer kopplat till kund';
+    }
+
+    verksamhetRiskTypLabel() {
+        return 'Verksamhetsspecifika riskfaktorer';
     }
 
     riskBelongsToPageScope(risk) {
         const typ = this.groupRiskTyp(risk);
         const kundTyp = this.kundRiskTypLabel();
+        const verksamhetTyp = this.verksamhetRiskTypLabel();
         const Geo = window.GeoRiskTyper;
         const byraGeo = (Geo && Geo.TYP_BYRA) || 'Geografisk riskfaktorer - här finns byråns kunder';
         const motpartGeo = (Geo && Geo.TYP_MOTPART) || 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
         const isCustomerGeo = typ === byraGeo || typ === motpartGeo
             || (Geo && Geo.isGeoTyp && Geo.isGeoTyp(typ));
+        const RD = window.RiskDimensioner;
+        const dim = RD && RD.dimensionOfTyp ? RD.dimensionOfTyp(typ) : null;
+        const isVerksamhet = typ === verksamhetTyp || (dim && dim.id === 'verksamhet');
+        const namn = String((risk.fields || {}).Riskfaktor || (risk.fields || {})['Riskfaktor'] || '').trim();
+        const isBranschAnalys = /^Kunder i (högrisk)?bransch\b/i.test(namn)
+            || /^Kunder i bransch:/i.test(namn)
+            || /^Andel kunder i högriskbransch/i.test(namn);
         if (this.isKundriskerPage()) {
-            // Vilka är våra kunder: kundkategorier + egen hemvist + motparters geografi
+            if (isBranschAnalys) return false;
             return typ === kundTyp || isCustomerGeo;
         }
-        // Övriga: byråns arbetssätt — distribution och verksamhetsspecifikt (inte kundgeo)
-        return typ !== kundTyp && !isCustomerGeo;
+        if (this.isVerksamhetPage()) {
+            return isVerksamhet || isBranschAnalys;
+        }
+        // Övriga: distributionskanaler (inte kundgeo, inte verksamhet, inte bransch)
+        return typ !== kundTyp && !isCustomerGeo && !isVerksamhet && !isBranschAnalys;
     }
 
     geoRiskGroupLabel() {
@@ -393,7 +416,10 @@ class RiskFactorsManager {
         const forslagHost = document.getElementById('byra-profil-kaskad-forslag');
         const forslagWrap = document.getElementById('byra-profil-kaskad-forslag-wrap');
         const empty = document.getElementById('byra-profil-kaskad-empty');
-        const summary = API.buildProfilSummary(this.byraProfil || {});
+        const pageFilter = this.isVerksamhetPage() ? 'verksamhet' : 'distribution';
+        const summary = API.buildProfilSummary
+            ? API.buildProfilSummary(this.byraProfil || {}, { page: pageFilter })
+            : [];
         const answered = summary.filter((r) => r.answered);
         const Koppling = window.ByraProfilAnalysKoppling;
         if (chips) {
@@ -409,8 +435,14 @@ class RiskFactorsManager {
                 return `<a class="byra-profil-chip${cls}" href="${this.esc(href)}" data-profil-key="${this.esc(row.key)}" title="${this.esc(row.label)} — öppna i byråprofilen"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></a>`;
             }).join('');
         }
+        const allSuggestions = API.suggestFromProfil(this.byraProfil || {});
+        const scopedSuggestions = allSuggestions.filter((s) => {
+            const fokus = this.fokusIdForRiskTyp(s.typ) || '';
+            if (this.isVerksamhetPage()) return fokus === 'verksamhet' || s.typ === this.verksamhetRiskTypLabel();
+            return fokus === 'distribution' || fokus === 'geografi';
+        });
         const open = API.filterOpenSuggestions(
-            API.suggestFromProfil(this.byraProfil || {}),
+            scopedSuggestions,
             this.risks || [],
             this._profilForslagDismissed || []
         );
@@ -446,17 +478,74 @@ class RiskFactorsManager {
                 });
             });
         }
+        this.renderNestedProfilRisks();
+    }
+
+    renderNestedProfilRisks() {
+        const host = document.getElementById('byra-profil-kaskad-nested-risks');
+        if (!host) return;
+        const enkatNested = (window.KundriskerEnkatSammanfattning
+            && typeof window.KundriskerEnkatSammanfattning.getNestedRiskIds === 'function')
+            ? window.KundriskerEnkatSammanfattning.getNestedRiskIds()
+            : [];
+        const enkatSet = new Set((enkatNested || []).map(String));
+        const pageRisks = (this.filteredRisks || []).filter((r) => {
+            if (!this.riskBelongsToPageScope(r)) return false;
+            if (enkatSet.has(String(r.id || ''))) return false;
+            // På verksamhetssidan ligger branschanalyser under branschkortet, inte här.
+            if (this.isVerksamhetPage()) {
+                const namn = String((r.fields || {}).Riskfaktor || '').trim();
+                if (/^Kunder i (högrisk)?bransch\b/i.test(namn) || /^Kunder i bransch:/i.test(namn)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        this._nestedProfilRiskIds = new Set(pageRisks.map((r) => String(r.id || '')).filter(Boolean));
+        if (!pageRisks.length) {
+            host.hidden = true;
+            host.innerHTML = '';
+            return;
+        }
+        const items = pageRisks.map((risk) => this.createNestedRiskChip(risk)).join('');
+        host.hidden = false;
+        host.innerHTML =
+            '<h4 class="kundrisker-enkat-nested-title">Analyserade riskfaktorer</h4>' +
+            '<div class="kundrisker-enkat-nested-list">' + items + '</div>';
+        host.querySelectorAll('[data-nested-risk-id]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-nested-risk-id');
+                if (id && typeof this.openEditModal === 'function') this.openEditModal(id);
+            });
+        });
+    }
+
+    createNestedRiskChip(risk) {
+        const fields = (risk && risk.fields) || {};
+        const namn = String(fields.Riskfaktor || fields['Riskfaktor'] || 'Namnlös riskfaktor').trim();
+        const scored = this.scoredRisk ? this.scoredRisk(fields) : {};
+        const level = scored.residualLevel || scored.level || '';
+        const S = window.RiskSkala;
+        const cls = S && S.riskClass ? S.riskClass(level) : '';
+        return (
+            '<button type="button" class="kundrisker-enkat-nested-chip ' + this.esc(cls) + '" ' +
+              'data-nested-risk-id="' + this.esc(risk.id) + '" title="Öppna analys">' +
+              '<span class="kundrisker-enkat-nested-chip-name">' + this.esc(namn) + '</span>' +
+              (level ? '<span class="kundrisker-enkat-nested-chip-level">' + this.esc(level) + '</span>' : '') +
+            '</button>'
+        );
     }
 
     renderByraProfilKaskadLinks() {
         const host = document.getElementById('byra-profil-kaskad-links');
         if (!host || this.isKundriskerPage()) return;
         const Koppling = window.ByraProfilAnalysKoppling;
-        const links = [
-            { section: 'intern', label: 'Intern profil' },
-            { section: 'distribution', label: 'Distributionskanaler' },
-            { section: 'geografi', label: 'Geografi' }
-        ];
+        const links = this.isVerksamhetPage()
+            ? [{ section: 'intern', label: 'Intern profil' }]
+            : [
+                { section: 'distribution', label: 'Distributionskanaler' },
+                { section: 'geografi', label: 'Geografi' }
+              ];
         host.innerHTML = links.map((row) => {
             const href = Koppling && Koppling.enkateHref
                 ? Koppling.enkateHref(row.section)
@@ -788,21 +877,22 @@ class RiskFactorsManager {
 
     setupEventListeners() {
         // Filter controls
-        document.getElementById('apply-filters').addEventListener('click', () => this.applyFilters());
-        document.getElementById('clear-filters').addEventListener('click', () => this.clearFilters());
+        document.getElementById('apply-filters')?.addEventListener('click', () => this.applyFilters());
+        document.getElementById('clear-filters')?.addEventListener('click', () => this.clearFilters());
 
         // Auto-apply filters when dropdown values change
-        document.getElementById('byra-filter').addEventListener('change', () => this.applyFilters());
-        document.getElementById('risk-filter').addEventListener('change', () => this.applyFilters());
-        document.getElementById('status-filter').addEventListener('change', () => this.applyFilters());
+        document.getElementById('byra-filter')?.addEventListener('change', () => this.applyFilters());
+        document.getElementById('risk-filter')?.addEventListener('change', () => this.applyFilters());
+        document.getElementById('status-filter')?.addEventListener('change', () => this.applyFilters());
 
         // Form submissions
-        document.getElementById('add-risk-form').addEventListener('submit', (e) => this.handleAddRisk(e));
-        document.getElementById('edit-risk-form').addEventListener('submit', (e) => this.handleEditRisk(e));
+        document.getElementById('add-risk-form')?.addEventListener('submit', (e) => this.handleAddRisk(e));
+        document.getElementById('edit-risk-form')?.addEventListener('submit', (e) => this.handleEditRisk(e));
 
         this.bindRiskTabs();
         this.bindRiskDynLists();
         this.bindRiskKlarmarkering();
+        this.bindRiskLinkStatistik();
 
         const addAiBtn = document.getElementById('add-ai-suggest-btn');
         if (addAiBtn) addAiBtn.addEventListener('click', () => this.generateAiSuggestion('add'));
@@ -986,13 +1076,33 @@ class RiskFactorsManager {
     renderRiskList() {
         const riskList = document.getElementById('risk-list');
         
-        if (this.filteredRisks.length === 0) {
-            riskList.innerHTML = `
+        const enkatNested = (window.KundriskerEnkatSammanfattning
+            && typeof window.KundriskerEnkatSammanfattning.getNestedRiskIds === 'function')
+            ? window.KundriskerEnkatSammanfattning.getNestedRiskIds()
+            : [];
+        const hideIds = new Set((enkatNested || []).map(String));
+        (this._nestedProfilRiskIds || new Set()).forEach((id) => hideIds.add(String(id)));
+        const listRisks = (this.filteredRisks || []).filter((r) => !hideIds.has(String(r.id || '')));
+
+        if (listRisks.length === 0) {
+            const nestedSomewhere = hideIds.size > 0 && (this.filteredRisks || []).length > 0;
+            riskList.innerHTML = nestedSomewhere
+                ? `
+                <div class="empty-state is-nested-hint">
+                    <i class="fas fa-layer-group"></i>
+                    <h3>Riskfaktorerna visas under korten ovan</h3>
+                    <p>Analyserade faktorer ligger under respektive statistik- eller byråprofilkort.</p>
+                    <button class="btn btn-primary" onclick="riskManager.openAddModal()">
+                        <i class="fas fa-plus"></i>
+                        Lägg till riskfaktor
+                    </button>
+                </div>`
+                : `
                 <div class="empty-state">
                     <i class="fas fa-clipboard-list"></i>
                     <h3>Inga riskfaktorer hittades</h3>
                     <p>Prova att justera dina filter eller lägg till en ny riskfaktor.</p>
-                    <button class="btn btn-primary" onclick="this.openAddModal()">
+                    <button class="btn btn-primary" onclick="riskManager.openAddModal()">
                         <i class="fas fa-plus"></i>
                         Lägg till riskfaktor
                     </button>
@@ -1003,7 +1113,7 @@ class RiskFactorsManager {
 
         // Group risks by normalized "Typ av riskfaktor"
         const groupedRisks = {};
-        this.filteredRisks.forEach(risk => {
+        listRisks.forEach(risk => {
             const riskType = this.groupRiskTyp(risk);
             if (!groupedRisks[riskType]) {
                 groupedRisks[riskType] = [];
@@ -1703,6 +1813,10 @@ class RiskFactorsManager {
         });
 
         console.log('Filtered risks count:', this.filteredRisks.length);
+        this.renderByraProfilKaskad();
+        if (window.KundriskerEnkatSammanfattning && typeof window.KundriskerEnkatSammanfattning.refresh === 'function') {
+            try { window.KundriskerEnkatSammanfattning.refresh(); } catch (_) { /* ignore */ }
+        }
         this.renderRiskList();
         this.updateStats();
     }
@@ -2569,6 +2683,33 @@ modeFromModalId(modalId) {
         this.syncRiskKlarmarkeraBtn(mode);
     }
 
+    bindRiskLinkStatistik() {
+        document.querySelectorAll('[data-risk-link-statistik]').forEach((btn) => {
+            if (btn.dataset.linkBound === '1') return;
+            btn.dataset.linkBound = '1';
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const modal = btn.closest('.modal');
+                const isEdit = modal && modal.id === 'edit-risk-modal';
+                const nameEl = document.getElementById(isEdit ? 'edit-risk-factor' : 'risk-factor');
+                const recordEl = document.getElementById('edit-record-id');
+                const namn = nameEl ? String(nameEl.value || '').trim() : '';
+                const id = isEdit && recordEl ? String(recordEl.value || '').trim() : '';
+                if (!namn) {
+                    this.showNotification('Ange riskfaktorns namn innan du kopplar till statistik.', 'error');
+                    return;
+                }
+                const API = window.KundriskerEnkatSammanfattning;
+                if (API && typeof API.openLinkFromRisk === 'function') {
+                    API.openLinkFromRisk(id, namn);
+                } else {
+                    this.showNotification('Koppling till statistik finns på Vilka är våra kunder och Verksamhetsspecifika riskfaktorer.', 'info');
+                }
+            });
+        });
+    }
+
     bindRiskTabs() {
         ['add-risk-modal', 'edit-risk-modal'].forEach((modalId) => {
             const modal = document.getElementById(modalId);
@@ -3303,9 +3444,10 @@ function closeModal(modalId) {
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    const pageKind = (document.body && document.body.dataset.riskPageScope) === 'kundrisker'
+    const scope = (document.body && document.body.dataset.riskPageScope) || 'ovriga';
+    const pageKind = scope === 'kundrisker'
         ? 'kundrisker'
-        : 'ovriga';
+        : (scope === 'verksamhet' ? 'verksamhet' : 'ovriga');
     if (window.AnalyskortMall && AnalyskortMall.mountPageModals) {
         AnalyskortMall.mountPageModals(document, pageKind);
     }

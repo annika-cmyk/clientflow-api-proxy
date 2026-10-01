@@ -21,8 +21,10 @@
 
   var TYPE_OPTIONS = {
     ovriga: [
-      { value: 'Verksamhetsspecifika riskfaktorer', label: 'Verksamhetsspecifika riskfaktorer' },
       { value: 'Distrubutionskanaler', label: 'Distrubutionskanaler - såhär möter vi våra kunder' }
+    ],
+    verksamhet: [
+      { value: 'Verksamhetsspecifika riskfaktorer', label: 'Verksamhetsspecifika riskfaktorer' }
     ],
     kundrisker: [
       { value: 'Riskfaktorer kopplat till kund', label: 'Riskfaktorer kopplat till kund' },
@@ -648,9 +650,16 @@
             '<div class="tjanst-modal-head">' +
               '<div class="form-group tjanst-name-field tjanst-name-field--top">' +
                 '<label for="' + cfg.nameId + '">' + esc(cfg.nameLabel) + '</label>' +
-                '<input type="text" id="' + cfg.nameId + '" name="' + cfg.nameName + '"' +
-                  (cfg.nameFormAttr || '') +
-                  ' class="tjanst-modal-name" placeholder="' + esc(cfg.namePlaceholder) + '" required>' +
+                '<div class="tjanst-modal-name-row">' +
+                  '<input type="text" id="' + cfg.nameId + '" name="' + cfg.nameName + '"' +
+                    (cfg.nameFormAttr || '') +
+                    ' class="tjanst-modal-name" placeholder="' + esc(cfg.namePlaceholder) + '" required>' +
+                  (cfg.kind === 'riskfaktor'
+                    ? '<button type="button" class="risk-link-statistik-btn" data-risk-link-statistik title="Koppla till statistik" aria-label="Koppla till statistik">' +
+                        '<i class="fas fa-link" aria-hidden="true"></i>' +
+                      '</button>'
+                    : '') +
+                '</div>' +
               '</div>' +
               (cfg.reviewFlagHtml || '') +
               '<button class="modal-close" type="button" onclick="closeModal(\'' + cfg.modalId + '\')">' +

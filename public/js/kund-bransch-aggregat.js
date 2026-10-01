@@ -286,6 +286,79 @@
     return Array.from(seen.values());
   }
 
+  function resolveHogriskApi(helpers) {
+    if (helpers && helpers.HogriskSni) return helpers.HogriskSni;
+    if (typeof globalThis !== 'undefined' && globalThis.HogriskSni) return globalThis.HogriskSni;
+    try {
+      // Node: lazy-require så webbläsaren inte påverkas
+      // eslint-disable-next-line global-require
+      return require('./hogrisk-sni.js');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function formatSniLabel(entry) {
+    if (!entry || !entry.kod) return '';
+    const desc = String(entry.label || '').trim();
+    return desc ? entry.kod + ' - ' + desc : entry.kod;
+  }
+
+  /**
+   * Expanderar råa SNI-/branschetiketter till distinkta rader.
+   * Förhindrar att flera SNI-koder som klistrats ihop i en sträng räknas som en.
+   */
+  function expandIndustryLabels(labels, helpers) {
+    const HogriskSniApi = resolveHogriskApi(helpers);
+    const list = Array.isArray(labels) ? labels : [];
+    const out = [];
+    const seen = Object.create(null);
+
+    function pushUnique(label, kod) {
+      const text = String(label || '').trim();
+      if (!text || text === '---') return;
+      const kodKey = kod ? 'kod:' + kod : '';
+      const key = fold(text);
+      if ((kodKey && seen[kodKey]) || seen[key]) return;
+      if (kodKey) seen[kodKey] = true;
+      seen[key] = true;
+      out.push(text);
+    }
+
+    list.forEach((raw) => {
+      const text = String(raw || '').trim();
+      if (!text || text === '---') return;
+      const entries = HogriskSniApi && HogriskSniApi.parseSniEntries
+        ? HogriskSniApi.parseSniEntries(text)
+        : [];
+      if (entries.length >= 1 && /\b\d{4,6}\b/.test(text)) {
+        entries.forEach((e) => pushUnique(formatSniLabel(e), e.kod));
+        return;
+      }
+      pushUnique(text, '');
+    });
+    return out;
+  }
+
+  function hogriskLabelsForIndustryLabel(label, helpers) {
+    const HogriskSniApi = resolveHogriskApi(helpers);
+    if (!HogriskSniApi || typeof HogriskSniApi.matchSni !== 'function') return [];
+    const hit = HogriskSniApi.matchSni(label);
+    return Array.isArray(hit && hit.branscher) ? hit.branscher.map((b) => String(b || '').trim()).filter(Boolean) : [];
+  }
+
+  /**
+   * Mappar en industrietikett till en eller flera buckets.
+   * Högrisk-SNI stannar på högriskbranschnivå (rullas inte upp till grövre huvudgrupp).
+   */
+  function bucketsForIndustryLabel(label, helpers) {
+    const hr = hogriskLabelsForIndustryLabel(label, helpers);
+    if (hr.length) {
+      return hr.map((namn) => ({ namn, hogrisk: true }));
+    }
+    return [{ namn: mapToCommonKundBransch(label), hogrisk: false }];
+  }
+
   function industryLabelsFromFields(fields, helpers) {
     const f = fields || {};
     const asValues = helpers && helpers.asValues
@@ -302,32 +375,40 @@
     });
     const kyc = parseKycJson(f) || {};
     if (kyc.bransch) labels.push(kyc.bransch);
-    const seen = {};
-    return labels
-      .map((v) => String(v || '').trim())
-      .filter((namn) => {
-        if (!namn || namn === '---') return false;
-        const key = fold(namn);
-        if (seen[key]) return false;
-        seen[key] = true;
-        return true;
-      });
+    return expandIndustryLabels(labels, helpers);
+  }
+
+  function labelBelongsToBucket(label, bucket, helpers) {
+    const target = String(bucket || '').trim();
+    if (!target || !label) return false;
+    return bucketsForIndustryLabel(label, helpers).some((b) => b.namn === target);
   }
 
   function countKundBranschBuckets(records, helpers) {
     const list = Array.isArray(records) ? records : [];
     const antal = {};
+    const hogriskFlag = {};
     list.forEach((rec) => {
       const labels = industryLabelsFromFields((rec && rec.fields) || {}, helpers);
       if (!labels.length) return;
-      const buckets = new Set();
-      labels.forEach((l) => buckets.add(mapToCommonKundBransch(l)));
-      buckets.forEach((b) => {
-        antal[b] = (antal[b] || 0) + 1;
+      const buckets = new Map();
+      labels.forEach((l) => {
+        bucketsForIndustryLabel(l, helpers).forEach((b) => {
+          const prev = buckets.get(b.namn);
+          buckets.set(b.namn, !!(prev || b.hogrisk));
+        });
+      });
+      buckets.forEach((isHr, namn) => {
+        antal[namn] = (antal[namn] || 0) + 1;
+        if (isHr) hogriskFlag[namn] = true;
       });
     });
     return Object.entries(antal)
-      .map(([namn, n]) => ({ namn, antal: n }))
+      .map(([namn, n]) => ({
+        namn,
+        antal: n,
+        hogrisk: !!hogriskFlag[namn]
+      }))
       .sort((a, b) => b.antal - a.antal || a.namn.localeCompare(b.namn, 'sv'));
   }
 
@@ -342,6 +423,10 @@
     shouldSuggestAggregation,
     aggregateCountedBranscher,
     parseCountedBranschList,
+    expandIndustryLabels,
+    hogriskLabelsForIndustryLabel,
+    bucketsForIndustryLabel,
+    labelBelongsToBucket,
     industryLabelsFromFields,
     countKundBranschBuckets
   };

@@ -25,6 +25,29 @@
         return String(value == null ? '' : value).replace(/\D/g, '');
     }
 
+    /**
+     * Dela upp en rad där flera SNI-koder klistrats ihop utan komma/radbrytning
+     * (t.ex. "46499 - Partihandel … 01430 - Uppfödning av hästar …").
+     */
+    function splitConcatenatedSniRow(row) {
+        const text = String(row || '').trim();
+        if (!text) return [];
+        const re = /\b(\d{4,6})\b/g;
+        const starts = [];
+        let m;
+        while ((m = re.exec(text))) {
+            starts.push({ kod: m[1], index: m.index });
+        }
+        if (starts.length <= 1) return [text];
+        const parts = [];
+        for (let i = 0; i < starts.length; i++) {
+            const end = i + 1 < starts.length ? starts[i + 1].index : text.length;
+            const part = text.slice(starts[i].index, end).trim();
+            if (part) parts.push(part);
+        }
+        return parts.length ? parts : [text];
+    }
+
     function parseSniEntries(raw) {
         const s = Array.isArray(raw) ? raw.join('\n') : String(raw || '');
         if (!s.trim()) return [];
@@ -32,7 +55,8 @@
             .split(/\n/)
             .flatMap((row) => String(row).split(','))
             .map((row) => row.trim())
-            .filter(Boolean);
+            .filter(Boolean)
+            .flatMap((row) => splitConcatenatedSniRow(row));
         const seen = new Set();
         const entries = [];
         chunks.forEach((row) => {
@@ -180,6 +204,7 @@
 
     const api = {
         DEFAULT_PATTERNS,
+        splitConcatenatedSniRow,
         parseSniEntries,
         codeMatchesPattern,
         matchSni,

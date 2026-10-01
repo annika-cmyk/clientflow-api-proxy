@@ -18,13 +18,13 @@
   var TYP_DISTRIBUTION = 'Distrubutionskanaler';
 
   var SUMMARY_KEYS = [
-    { key: 'antalAnstallda', label: 'Anställda' },
-    { key: 'leveranssatt', label: 'Leveranssätt' },
-    { key: 'bankIdKrav', label: 'BankID' },
-    { key: 'geografiskMarknad', label: 'Byråns geografiska marknad' },
-    { key: 'lopandeUtbildning', label: 'Löpande utbildning' },
-    { key: 'personalomsattning', label: 'Personalomsättning' },
-    { key: 'outsourcingUnderleverantorer', label: 'Outsourcing' }
+    { key: 'antalAnstallda', label: 'Anställda', page: 'verksamhet' },
+    { key: 'leveranssatt', label: 'Leveranssätt', page: 'distribution' },
+    { key: 'bankIdKrav', label: 'BankID', page: 'distribution' },
+    { key: 'geografiskMarknad', label: 'Byråns geografiska marknad', page: 'distribution' },
+    { key: 'lopandeUtbildning', label: 'Löpande utbildning', page: 'verksamhet' },
+    { key: 'personalomsattning', label: 'Personalomsättning', page: 'verksamhet' },
+    { key: 'outsourcingUnderleverantorer', label: 'Outsourcing', page: 'verksamhet' }
   ];
 
   function trimStr(value) {
@@ -96,15 +96,20 @@
     return trimStr(value);
   }
 
-  function buildProfilSummary(profil) {
+  function buildProfilSummary(profil, opts) {
     var p = profil || {};
-    return SUMMARY_KEYS.map(function (row) {
+    var page = opts && opts.page ? String(opts.page) : '';
+    return SUMMARY_KEYS.filter(function (row) {
+      if (!page) return true;
+      return row.page === page;
+    }).map(function (row) {
       var raw = p[row.key];
       return {
         key: row.key,
         label: row.label,
         value: displayValue(raw),
-        answered: isAnswered(raw)
+        answered: isAnswered(raw),
+        page: row.page || ''
       };
     });
   }

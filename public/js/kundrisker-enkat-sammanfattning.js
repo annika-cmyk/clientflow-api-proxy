@@ -8,6 +8,8 @@
 
   var SECTION_IDS = ['kundstock', 'geografi', 'kundintro'];
   var HOGRISK_NONE = 'Inga högriskbranscher';
+  /** Myndighet bakom högriskbranschlistan (NRA / Högrisk SNI). */
+  var HOGRISK_AUTHORITY = 'Samordningsfunktionen';
   var SKIP_STORAGE_PREFIX = 'kundriskAnalysSkipped:';
   var LINK_STORAGE_PREFIX = 'kundriskAnalysLinked:';
   /** Sammansatta statistik-kort (ordning + vilka enkätfält som ingår). */
@@ -17,26 +19,30 @@
       title: 'Antal kunder',
       icon: 'fa-users',
       desc: 'Totalt antal pågående kunder.',
-      keys: ['antalKunder']
+      keys: ['antalKunder'],
+      /** Visas på verksamhetssidan (kontext till branschsammanfattning), inte på Vilka är våra kunder — där antal redan syns via Byråns tjänster. */
+      pages: ['verksamhet']
+    },
+    {
+      id: 'branscher',
+      title: 'Kundernas branscher',
+      icon: 'fa-layer-group',
+      desc: '',
+      keys: ['kundernasBranscher'],
+      /** Fält som ingår i sammanfattningen men inte visas som egna chip-block. */
+      absorbKeys: ['branscherKundstock', 'andelHogriskbransch'],
+      blockLabels: {
+        kundernasBranscher: 'Alla branscher'
+      },
+      pages: ['verksamhet']
     },
     {
       id: 'bolagsformer',
       title: 'Bolagsformer i kundstocken',
       icon: 'fa-building',
       desc: 'Fördelning av juridiska former bland kunderna.',
-      keys: ['vanligasteBolagsformer']
-    },
-    {
-      id: 'branscher',
-      title: 'Kundernas branscher',
-      icon: 'fa-layer-group',
-      desc: 'Alla branscher i kundstocken. Högriskbranscher specificeras separat, och andelen kunder i högriskbransch visas i procent.',
-      keys: ['kundernasBranscher', 'branscherKundstock', 'andelHogriskbransch'],
-      blockLabels: {
-        kundernasBranscher: 'Alla branscher',
-        branscherKundstock: 'Högriskbranscher',
-        andelHogriskbransch: 'Andel kunder i högriskbransch'
-      }
+      keys: ['vanligasteBolagsformer'],
+      pages: ['kundrisker']
     },
     {
       id: 'betalning',
@@ -47,7 +53,8 @@
       blockLabels: {
         andelKontantintensiva: 'Kontantintensiva kunder',
         betalningsmonster: 'Betalningsmönster'
-      }
+      },
+      pages: ['kundrisker']
     },
     {
       id: 'personkopplingar',
@@ -59,20 +66,21 @@
         komplexaAgarstrukturer: 'Komplexa ägarstrukturer',
         utlandskaAgare: 'Utländska ägare',
         pepKunder: 'PEP eller sanktionslistor'
-      }
+      },
+      pages: ['kundrisker']
     },
     {
       id: 'geografi',
       title: 'Kundernas geografi',
       icon: 'fa-map-marker-alt',
-      desc: 'Geografisk marknad, internationell handel, sanktions-/högriskländer och kunder i utsatta områden.',
-      keys: ['geografiskMarknad', 'andelInternationellHandel', 'sanktionslander', 'kunderIUtsattaOmraden'],
+      desc: 'Internationell handel, sanktions-/högriskländer och kunder i utsatta områden.',
+      keys: ['andelInternationellHandel', 'sanktionslander', 'kunderIUtsattaOmraden'],
       blockLabels: {
-        geografiskMarknad: 'Geografisk marknad',
         andelInternationellHandel: 'Andel kunder med internationell handel',
         sanktionslander: 'Sanktionsländer / högriskländer',
         kunderIUtsattaOmraden: 'Kunder i utsatta områden'
-      }
+      },
+      pages: ['kundrisker']
     },
     {
       id: 'ursprung',
@@ -83,9 +91,26 @@
       blockLabels: {
         kundIntroduktion: 'Hur nya kunder kommer in',
         andelNystartadeBolag: 'Andel nystartade bolag'
-      }
+      },
+      pages: ['kundrisker']
     }
   ];
+
+  function enkatPageId() {
+    var fromBody = document.body && document.body.dataset && document.body.dataset.enkatPage;
+    if (fromBody) return String(fromBody);
+    var scope = document.body && document.body.dataset && document.body.dataset.riskPageScope;
+    if (scope === 'verksamhet') return 'verksamhet';
+    return 'kundrisker';
+  }
+
+  function cardsForCurrentPage() {
+    var page = enkatPageId();
+    return COMPOSITE_CARDS.filter(function (def) {
+      var pages = def.pages || ['kundrisker'];
+      return pages.indexOf(page) !== -1;
+    });
+  }
   var state = {
     profil: null,
     schema: null,
@@ -320,11 +345,19 @@
     var match = opts.match || null;
     var selected = !!(match && state.chipSelection[match.item.id]);
     var check = match ? chipCheckHtml(match) : '';
+    var hogrisk = !!opts.hogrisk;
     var cls =
       'statistik-stat-chip' +
       (opts.staticChip ? ' statistik-stat-chip--static' : '') +
       (match ? ' statistik-stat-chip--selectable' : '') +
-      (selected ? ' is-chip-selected' : '');
+      (selected ? ' is-chip-selected' : '') +
+      (hogrisk ? ' statistik-stat-chip--hogrisk' : '');
+    var badge = hogrisk
+      ? '<span class="statistik-stat-chip-hogrisk-badge" title="Högriskbransch enligt ' +
+          escapeHtml(HOGRISK_AUTHORITY) +
+          '">Högrisk</span>'
+      : '';
+    var labelHtml = escapeHtml(opts.label || '') + badge;
     if (opts.button) {
       return (
         '<span class="' + cls + '">' +
@@ -333,8 +366,9 @@
             'data-typ="' + escapeHtml(opts.typ || '') + '" ' +
             'data-namn="' + escapeHtml(opts.namn || '') + '" ' +
             'data-titel="' + escapeHtml(opts.titel || '') + '" ' +
+            (hogrisk ? 'data-hogrisk="1" ' : '') +
             'title="' + escapeHtml(opts.title || 'Klicka för att se kunder') + '">' +
-            escapeHtml(opts.label || '') +
+            labelHtml +
           '</button>' +
         '</span>'
       );
@@ -342,7 +376,7 @@
     return (
       '<span class="' + cls + '">' +
         check +
-        '<span class="statistik-stat-chip-hit">' + escapeHtml(opts.label || '') + '</span>' +
+        '<span class="statistik-stat-chip-hit">' + labelHtml + '</span>' +
       '</span>'
     );
   }
@@ -355,19 +389,57 @@
         var namn = r.namn || r.form || '';
         var antal = r.antal != null ? r.antal : r.count;
         var label = antal != null && antal !== '' ? namn + ' · ' + antal : namn;
-        var match = findOpenChipMatch(namn, fieldKey);
+        var isHr = !!r.hogrisk || typ === 'hogriskbransch';
+        var matchKey = isHr ? 'branscherKundstock' : (fieldKey || '');
+        var match = findOpenChipMatch(namn, matchKey);
+        if (!match && fieldKey && matchKey !== fieldKey) {
+          match = findOpenChipMatch(namn, fieldKey);
+        }
         return selectableChipHtml({
           button: true,
-          typ: typ,
+          typ: isHr ? 'hogriskbransch' : typ,
           namn: namn,
           titel: titelPrefix ? titelPrefix + namn : namn,
           label: label,
-          title: 'Klicka för att se kunder',
-          match: match
+          title: isHr
+            ? 'Högriskbransch — klicka för underbranscher och kundlista'
+            : 'Klicka för att se kunder',
+          match: match,
+          hogrisk: isHr
         });
       }).join('') +
       '</div>'
     );
+  }
+
+  function mergeBranschRowsForDisplay(buckets, hogriskRows) {
+    var map = Object.create(null);
+    (buckets || []).forEach(function (r) {
+      var namn = String((r && r.namn) || '').trim();
+      if (!namn) return;
+      map[namn] = {
+        namn: namn,
+        antal: Number(r.antal) || 0,
+        hogrisk: !!r.hogrisk
+      };
+    });
+    (hogriskRows || []).forEach(function (r) {
+      var namn = String((r && r.namn) || '').trim();
+      if (!namn) return;
+      var prev = map[namn];
+      var antal = Number(r.antal) || 0;
+      if (prev) {
+        prev.hogrisk = true;
+        if (antal > prev.antal) prev.antal = antal;
+      } else {
+        map[namn] = { namn: namn, antal: antal, hogrisk: true };
+      }
+    });
+    return Object.keys(map)
+      .map(function (k) { return map[k]; })
+      .sort(function (a, b) {
+        return b.antal - a.antal || a.namn.localeCompare(b.namn, 'sv');
+      });
   }
 
   function staticValueChips(display, fieldKey) {
@@ -428,7 +500,9 @@
       return { html: namedListChips('bolagsform', stat.bolagsform, '', key), fromClientflow: true };
     }
     if (typ === 'kund-bransch' && Array.isArray(stat.kundBranschBuckets) && stat.kundBranschBuckets.length) {
-      return { html: namedListChips('kund-bransch', stat.kundBranschBuckets, '', key), fromClientflow: true };
+      var hrRows = stat.högriskbransch || stat.hogriskbransch || [];
+      var merged = mergeBranschRowsForDisplay(stat.kundBranschBuckets, hrRows);
+      return { html: namedListChips('kund-bransch', merged, '', key), fromClientflow: true };
     }
     if (typ === 'hogriskbransch') {
       var hr = stat.högriskbransch || stat.hogriskbransch || [];
@@ -498,14 +572,23 @@
     raw = Array.isArray(raw) ? raw.join(', ') : String(raw || '').trim();
     if (!raw) return staticValueChips(item.display, key);
     if (typ === 'hogriskbransch' && raw === HOGRISK_NONE) return staticValueChips(HOGRISK_NONE, key);
-    var rows = parseCounted(raw);
+    var rows = parseCounted(raw).map(function (r) {
+      return { namn: r.form, antal: r.count };
+    });
     if (!rows.length) return staticValueChips(item.display, key);
-    return namedListChips(
-      typ,
-      rows.map(function (r) { return { namn: r.form, antal: r.count }; }),
-      '',
-      key
-    );
+
+    if (typ === 'kund-bransch') {
+      var hrRaw = state.profil.branscherKundstock;
+      hrRaw = Array.isArray(hrRaw) ? hrRaw.join(', ') : String(hrRaw || '').trim();
+      var hrRows = (!hrRaw || hrRaw === HOGRISK_NONE)
+        ? []
+        : parseCounted(hrRaw).map(function (r) {
+            return { namn: r.form, antal: r.count, hogrisk: true };
+          });
+      rows = mergeBranschRowsForDisplay(rows, hrRows);
+    }
+
+    return namedListChips(typ, rows, '', key);
   }
 
   function valueHtmlForItem(item) {
@@ -604,6 +687,96 @@
     };
   }
 
+  function buildBranschSummaryDesc(profil, schemaHint) {
+    var p = profil || {};
+    var stat = state.clientflowStat;
+    var antal = (stat && typeof stat.antalKunder === 'number')
+      ? stat.antalKunder
+      : Math.round(Number(p.antalKunder)) || 0;
+
+    var branschRows = [];
+    if (stat && Array.isArray(stat.kundBranschBuckets) && stat.kundBranschBuckets.length) {
+      branschRows = mergeBranschRowsForDisplay(
+        stat.kundBranschBuckets,
+        stat.högriskbransch || stat.hogriskbransch || []
+      );
+    } else {
+      branschRows = parseCounted(p.kundernasBranscher);
+    }
+    var nBranscher = branschRows.length;
+
+    var andelFromProfil = null;
+    var rawAndel = p.andelHogriskbransch;
+    var nAndel = Number(String(rawAndel == null ? '' : rawAndel).replace(',', '.').replace(/[^\d.]/g, ''));
+    if (Number.isFinite(nAndel)) {
+      andelFromProfil = Math.round(nAndel <= 1 && String(rawAndel).indexOf('%') === -1 ? nAndel * 100 : nAndel);
+    }
+
+    var hogriskAntal = null;
+    var andel = null;
+    if (stat && typeof stat.antalKunderHogriskbransch === 'number') {
+      hogriskAntal = Math.round(stat.antalKunderHogriskbransch);
+      andel = antal > 0 ? Math.round((hogriskAntal / antal) * 100) : andelFromProfil;
+    } else if (andelFromProfil != null) {
+      andel = andelFromProfil;
+      hogriskAntal = antal > 0 ? Math.round((andel / 100) * antal) : null;
+      if (hogriskAntal == null) {
+        var hrParsedPct = parseCounted(p.branscherKundstock).filter(function (r) {
+          return r.form && r.form !== HOGRISK_NONE;
+        });
+        if (hrParsedPct.length) {
+          hogriskAntal = hrParsedPct.reduce(function (sum, r) {
+            var n = Number(r.count);
+            return sum + (Number.isFinite(n) ? n : 0);
+          }, 0);
+        }
+      }
+    } else {
+      var hrParsed = parseCounted(p.branscherKundstock).filter(function (r) {
+        return r.form && r.form !== HOGRISK_NONE;
+      });
+      if (hrParsed.length) {
+        hogriskAntal = hrParsed.reduce(function (sum, r) {
+          var n = Number(r.count);
+          return sum + (Number.isFinite(n) ? n : 0);
+        }, 0);
+        if (antal > 0) andel = Math.round((hogriskAntal / antal) * 100);
+      }
+    }
+
+    if (!antal && !nBranscher) {
+      return schemaHint ||
+        'Alla branscher i kundstocken. Högriskbranscher markeras i listan.';
+    }
+
+    var parts = [];
+    parts.push(
+      'Byrån har ' +
+        (antal || '—') +
+        ' kunder inom ' +
+        (nBranscher || '—') +
+        ' olika huvudbranscher'
+    );
+    if (hogriskAntal != null && andel != null) {
+      parts.push(
+        'av dessa finns det ' +
+          hogriskAntal +
+          ' – dvs ' +
+          andel +
+          ' % – inom branscher som ' +
+          HOGRISK_AUTHORITY +
+          ' definierar som branscher med högre risk för penningtvätt eller finansiering av terrorism'
+      );
+    } else {
+      parts.push(
+        'högriskbranscher enligt ' +
+          HOGRISK_AUTHORITY +
+          ' markeras i listan'
+      );
+    }
+    return parts.join(', ') + '.';
+  }
+
   function buildSummary(profil, schema) {
     var allFields = allSchemaFields(schema || {});
     var fieldsByKey = {};
@@ -614,7 +787,14 @@
     var cards = [];
     var answeredCount = 0;
 
+    var pageCardDefs = cardsForCurrentPage();
+    var pageCardKeySet = Object.create(null);
     COMPOSITE_CARDS.forEach(function (def) {
+      (def.keys || []).forEach(function (k) { pageCardKeySet[k] = true; });
+      (def.absorbKeys || []).forEach(function (k) { pageCardKeySet[k] = true; });
+    });
+
+    pageCardDefs.forEach(function (def) {
       var blocks = [];
       (def.keys || []).forEach(function (key) {
         usedKeys[key] = true;
@@ -627,19 +807,40 @@
           (def.blockLabels && def.blockLabels[key]) || null
         );
         if (!block) return;
-        // Visa andel högrisk även när värdet saknas men andra branschfält finns — nej, bara ifyllda.
         blocks.push(block);
         answeredCount += 1;
       });
-      if (!blocks.length) return;
+      (def.absorbKeys || []).forEach(function (key) {
+        usedKeys[key] = true;
+        var antalCompanion = fieldsByKey[key] && companionAntal(fieldsByKey[key], allFields);
+        if (antalCompanion) usedKeys[antalCompanion.key] = true;
+        if (isAnswered(profil[key], fieldsByKey[key])) answeredCount += 1;
+      });
+      if (!blocks.length) {
+        // Kort utan synliga block men med absorberade svar (t.ex. bara högrisk) — hoppa över
+        // om huvudnyckeln saknas.
+        return;
+      }
+      var desc = def.desc || '';
+      if (def.id === 'branscher') {
+        desc = buildBranschSummaryDesc(profil, def.desc);
+      }
       cards.push({
         id: def.id,
         title: def.title,
         icon: def.icon || 'fa-chart-bar',
-        desc: def.desc || '',
+        desc: desc,
+        absorbKeys: (def.absorbKeys || []).slice(),
         blocks: blocks
       });
     });
+
+    // Nycklar som hör till andra sidors kort ska inte bli "extra"-kort här.
+    Object.keys(pageCardKeySet).forEach(function (key) {
+      usedKeys[key] = true;
+    });
+    // Byråns geografiska marknad visas under Övriga / distribution — inte som kundkort.
+    usedKeys.geografiskMarknad = true;
 
     // Övriga ifyllda fält (t.ex. residualrisk) som egna enkla kort.
     allFields.forEach(function (field) {
@@ -668,13 +869,109 @@
   function uniqueAnalysGroupsForCard(card) {
     var seen = Object.create(null);
     var rows = [];
-    ((card && card.blocks) || []).forEach(function (block) {
-      var g = allGroupForItem(block);
+    function considerKey(key, block) {
+      var g = allGroupForItem({ key: key });
       if (!g || seen[g.id]) return;
       seen[g.id] = true;
-      rows.push({ group: g, block: block });
+      rows.push({ group: g, block: block || { key: key } });
+    }
+    ((card && card.blocks) || []).forEach(function (block) {
+      considerKey(block.key, block);
+    });
+    ((card && card.absorbKeys) || []).forEach(function (key) {
+      considerKey(key, { key: key });
     });
     return rows;
+  }
+
+  function risksMatchingCard(card) {
+    var Forslag = API();
+    var risks = risksList();
+    var seen = Object.create(null);
+    var out = [];
+    function addRisk(risk) {
+      if (!risk || !risk.id || seen[risk.id]) return;
+      seen[risk.id] = true;
+      out.push(risk);
+    }
+    uniqueAnalysGroupsForCard(card).forEach(function (row) {
+      var group = row.group;
+      if (!group) return;
+      (group.items || []).forEach(function (item) {
+        if (Forslag && Forslag.itemAlreadyCovered && Forslag.itemAlreadyCovered(item, risks)) {
+          risks.forEach(function (risk) {
+            if (Forslag.itemAlreadyCovered(item, [risk])) addRisk(risk);
+          });
+        }
+      });
+      var links = Forslag && Forslag.linksForGroup
+        ? Forslag.linksForGroup(state.linkedMap, group.id)
+        : [];
+      links.forEach(function (link) {
+        var hit = risks.find(function (r) {
+          if (link.id && String(r.id) === String(link.id)) return true;
+          var namn = Forslag.riskNamn ? Forslag.riskNamn(r) : '';
+          return link.namn && namn && namn.toLowerCase() === String(link.namn).toLowerCase();
+        });
+        if (hit) addRisk(hit);
+      });
+    });
+    return out;
+  }
+
+  function nestedRiskChipHtml(risk) {
+    var Forslag = API();
+    var namn = Forslag && Forslag.riskNamn
+      ? Forslag.riskNamn(risk)
+      : String((risk.fields || {}).Riskfaktor || '').trim();
+    var fields = risk.fields || {};
+    var level = '';
+    try {
+      if (window.riskManager && typeof window.riskManager.scoredRisk === 'function') {
+        var scored = window.riskManager.scoredRisk(fields);
+        level = scored.residualLevel || scored.level || '';
+      }
+    } catch (_) { /* ignore */ }
+    return (
+      '<button type="button" class="kundrisker-enkat-nested-chip" data-nested-risk-id="' +
+        escapeHtml(risk.id) + '" title="Öppna analys">' +
+        '<span class="kundrisker-enkat-nested-chip-name">' + escapeHtml(namn || 'Riskfaktor') + '</span>' +
+        (level ? '<span class="kundrisker-enkat-nested-chip-level">' + escapeHtml(level) + '</span>' : '') +
+      '</button>'
+    );
+  }
+
+  function nestedRisksHtml(card) {
+    var risks = risksMatchingCard(card);
+    if (!risks.length) return '';
+    return (
+      '<div class="kundrisker-enkat-nested-risks is-under-card">' +
+        '<h4 class="kundrisker-enkat-nested-title">Analyserade riskfaktorer</h4>' +
+        '<div class="kundrisker-enkat-nested-list">' +
+          risks.map(nestedRiskChipHtml).join('') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function collectNestedRiskIds(summary) {
+    var ids = [];
+    var seen = Object.create(null);
+    ((summary && summary.cards) || []).forEach(function (card) {
+      risksMatchingCard(card).forEach(function (risk) {
+        var id = String(risk.id || '');
+        if (!id || seen[id]) return;
+        seen[id] = true;
+        ids.push(id);
+      });
+    });
+    return ids;
+  }
+
+  var _lastNestedRiskIds = [];
+
+  function getNestedRiskIds() {
+    return _lastNestedRiskIds.slice();
   }
 
   function aggregateCardStatus(card) {
@@ -682,8 +979,8 @@
     if (!Forslag || !Forslag.resolveGroupChecklistStatus) return null;
     var risks = risksList();
     var rows = [];
-    ((card && card.blocks) || []).forEach(function (block) {
-      var g = allGroupForItem(block);
+    uniqueAnalysGroupsForCard(card).forEach(function (row) {
+      var g = row.group;
       if (!g) return;
       if (rows.some(function (r) { return r.groupId === g.id; })) return;
       var status = Forslag.resolveGroupChecklistStatus(g, risks, state.skippedIds, state.linkedMap);
@@ -1397,43 +1694,54 @@
       if (bits) {
         headerActions = '<div class="kundrisker-enkat-stat-actions">' + bits + '</div>';
       }
+    } else if (multiGroup) {
+      var multiBits = statusBadgeHtml(cardStatus);
+      groupRows.forEach(function (row) {
+        var openG = openGroupForItem(row.block);
+        var st = statusForGroup(row.group);
+        multiBits += actionsHtmlForGroup(row.group, openG, st);
+      });
+      if (multiBits) {
+        headerActions = '<div class="kundrisker-enkat-stat-actions">' + multiBits + '</div>';
+      }
     } else if (cardStatus) {
       headerActions =
         '<div class="kundrisker-enkat-stat-actions">' + statusBadgeHtml(cardStatus) + '</div>';
     }
 
     var panels = '';
-    var blocksHtml = ((card && card.blocks) || []).map(function (block) {
-      var allGroup = allGroupForItem(block);
-      var openGroup = openGroupForItem(block);
-      var statusRow = statusForGroup(allGroup);
-      var panel = '';
+    groupRows.forEach(function (row) {
+      var openGroup = openGroupForItem(row.block);
+      var allGroup = row.group;
       if (openGroup && state.openGroupId === openGroup.id && !panelRendered[openGroup.id]) {
         panelRendered[openGroup.id] = true;
-        panel = panelHtml(openGroup);
+        panels += panelHtml(openGroup);
       }
       if (allGroup && state.linkGroupId === allGroup.id && !linkPanelRendered[allGroup.id]) {
         linkPanelRendered[allGroup.id] = true;
-        panel += linkPanelHtml(allGroup);
+        panels += linkPanelHtml(allGroup);
       }
-      // En analysgrupp för flera block (t.ex. Personkopplingar): paneler i kortfoten.
-      if (!multiGroup && panel) {
-        panels += panel;
-        panel = '';
-      }
+    });
+
+    var blocksHtml = ((card && card.blocks) || []).map(function (block) {
+      // Vid flera analysgrupper i samma kort (t.ex. branscher + högrisk) ligger
+      // Analysera/Koppla/Avstå i kortets header — inte per block.
       return renderCardBlock(block, {
-        allGroup: allGroup,
-        openGroup: openGroup,
-        statusRow: statusRow,
-        showBlockActions: multiGroup,
+        allGroup: allGroupForItem(block),
+        openGroup: openGroupForItem(block),
+        statusRow: statusForGroup(allGroupForItem(block)),
+        showBlockActions: multiBlock && !multiGroup,
         showBlockStatus: false,
-        panel: panel,
+        panel: '',
         multiBlock: multiBlock
       });
     }).join('');
 
     var rowStatusCls = cardStatus ? ' is-status-' + cardStatus.status : '';
     var hasAnalys = groupRows.length > 0;
+    var liveDesc = card.id === 'branscher'
+      ? buildBranschSummaryDesc(profilWithLiveClientflow(), card.desc)
+      : (card.desc || '');
     return (
       '<section class="statistik-section kundrisker-enkat-stat-section kundrisker-enkat-card' +
         (hasAnalys ? ' has-analys' : '') + rowStatusCls + '" data-card-id="' + escapeHtml(card.id) + '">' +
@@ -1443,10 +1751,11 @@
           '</h3>' +
           headerActions +
         '</div>' +
-        (card.desc
-          ? '<p class="statistik-section-desc">' + escapeHtml(card.desc) + '</p>'
+        (liveDesc
+          ? '<p class="statistik-section-desc">' + escapeHtml(liveDesc) + '</p>'
           : '') +
         '<div class="kundrisker-enkat-card-blocks">' + blocksHtml + '</div>' +
+        nestedRisksHtml(card) +
         panels +
       '</section>'
     );
@@ -1509,6 +1818,10 @@
 
   function renderSummary(root, summary) {
     refreshGroups();
+    // Bygg om sammanfattning med live Clientflow-siffror så kortordning/desc stämmer.
+    if (state.profil && state.schema) {
+      summary = buildSummary(profilWithLiveClientflow(), state.schema);
+    }
     pruneChipSelection();
     var panelRendered = {};
     var linkPanelRendered = {};
@@ -1517,6 +1830,13 @@
     if (!cards.length && summary.groups && summary.groups[0] && summary.groups[0].items) {
       cards = summary.groups[0].items;
     }
+    _lastNestedRiskIds = collectNestedRiskIds({ cards: cards });
+
+    var page = enkatPageId();
+    var headTitle = page === 'verksamhet' ? 'Verksamhetsspecifika riskfaktorer' : 'Vilka är våra kunder';
+    var lead = page === 'verksamhet'
+      ? 'Branschstatistik från byråprofilen och Clientflow. Högriskbranscher markeras enligt Samordningsfunktionen. Bocka i chips eller använd Analysera, Koppla och Avstå. Analyserade riskfaktorer visas under respektive kort.'
+      : 'Uppgifter från byråprofilen och Clientflow samlade i kort: bolagsformer, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Branschstatistik ligger under Verksamhetsspecifika riskfaktorer. Där live-data finns används Clientflow-siffror (klickbara chips). Analyserade riskfaktorer visas under respektive kort.';
 
     var cardsHtml =
       '<div class="statistik-sections kundrisker-enkat-stat-sections kundrisker-enkat-cards">' +
@@ -1528,13 +1848,15 @@
     root.innerHTML =
       '<div class="kundrisker-enkat kundrisker-enkat--stat">' +
         '<div class="kundrisker-enkat-head">' +
-          '<h3>Vilka är våra kunder</h3>' +
+          '<h3>' + escapeHtml(headTitle) + '</h3>' +
           '<div class="kundrisker-enkat-head-links">' +
             '<a class="kundrisker-enkat-edit" href="statistik-riskbedomning.html">Öppna all statistik</a>' +
-            '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
+            '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=' +
+              (page === 'verksamhet' ? 'kundstock' : 'kundstock') +
+            '">Ändra i enkäten</a>' +
           '</div>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Uppgifter från byråprofilen och Clientflow samlade i kort: bolagsformer, branscher, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Där live-data finns används Clientflow-siffror (klickbara chips). Bocka i chips för att välja poster och skapa analys via den flytande knappen, eller använd <strong>Analysera</strong>, <strong>Koppla</strong> och <strong>Avstå</strong> per område.</p>' +
+        '<p class="kundrisker-enkat-lead">' + lead + '</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + cardsHtml + '</div>' +
         chipAnalysBarHtml() +
@@ -1543,6 +1865,18 @@
     bindPanelEvents(root, summary);
     bindChipSelection(root, summary);
     bindBranschChips(root);
+    bindNestedRiskChips(root);
+  }
+
+  function bindNestedRiskChips(root) {
+    root.querySelectorAll('[data-nested-risk-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-nested-risk-id');
+        if (id && window.riskManager && typeof window.riskManager.openEditModal === 'function') {
+          window.riskManager.openEditModal(id);
+        }
+      });
+    });
   }
 
   function bindChipSelection(root, summary) {
@@ -2056,11 +2390,77 @@
     mount();
   }
 
+  /**
+   * Från riskfaktor-modal: koppla den aktuella analyserade faktorn till en statistikgrupp.
+   */
+  function openLinkFromRisk(riskId, riskNamn) {
+    var root = document.getElementById('kundrisker-enkat-root');
+    if (!root) {
+      window.alert('Öppna en sida med statistik-kort (Vilka är våra kunder eller Verksamhetsspecifika) för att koppla.');
+      return;
+    }
+    if (!state.summary || !state.summary.hasAnswers) {
+      window.alert('Statistik-korten har inte laddats ännu.');
+      return;
+    }
+    refreshGroups();
+    var options = (state.allGroups || []).slice();
+    if (!options.length) {
+      window.alert('Inga statistikområden att koppla till just nu.');
+      return;
+    }
+    var existing = root.querySelector('.kundrisker-risk-link-overlay');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.className = 'kundrisker-risk-link-overlay';
+    overlay.innerHTML =
+      '<div class="kundrisker-risk-link-dialog" role="dialog" aria-label="Koppla till statistik">' +
+        '<h4>Koppla «' + escapeHtml(riskNamn || 'riskfaktor') + '» till statistik</h4>' +
+        '<p class="kundrisker-analys-panel-hint">Välj vilket statistikområde som redan täcks av den här riskfaktorn.</p>' +
+        '<div class="kundrisker-analys-checks">' +
+          options.map(function (g) {
+            return (
+              '<label class="kundrisker-analys-check">' +
+                '<input type="radio" name="risk-link-statistik" value="' + escapeHtml(g.id) + '">' +
+                '<span class="kundrisker-analys-check-label"><strong>' +
+                  escapeHtml(g.buttonLabel || g.id) +
+                '</strong></span>' +
+              '</label>'
+            );
+          }).join('') +
+        '</div>' +
+        '<div class="kundrisker-analys-actions">' +
+          '<button type="button" class="btn btn-primary btn-sm" data-risk-link-confirm>Koppla</button>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-risk-link-cancel>Avbryt</button>' +
+        '</div>' +
+      '</div>';
+    root.appendChild(overlay);
+    overlay.querySelector('[data-risk-link-cancel]').addEventListener('click', function () {
+      overlay.remove();
+    });
+    overlay.querySelector('[data-risk-link-confirm]').addEventListener('click', function () {
+      var selected = overlay.querySelector('input[name="risk-link-statistik"]:checked');
+      if (!selected) {
+        window.alert('Välj ett statistikområde.');
+        return;
+      }
+      var groupId = selected.value;
+      var next = Object.assign({}, state.linkedMap);
+      next[groupId] = [{ id: String(riskId || ''), namn: String(riskNamn || '') }];
+      overlay.remove();
+      setLinked(next, root, state.summary);
+    });
+  }
+
   window.KundriskerEnkatSammanfattning = {
     buildSummary: buildSummary,
+    buildBranschSummaryDesc: buildBranschSummaryDesc,
+    HOGRISK_AUTHORITY: HOGRISK_AUTHORITY,
     mount: mount,
     refresh: refresh,
     drillTypForField: drillTypForField,
+    getNestedRiskIds: getNestedRiskIds,
+    openLinkFromRisk: openLinkFromRisk,
     getState: function () { return state; },
     /** Test-/debughjälpare för chip-val och flytande Skapa analys. */
     __test: {
@@ -2069,10 +2469,13 @@
       openItemsForField: openItemsForField,
       namedListChips: namedListChips,
       selectableChipHtml: selectableChipHtml,
+      mergeBranschRowsForDisplay: mergeBranschRowsForDisplay,
       prefillsFromChipSelection: prefillsFromChipSelection,
       chipAnalysBarHtml: chipAnalysBarHtml,
       refreshGroups: refreshGroups,
-      pruneChipSelection: pruneChipSelection
+      pruneChipSelection: pruneChipSelection,
+      cardsForCurrentPage: cardsForCurrentPage,
+      COMPOSITE_CARDS: COMPOSITE_CARDS
     }
   };
 })();
