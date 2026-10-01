@@ -49,6 +49,114 @@
   var skipped = {};
   var clientflowSectionKeys = {};
 
+  /** key → 'clientflow' | 'clientflow-justerad' — session-spårning efter Hämta från Clientflow */
+  var fieldSources = {};
+  /** Nyckel → serialiserat värde vid hämtning (för att återställa «Clientflow» om man ångrar justering) */
+  var clientflowBaseline = {};
+  var FIELD_SOURCES_STORAGE = 'byraProfilFieldSources:v1';
+
+  function serializeFieldValue(v) {
+    if (v == null) return '';
+    if (Array.isArray(v)) return v.map(function (x) { return String(x || '').trim(); }).filter(Boolean).join(', ');
+    return String(v).trim();
+  }
+
+  function loadPersistedFieldSources() {
+    try {
+      var raw = sessionStorage.getItem(FIELD_SOURCES_STORAGE);
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      fieldSources = parsed.sources && typeof parsed.sources === 'object' ? parsed.sources : {};
+      clientflowBaseline = parsed.baseline && typeof parsed.baseline === 'object' ? parsed.baseline : {};
+    } catch (_) {
+      fieldSources = {};
+      clientflowBaseline = {};
+    }
+  }
+
+  function persistFieldSources() {
+    try {
+      sessionStorage.setItem(FIELD_SOURCES_STORAGE, JSON.stringify({
+        sources: fieldSources,
+        baseline: clientflowBaseline
+      }));
+    } catch (_) { /* ignore quota */ }
+  }
+
+  function fieldKeyInClientflowSection(key) {
+    var keys = Object.keys(clientflowSectionKeys || {});
+    for (var i = 0; i < keys.length; i++) {
+      var list = clientflowSectionKeys[keys[i]] || [];
+      if (list.indexOf(key) >= 0) return true;
+    }
+    return false;
+  }
+
+  /**
+   * UX: Clientflow-hämtade värden behåller källan. Om användaren ändrar värdet
+   * visas «Clientflow · justerad» (inte Byråprofil), så det syns att underlaget
+   * kom från Clientflow men justerats manuellt. Återställs till «Clientflow» om
+   * värdet matchar hämtningen igen.
+   */
+  function noteUserEdit(key) {
+    if (!key) return;
+    var src = fieldSources[key];
+    if (src !== 'clientflow' && src !== 'clientflow-justerad') return;
+    var current = serializeFieldValue(values[key]);
+    var baseline = Object.prototype.hasOwnProperty.call(clientflowBaseline, key)
+      ? String(clientflowBaseline[key] == null ? '' : clientflowBaseline[key])
+      : '';
+    var next = current === baseline ? 'clientflow' : 'clientflow-justerad';
+    if (fieldSources[key] !== next) {
+      fieldSources[key] = next;
+      persistFieldSources();
+      refreshFieldSourceBadge(key);
+    }
+  }
+
+  function fieldSourceBadgeEl(key) {
+    if (!key || !fieldKeyInClientflowSection(key)) return null;
+    var src = fieldSources[key];
+    var field = fieldByKey(key);
+    var answered = field ? isAnswered(values[key], field) : !!serializeFieldValue(values[key]);
+    if (!answered && src !== 'clientflow' && src !== 'clientflow-justerad') return null;
+
+    var span = document.createElement('span');
+    span.className = 'statistik-source-badge';
+    if (src === 'clientflow') {
+      span.title = 'Hämtat från aktiva kunder i Clientflow';
+      span.textContent = 'Clientflow';
+      return span;
+    }
+    if (src === 'clientflow-justerad') {
+      span.className += ' statistik-source-badge--justerad';
+      span.title = 'Hämtat från Clientflow och justerat manuellt';
+      span.textContent = 'Clientflow · justerad';
+      return span;
+    }
+    if (!answered) return null;
+    span.className += ' statistik-source-badge--byraprofil';
+    span.title = 'Svar ni fyllt i manuellt i byråprofil-enkäten';
+    span.textContent = 'Byråprofil';
+    return span;
+  }
+
+  function refreshFieldSourceBadge(key) {
+    if (!ui.fields || !key) return;
+    var card = ui.fields.querySelector('.byra-enkate-q[data-key="' + key + '"]');
+    if (!card) return;
+    var title = card.querySelector('.byra-enkate-q-title');
+    if (!title) return;
+    var existing = title.querySelector('.statistik-source-badge');
+    if (existing) existing.remove();
+    var badge = fieldSourceBadgeEl(key);
+    if (badge) {
+      title.appendChild(document.createTextNode(' '));
+      title.appendChild(badge);
+    }
+  }
+
   function setStatus(msg, isError, scrollTo) {
     if (!ui.status) return;
     ui.status.textContent = msg || '';
@@ -356,9 +464,11 @@
     function applyValue(value) {
       values[field.key] = value;
       skipped[field.key] = false;
+      noteUserEdit(field.key);
       companionsFor(field).forEach(function (companion) {
         if (!valueIncludesChoice(value, (companion.requiredWhen || {}).equals)) {
           values[companion.key] = '';
+          noteUserEdit(companion.key);
         }
       });
       paintChoices();
@@ -483,6 +593,7 @@
         values[field.key] = raw;
       }
       skipped[field.key] = false;
+      noteUserEdit(field.key);
       updateProgress();
       updateNav();
     });
@@ -596,6 +707,7 @@
         values[field.key] = formatBolagsformer(rows);
       }
       skipped[field.key] = false;
+      noteUserEdit(field.key);
       updateProgress();
       updateNav();
     }
@@ -618,6 +730,7 @@
         syncHint();
       }
       skipped[field.key] = false;
+      noteUserEdit(field.key);
       updateProgress();
       updateNav();
     }
@@ -888,9 +1001,11 @@
         if (!cb.checked && i >= 0) cur.splice(i, 1);
         values[field.key] = cur.join(', ');
         skipped[field.key] = false;
+        noteUserEdit(field.key);
         var companion = companionFor(field);
         if (companion && !valueIncludesChoice(values[field.key], 'Annat')) {
           values[companion.key] = '';
+          noteUserEdit(companion.key);
         }
         syncItCompanionUi(field, col);
         updateProgress();
@@ -927,6 +1042,7 @@
     annatInput.addEventListener('input', function () {
       values[companion.key] = annatInput.value.trim();
       skipped[companion.key] = false;
+      noteUserEdit(companion.key);
       updateProgress();
       updateNav();
     });
@@ -1003,6 +1119,7 @@
       });
       values[field.key] = rows.join(', ');
       skipped[field.key] = false;
+      noteUserEdit(field.key);
       updateProgress();
       updateNav();
       setStatus('');
@@ -1211,6 +1328,7 @@
       });
       values[field.key] = formatBolagsformer(rows);
       skipped[field.key] = false;
+      noteUserEdit(field.key);
       updateProgress();
       updateNav();
       setStatus('');
@@ -1297,6 +1415,7 @@
       });
       values[field.key] = formatBolagsformer(rows);
       skipped[field.key] = false;
+      noteUserEdit(field.key);
       updateProgress();
       updateNav();
       setStatus('');
@@ -1335,13 +1454,20 @@
     Object.keys(data).forEach(function (key) {
       values[key] = data[key];
       delete skipped[key];
+      fieldSources[key] = 'clientflow';
+      clientflowBaseline[key] = serializeFieldValue(data[key]);
       // Rensa följdfrågor som inte längre behövs när parent är Nej
       if ((key === 'komplexaAgarstrukturer' || key === 'utlandskaAgare' || key === 'pepKunder' || key === 'kunderIUtsattaOmraden')
         && String(data[key]) !== 'Ja') {
         var antalKey = key + 'Antal';
-        if (values[antalKey] != null && data[antalKey] == null) delete values[antalKey];
+        if (values[antalKey] != null && data[antalKey] == null) {
+          delete values[antalKey];
+          delete fieldSources[antalKey];
+          delete clientflowBaseline[antalKey];
+        }
       }
     });
+    persistFieldSources();
   }
 
   function fetchClientflowForSection(sectionId) {
@@ -1364,9 +1490,9 @@
     title.textContent = 'Hämta statistik från Clientflow';
     var help = document.createElement('p');
     help.className = 'byra-enkate-clientflow-help';
-    help.textContent = 'Fyll i antal kunder, residualrisk per nivå, bolagsformer, branscher och övriga statistikfrågor utifrån era aktiva kunder. Ni kan justera svaren efteråt.';
+    help.textContent = 'Fyll i antal kunder, residualrisk per nivå, bolagsformer, branscher och övriga statistikfrågor utifrån era aktiva kunder. Ni kan justera svaren efteråt — justerade fält markeras Clientflow · justerad.';
     if (String(sec.id).toLowerCase() === 'geografi') {
-      help.textContent = 'Fyll i internationell handel, högriskländer och kunder i utsatta områden utifrån era aktiva kunder. Ni kan justera svaren efteråt.';
+      help.textContent = 'Fyll i internationell handel, högriskländer och kunder i utsatta områden utifrån era aktiva kunder. Ni kan justera svaren efteråt — justerade fält markeras Clientflow · justerad.';
     }
     text.appendChild(title);
     text.appendChild(help);
@@ -1412,6 +1538,11 @@
     var title = document.createElement('h3');
     title.className = 'byra-enkate-q-title';
     title.textContent = field.question || field.label;
+    var sourceBadge = fieldSourceBadgeEl(field.key);
+    if (sourceBadge) {
+      title.appendChild(document.createTextNode(' '));
+      title.appendChild(sourceBadge);
+    }
     card.appendChild(title);
 
     if (field.hint) {
@@ -1679,6 +1810,7 @@
         kundstock: ['antalKunder', 'kundResidualriskFordelning', 'vanligasteBolagsformer', 'kundernasBranscher', 'branscherKundstock'],
         geografi: ['andelInternationellHandel', 'sanktionslander', 'kunderIUtsattaOmraden']
       };
+    loadPersistedFieldSources();
     schema.fields.forEach(function (f) {
       if (!f) return;
       if (f.key === 'vanligasteBolagsformer') {

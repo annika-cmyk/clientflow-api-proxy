@@ -14875,6 +14875,31 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
   background: #fef3c7;
   border-color: #fde68a;
 }
+.statistik-source-badge--justerad {
+  color: #0c4a6e;
+  background: #f0f9ff;
+  border: 1px dashed #7dd3fc;
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+.byra-enkate-q-title .statistik-source-badge {
+  margin-left: 0.45rem;
+  position: relative;
+  top: -0.05em;
+}
+.kundrisker-enkat-card-block-title .statistik-source-badge,
+.kundrisker-enkat-card-block-source .statistik-source-badge {
+  margin-left: 0.4rem;
+}
+.kundrisker-enkat-card-block-source {
+  margin: 0 0 0.45rem;
+}
+.kundrisker-enkat-card-block.is-source-clientflow .statistik-stat-chip {
+  border-color: #bae6fd;
+}
+.kundrisker-enkat-card-block.is-multi.is-source-byraprofil .statistik-stat-chip {
+  border-color: #fde68a;
+}
 .statistik-stat-chips {
   display: flex;
   flex-wrap: wrap;
