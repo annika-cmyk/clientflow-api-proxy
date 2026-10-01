@@ -223,13 +223,19 @@ class RiskAssessmentManager {
 
     renderUtforandeQuestionsHtml(mallId, entry) {
         const Mallar = window.TjanstUtforandeMallar;
-        const template = Mallar && Mallar.templateById(mallId);
+        if (!Mallar) return '';
+        const normalized = entry || Mallar.getEntry(this.utforandeState, mallId);
+        const template = (Mallar.templateForEntry && Mallar.templateForEntry(normalized, mallId))
+          || Mallar.templateById(mallId);
         if (!template) return '';
-        const grouped = Mallar.groupQuestionsForTemplate(template);
-        return `${this.renderUtforandeQuestionGroup(mallId, 'Kundunderlag', grouped.stats || [], entry)}
-            ${this.renderUtforandeStatsHint(template, entry)}
-            ${this.renderUtforandeQuestionGroup(mallId, 'Så här görs tjänsten', grouped.base, entry)}
-            ${this.renderUtforandeQuestionGroup(mallId, 'Specifikt för ' + (template.name || 'tjänsten'), grouped.extra, entry)}`;
+        const grouped = Mallar.groupQuestionsForTemplate(template, normalized);
+        const extraTitle = (normalized && normalized.mergedFrom && normalized.mergedFrom.length)
+          ? 'Specifikt för de sammanslagna tjänsterna'
+          : ('Specifikt för ' + (template.name || 'tjänsten'));
+        return `${this.renderUtforandeQuestionGroup(mallId, 'Kundunderlag', grouped.stats || [], normalized)}
+            ${this.renderUtforandeStatsHint(template, normalized)}
+            ${this.renderUtforandeQuestionGroup(mallId, 'Så här görs tjänsten', grouped.base, normalized)}
+            ${this.renderUtforandeQuestionGroup(mallId, extraTitle, grouped.extra, normalized)}`;
     }
 
     bindUtforandeQuestionEvents(root, mallId) {
@@ -291,20 +297,26 @@ class RiskAssessmentManager {
             this.syncAiExtraUnderlagField('', null);
             return;
         }
-        const template = Mallar.templateById(id);
         const entry = Mallar.getEntry(this.utforandeState, id);
-        const questions = Mallar.questionsForTemplate(template);
+        const template = (Mallar.templateForEntry && Mallar.templateForEntry(entry, id))
+          || Mallar.templateById(id);
+        const questions = Mallar.questionsForEntry
+          ? Mallar.questionsForEntry(entry, template)
+          : Mallar.questionsForTemplate(template);
         if (!questions.length) {
             host.innerHTML = '';
             host.hidden = true;
             this.syncAiExtraUnderlagField(id, entry);
             return;
         }
+        const mergeHint = (entry.mergedFrom && entry.mergedFrom.length)
+          ? ' Tjänsten är sammanslagen — frågorna kommer från alla underliggande tjänster.'
+          : '';
         host.hidden = false;
         host.innerHTML = `
             <div class="tjanst-modal-utforande-head">
                 <h4 class="tjanst-mall-group-title">Frågor från din ClientFlow AI</h4>
-                <p class="tjanst-panel-hint">Svara på hur ni utför tjänsten — svaren sparas automatiskt och används av AI vid riskbedömning.</p>
+                <p class="tjanst-panel-hint">Svara på hur ni utför tjänsten — svaren sparas automatiskt och används av AI vid riskbedömning.${mergeHint}</p>
             </div>
             <div class="tjanst-modal-utforande-body">${this.renderUtforandeQuestionsHtml(id, entry)}</div>`;
         this.bindUtforandeQuestionEvents(host, id);
@@ -711,6 +723,15 @@ class RiskAssessmentManager {
         const draftBadge = (isCustom && !aktiv)
             ? '<span class="tjanst-mall-draft-badge">Utkast – slutför analys innan aktivering</span>'
             : '';
+        const MallarApi = window.TjanstUtforandeMallar;
+        const highRisk = !!(MallarApi && MallarApi.isOfficialHighRiskService
+          && MallarApi.isOfficialHighRiskService(template, entry));
+        const highRiskBadge = highRisk
+          ? '<span class="tjanst-mall-hogrisk-badge" title="Högrisktjänst enligt Länsstyrelsens vägledning">Högrisktjänst</span>'
+          : '';
+        const mergeBadge = (entry && Array.isArray(entry.mergedFrom) && entry.mergedFrom.length)
+          ? `<span class="tjanst-mall-merge-badge" title="${this.esc(entry.mergedFrom.map((m) => m.namn).join(', '))}">Sammanslagen</span>`
+          : '';
         const toggleLabel = lockedInactive
             ? `Kan inte inaktiveras — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
             : (aktiv ? 'Inaktivera tjänsten' : (isCustom ? 'Aktivera när mini-analysen är klar' : 'Aktivera tjänsten'));
@@ -718,16 +739,16 @@ class RiskAssessmentManager {
             ? `Kan inte raderas — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
             : 'Ta bort tjänsten från katalogen';
         const overviewHtml = existing ? this.renderUtforandeOverview(existing, entry, template) : '';
+        const emptyLead = isCustom
+          ? (entry && entry.mergedFrom && entry.mergedFrom.length
+            ? 'Sammanslagen tjänst. AI ställer frågor från alla underliggande tjänster. Fyll i mini-analysen innan du aktiverar.'
+            : 'Egen tjänst sparas som utkast. Öppna redigeringen, fyll i mini-analysen och spara som aktuell innan du aktiverar.')
+          : 'Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.';
         const analysHtml = existing
             ? `<div class="tjanst-mall-overview" hidden>${overviewHtml}</div>`
             : `<div class="tjanst-mall-empty">
-                    <p>${isCustom
-                        ? 'Egen tjänst sparas som utkast. Öppna redigeringen, fyll i mini-analysen och spara som aktuell innan du aktiverar.'
-                        : 'Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.'}</p>
-                    <div class="tjanst-mall-choice">
-                        <button type="button" class="btn btn-primary" data-open-analys data-open-analys-ai>Låt AI skapa ett utkast</button>
-                        <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
-                    </div>
+                    <p>${emptyLead}</p>
+                    ${this.renderTjanstAnalysChoiceButtons(template, entry, existing)}
                 </div>`;
         const RiskSkalaApi = (typeof window !== 'undefined' && window.RiskSkala) ? window.RiskSkala : null;
         const scored = existing && RiskSkalaApi && RiskSkalaApi.readTjanstRisk
@@ -770,26 +791,25 @@ class RiskAssessmentManager {
                 overviewHtml: existing ? overviewHtml : '',
                 emptyBodyHtml: existing ? '' : (
                     `<div class="tjanst-mall-empty">
-                    <p>${isCustom
-                        ? 'Egen tjänst sparas som utkast. Öppna redigeringen, fyll i mini-analysen och spara som aktuell innan du aktiverar.'
-                        : 'Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.'}</p>
-                    <div class="tjanst-mall-choice">
-                        <button type="button" class="btn btn-primary" data-open-analys data-open-analys-ai>Låt AI skapa ett utkast</button>
-                        <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
-                    </div>
+                    <p>${emptyLead}</p>
+                    ${this.renderTjanstAnalysChoiceButtons(template, entry, existing)}
                 </div>`
                 ),
-                draftBadgeHtml: draftBadge,
+                draftBadgeHtml: `${draftBadge}${highRiskBadge}${mergeBadge}`,
+                extraCardClass: highRisk ? 'is-hogrisk-tjanst' : '',
                 menuHtml: `${editBtn}${aktivBtn}${deleteBtn}`,
-                toolbarRightHtml: kundCount > 0 ? this.renderKundCountBadge(kundCount) : '',
-                dataAttrsHtml: ` data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}" data-analyskort-kind="tjanst"`
+                toolbarRightHtml: [
+                    existing ? this.renderTjanstAnalysChoiceButtons(template, entry, existing) : '',
+                    kundCount > 0 ? this.renderKundCountBadge(kundCount) : ''
+                ].filter(Boolean).join(''),
+                dataAttrsHtml: ` data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}" data-analyskort-kind="tjanst"${highRisk ? ' data-hogrisk-tjanst="1"' : ''}`
             });
         }
         const overviewAttrs = existing
             ? ' data-has-overview tabindex="0" aria-expanded="false"'
             : '';
         return `
-            <article class="analyskort tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}${resaComplete ? ' is-resa-complete' : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}"${overviewAttrs}>
+            <article class="analyskort tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}${resaComplete ? ' is-resa-complete' : ''}${highRisk ? ' is-hogrisk-tjanst' : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}"${highRisk ? ' data-hogrisk-tjanst="1"' : ''}${overviewAttrs}>
                 <div class="tjanst-mall-top">
                     <div class="tjanst-mall-identity">
                         ${progressIcon}
@@ -797,7 +817,7 @@ class RiskAssessmentManager {
                             <h4 class="tjanst-mall-title">
                                 <span class="tjanst-mall-title-btn">${this.esc(template.name)}</span>
                             </h4>
-                            ${draftBadge}
+                            ${draftBadge}${highRiskBadge}${mergeBadge}
                             ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
                         </div>
                     </div>
@@ -816,6 +836,7 @@ class RiskAssessmentManager {
                 </div>
                 <div class="tjanst-mall-toolbar">
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
+                    ${existing ? this.renderTjanstAnalysChoiceButtons(template, entry, existing) : ''}
                     ${kundCount > 0 ? this.renderKundCountBadge(kundCount) : ''}
                 </div>
                 ${analysHtml ? `<div class="tjanst-mall-body">${analysHtml}</div>` : ''}
@@ -1095,12 +1116,43 @@ class RiskAssessmentManager {
     applyUtforandeQuestionVisibility(mallId, cardEl) {
         const Mallar = window.TjanstUtforandeMallar;
         if (!Mallar || !cardEl || !Mallar.questionIsVisible) return;
-        const template = Mallar.templateById(mallId);
         const entry = Mallar.getEntry(this.utforandeState, mallId);
-        Mallar.questionsForTemplate(template).forEach((q) => {
+        const template = (Mallar.templateForEntry && Mallar.templateForEntry(entry, mallId))
+          || Mallar.templateById(mallId);
+        const questions = Mallar.questionsForEntry
+          ? Mallar.questionsForEntry(entry, template)
+          : Mallar.questionsForTemplate(template);
+        questions.forEach((q) => {
             const el = cardEl.querySelector(`[data-q-id="${CSS.escape(q.id)}"]`);
             if (el) el.hidden = !Mallar.questionIsVisible(q, entry.answers);
         });
+    }
+
+    renderTjanstAnalysChoiceButtons(template, entry, existing) {
+        const Mallar = window.TjanstUtforandeMallar;
+        const highRisk = !!(Mallar && Mallar.isOfficialHighRiskService
+          && Mallar.isOfficialHighRiskService(template, entry));
+        if (existing) {
+            if (highRisk) {
+                return `<div class="tjanst-mall-choice is-analyserad">
+                <button type="button" class="btn btn-sm tjanst-mall-analyserad-btn is-hogrisk" data-open-analys title="Högrisktjänst enligt Länsstyrelsens vägledning — analyserad">Analyserad</button>
+            </div>`;
+            }
+            return `<div class="tjanst-mall-choice is-analyserad">
+                <button type="button" class="btn btn-sm btn-success tjanst-mall-analyserad-btn" data-open-analys>Analyserad</button>
+            </div>`;
+        }
+        if (highRisk) {
+            return `<div class="tjanst-mall-choice">
+                <p class="tjanst-mall-hogrisk-hint">Högrisktjänst enligt Länsstyrelsens vägledning — analys rekommenderas.</p>
+                <button type="button" class="btn btn-danger tjanst-mall-ai-recommend" data-open-analys data-open-analys-ai>Låt AI skapa ett utkast · rekommenderas</button>
+                <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
+            </div>`;
+        }
+        return `<div class="tjanst-mall-choice">
+                <button type="button" class="btn btn-primary" data-open-analys data-open-analys-ai>Låt AI skapa ett utkast</button>
+                <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
+            </div>`;
     }
 
     patchUtforandeEntry(mallId, patch, opts = {}) {
