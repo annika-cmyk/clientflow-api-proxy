@@ -21,7 +21,7 @@
     shortLabel: 'Byråns tjänster',
     pageTitle: 'Byråns tjänster',
     hint:
-      'Svar om betalningsuppdrag och tjänster med förhöjd risk ger förslag på tjänstekort under Från byråprofilen på Byråns tjänster.'
+      'Svar om betalningsuppdrag och högrisktjänster (enligt Länsstyrelsens vägledning) ger förslag på tjänstekort under Från byråprofilen. Där kan ni också bocka i övriga tjänster, slå ihop dem eller skapa egna — utgå gärna från fördefinierade mallar så AI kan ge bättre stöd.'
   };
 
   var VERKSAMHET_TARGET = {
@@ -85,7 +85,7 @@
       TJANSTER_TARGET,
       {
         hint:
-          'Bolagsbildning, nominee, säte/postadress och känsliga fullmakter ger förslag på tjänstekort under Från byråprofilen på Byråns tjänster.'
+          'Bolagsbildning, nominee, säte/postadress och känsliga fullmakter är högrisktjänster enligt Länsstyrelsens vägledning — Ja ger förslag på tjänstekort under Från byråprofilen på Byråns tjänster.'
       }
     ),
     geografi: {

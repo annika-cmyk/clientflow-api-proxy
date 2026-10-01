@@ -1486,6 +1486,21 @@
     return wrap;
   }
 
+  function renderSectionIntro(sec) {
+    var text = String((sec && sec.intro) || '').trim();
+    if (!text) return null;
+    var wrap = document.createElement('aside');
+    wrap.className = 'byra-enkate-section-intro';
+    wrap.setAttribute('aria-label', 'Om det här steget');
+    text.split(/\n\n+/).forEach(function (para) {
+      var p = document.createElement('p');
+      p.className = 'byra-enkate-section-intro-p';
+      p.textContent = para.replace(/\s*\n\s*/g, ' ').trim();
+      if (p.textContent) wrap.appendChild(p);
+    });
+    return wrap.childNodes.length ? wrap : null;
+  }
+
   function renderStep() {
     var sec = schema.sections[stepIdx];
     if (!sec || !ui.fields) return;
@@ -1495,6 +1510,8 @@
     ui.fields.innerHTML = '';
     var bridge = renderAnalysisBridge(sec);
     if (bridge) ui.fields.appendChild(bridge);
+    var intro = renderSectionIntro(sec);
+    if (intro) ui.fields.appendChild(intro);
     if (sectionSupportsClientflow(sec)) {
       ui.fields.appendChild(renderClientflowBanner(sec));
     }

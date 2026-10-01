@@ -994,6 +994,46 @@
   }
 
   /**
+   * Slå ihop flera katalogtjänster till en ny egen tjänst.
+   * Källorna tas bort från katalogen (standardmallar kan läggas till igen).
+   */
+  function mergeServices(state, mallIds, newNamn) {
+    const ids = (Array.isArray(mallIds) ? mallIds : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean);
+    const unique = [];
+    const seen = new Set();
+    ids.forEach((id) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      unique.push(id);
+    });
+    if (unique.length < 2) {
+      return { state: parseState(state), id: '', error: 'Välj minst två tjänster att slå ihop.' };
+    }
+    let next = parseState(state);
+    const cards = listCatalogCards(next);
+    const picked = unique.map((id) => {
+      const card = cards.find((c) => c.template && c.template.id === id);
+      return card
+        ? { id, namn: String((card.template && card.template.name) || id).trim() }
+        : null;
+    }).filter(Boolean);
+    if (picked.length < 2) {
+      return { state: next, id: '', error: 'Välj minst två tjänster som finns i katalogen.' };
+    }
+    const namn = String(newNamn || '').trim() ||
+      picked.map((p) => p.namn).join(' och ');
+    const added = addCustomService(next, namn);
+    next = added.state;
+    picked.forEach((p) => {
+      next = removeEntry(next, p.id);
+    });
+    if (!next.katalogVal) next.katalogVal = 'egna';
+    return { state: next, id: added.id, namn: namn, sourceIds: picked.map((p) => p.id) };
+  }
+
+  /**
    * Ta bort tjänst från katalogen (egen eller standard).
    * Standardmallar sparas i excludedMallIds så de kan läggas till igen.
    */
@@ -1207,6 +1247,7 @@
     applyEgnaKatalog: applyEgnaKatalog,
     setKatalogVal: setKatalogVal,
     addCustomService: addCustomService,
+    mergeServices: mergeServices,
     removeEntry: removeEntry,
     addStandardService: addStandardService,
     availableStandardTemplates: availableStandardTemplates,
