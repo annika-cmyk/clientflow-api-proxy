@@ -7,6 +7,8 @@
   'use strict';
 
   var SECTION_IDS = ['kundstock', 'geografi', 'kundintro'];
+  /** Sektioner i byråprofilen som hör till Verksamhetsspecifika riskfaktorer. */
+  var VERKSAMHET_SECTION_IDS = ['intern', 'distribution', 'tjanster', 'historik'];
   var HOGRISK_NONE = 'Inga högriskbranscher';
   /** Myndighet bakom högriskbranschlistan (NRA / Högrisk SNI). */
   var HOGRISK_AUTHORITY = 'Samordningsfunktionen';
@@ -101,6 +103,122 @@
         andelNystartadeBolag: 'Andel nystartade bolag'
       },
       pages: ['kundrisker']
+    },
+    {
+      id: 'storlek',
+      title: 'Storlek & ekonomi',
+      icon: 'fa-building',
+      desc: 'Byråns storlek och ekonomiska omfattning.',
+      keys: ['antalAnstallda', 'antalKontor', 'omsattning'],
+      blockLabels: {
+        antalAnstallda: 'Antal anställda',
+        antalKontor: 'Antal kontor',
+        omsattning: 'Omsättning'
+      },
+      pages: ['verksamhet']
+    },
+    {
+      id: 'system',
+      title: 'System',
+      icon: 'fa-laptop-code',
+      desc: 'IT-system för bokföring, bokslut och kundhantering.',
+      keys: ['bokforingssystem', 'bokslutssystem', 'kundhanteringssystem'],
+      absorbKeys: [
+        'bokforingssystemAnnat',
+        'bokslutssystemAnnat',
+        'kundhanteringssystemAnnat'
+      ],
+      blockLabels: {
+        bokforingssystem: 'Bokföringssystem',
+        bokslutssystem: 'Bokslutssystem',
+        kundhanteringssystem: 'Kundhanteringssystem'
+      },
+      pages: ['verksamhet']
+    },
+    {
+      id: 'kompetens',
+      title: 'Kompetens & personal',
+      icon: 'fa-user-graduate',
+      desc: 'Auktorisation, utbildning och personalomsättning.',
+      keys: ['auktoriseradeKonsulter', 'lopandeUtbildning', 'personalomsattning'],
+      blockLabels: {
+        auktoriseradeKonsulter: 'Auktoriserade konsulter',
+        lopandeUtbildning: 'Löpande utbildning',
+        personalomsattning: 'Personalomsättning'
+      },
+      pages: ['verksamhet']
+    },
+    {
+      id: 'leverans',
+      title: 'Leverans & kontroll',
+      icon: 'fa-handshake',
+      desc: 'Mötesform, BankID och hur bokföringen levereras.',
+      keys: ['leveranssatt', 'bankIdKrav', 'kundGorLopande', 'bokforingsmetod'],
+      blockLabels: {
+        leveranssatt: 'Mötesform / leveranssätt',
+        bankIdKrav: 'BankID vid avtal och KYC',
+        kundGorLopande: 'Kunden gör löpande bokföring',
+        bokforingsmetod: 'Bokföringsmetod'
+      },
+      pages: ['verksamhet']
+    },
+    {
+      id: 'hogrisktjanster',
+      title: 'Högrisktjänster / uppdrag',
+      icon: 'fa-exclamation-triangle',
+      desc: 'Betalningsuppdrag, bolagsbildning, nominee och känsliga fullmakter.',
+      keys: [
+        'betalningsuppdrag',
+        'bolagsbildningAtKund',
+        'styrelseEllerNomineeRoller',
+        'satePostadress',
+        'fullmaktBolagsverket',
+        'ombudSkatteprocesser',
+        'generalfullmaktMyndighet'
+      ],
+      blockLabels: {
+        betalningsuppdrag: 'Betalningsuppdrag',
+        bolagsbildningAtKund: 'Bolagsbildning åt kund',
+        styrelseEllerNomineeRoller: 'Styrelse-/nominee-roller',
+        satePostadress: 'Säte / postadress',
+        fullmaktBolagsverket: 'Fullmakt Bolagsverket',
+        ombudSkatteprocesser: 'Ombud i skatteprocesser',
+        generalfullmaktMyndighet: 'Generalfullmakt'
+      },
+      pages: ['verksamhet']
+    },
+    {
+      id: 'historik',
+      title: 'Historik & tillsyn',
+      icon: 'fa-history',
+      desc: 'Avvikelserapporter, tillsynsanmärkningar och near misses.',
+      keys: [
+        'finanspolisenAvvikelserAntal',
+        'finanspolisenAvvikelserTyp',
+        'lanstyrelsenAnmarkningar',
+        'nearMisses'
+      ],
+      absorbKeys: ['lanstyrelsenAnmarkningarDetalj', 'nearMissesDetalj'],
+      blockLabels: {
+        finanspolisenAvvikelserAntal: 'FIPO – antal avvikelserapporter',
+        finanspolisenAvvikelserTyp: 'FIPO – typ av misstanke',
+        lanstyrelsenAnmarkningar: 'Anmärkningar Länsstyrelsen',
+        nearMisses: 'Near misses'
+      },
+      pages: ['verksamhet']
+    },
+    {
+      id: 'koncentration',
+      title: 'Koncentration & outsourcing',
+      icon: 'fa-project-diagram',
+      desc: 'Kundberoenden och externa underleverantörer i produktionen.',
+      keys: ['storaKundberoenden', 'outsourcingUnderleverantorer'],
+      absorbKeys: ['storaKundberoendenAndel', 'outsourcingUnderleverantorerDetalj'],
+      blockLabels: {
+        storaKundberoenden: 'Enskilda kunder med stor andel av omsättningen',
+        outsourcingUnderleverantorer: 'Externa underleverantörer'
+      },
+      pages: ['verksamhet']
     }
   ];
 
@@ -110,6 +228,10 @@
     var scope = document.body && document.body.dataset && document.body.dataset.riskPageScope;
     if (scope === 'verksamhet') return 'verksamhet';
     return 'kundrisker';
+  }
+
+  function sectionIdsForCurrentPage() {
+    return enkatPageId() === 'verksamhet' ? VERKSAMHET_SECTION_IDS : SECTION_IDS;
   }
 
   function cardsForCurrentPage() {
@@ -240,7 +362,33 @@
       sanktionslander: 'fa-ban',
       kunderIUtsattaOmraden: 'fa-map-marked-alt',
       kundIntroduktion: 'fa-handshake',
-      andelNystartadeBolag: 'fa-seedling'
+      andelNystartadeBolag: 'fa-seedling',
+      antalAnstallda: 'fa-users',
+      antalKontor: 'fa-building',
+      omsattning: 'fa-coins',
+      bokforingssystem: 'fa-laptop-code',
+      bokslutssystem: 'fa-file-invoice',
+      kundhanteringssystem: 'fa-address-book',
+      auktoriseradeKonsulter: 'fa-user-graduate',
+      lopandeUtbildning: 'fa-chalkboard-teacher',
+      personalomsattning: 'fa-people-arrows',
+      leveranssatt: 'fa-handshake',
+      bankIdKrav: 'fa-id-card',
+      kundGorLopande: 'fa-keyboard',
+      bokforingsmetod: 'fa-file-alt',
+      betalningsuppdrag: 'fa-money-check-alt',
+      bolagsbildningAtKund: 'fa-building',
+      styrelseEllerNomineeRoller: 'fa-user-tie',
+      satePostadress: 'fa-mailbox',
+      fullmaktBolagsverket: 'fa-file-signature',
+      ombudSkatteprocesser: 'fa-balance-scale',
+      generalfullmaktMyndighet: 'fa-stamp',
+      finanspolisenAvvikelserAntal: 'fa-flag',
+      finanspolisenAvvikelserTyp: 'fa-flag',
+      lanstyrelsenAnmarkningar: 'fa-landmark',
+      nearMisses: 'fa-exclamation-circle',
+      storaKundberoenden: 'fa-chart-pie',
+      outsourcingUnderleverantorer: 'fa-project-diagram'
     };
     return map[key] || 'fa-chart-bar';
   }
@@ -698,42 +846,45 @@
     return String(value).trim();
   }
 
-  function companionAntal(field, fields) {
+  function companionAntal(field, allFields) {
     if (!field) return null;
-    for (var i = 0; i < fields.length; i++) {
-      var f = fields[i];
-      if (
-        f &&
-        f.requiredWhen &&
-        f.requiredWhen.key === field.key &&
-        f.type === 'number' &&
-        /antal/i.test(f.key)
-      ) {
-        return f;
-      }
+    var percentHit = null;
+    for (var i = 0; i < (allFields || []).length; i++) {
+      var f = allFields[i];
+      if (!f || !f.requiredWhen || f.requiredWhen.key !== field.key) continue;
+      if (f.type === 'number' && /antal/i.test(f.key)) return f;
+      if (!percentHit && f.type === 'percent') percentHit = f;
     }
-    return null;
+    return percentHit;
   }
 
   function allSchemaFields(schema) {
+    var pageSections = sectionIdsForCurrentPage();
+    var sectionSet = Object.create(null);
+    pageSections.forEach(function (id) { sectionSet[id] = true; });
     var fieldsByKey = {};
     (schema.fields || []).forEach(function (f) {
       if (f && f.key) fieldsByKey[f.key] = f;
     });
     var ordered = [];
     var seen = Object.create(null);
-    SECTION_IDS.forEach(function (sectionId) {
+    function pushKey(k) {
+      if (!k || !fieldsByKey[k] || seen[k]) return;
+      seen[k] = true;
+      ordered.push(fieldsByKey[k]);
+    }
+    pageSections.forEach(function (sectionId) {
       var section = (schema.sections || []).find(function (s) { return s && s.id === sectionId; });
       if (!section) return;
-      (Array.isArray(section.fieldKeys) ? section.fieldKeys : []).forEach(function (k) {
-        if (!fieldsByKey[k] || seen[k]) return;
-        seen[k] = true;
-        ordered.push(fieldsByKey[k]);
-      });
+      (Array.isArray(section.fieldKeys) ? section.fieldKeys : []).forEach(pushKey);
     });
     Object.keys(fieldsByKey).forEach(function (k) {
-      if (seen[k]) return;
-      ordered.push(fieldsByKey[k]);
+      var f = fieldsByKey[k];
+      if (f && f.section && sectionSet[f.section]) pushKey(k);
+    });
+    cardsForCurrentPage().forEach(function (def) {
+      (def.keys || []).forEach(pushKey);
+      (def.absorbKeys || []).forEach(pushKey);
     });
     return ordered;
   }
@@ -744,7 +895,11 @@
     if (!isAnswered(profil[field.key], field)) return null;
     var display = formatDisplay(field, profil[field.key]);
     if (antalField && isAnswered(profil[antalField.key], antalField)) {
-      display = display + ' · ca ' + String(profil[antalField.key]).trim();
+      var companionVal = String(profil[antalField.key]).trim();
+      if (antalField.type === 'percent' && companionVal && companionVal.indexOf('%') === -1) {
+        companionVal = companionVal + ' %';
+      }
+      display = display + (antalField.type === 'percent' ? ' · ' : ' · ca ') + companionVal;
     }
     return {
       key: field.key,
@@ -1441,14 +1596,37 @@
   }
 
   function renderEmpty(root) {
+    var page = enkatPageId();
+    var isVerksamhet = page === 'verksamhet';
+    var embed = isVerksamhet && document.getElementById('byra-profil-kaskad');
+    var title = isVerksamhet ? 'Från byråprofilen' : 'Vilka är våra kunder';
+    var lead = isVerksamhet
+      ? 'Här samlas byråprofilens interna uppgifter i sammansatta kort — storlek, system, kompetens, leverans, högrisktjänster, historik och outsourcing.'
+      : 'Här samlas enkätens uppgifter om kundstock och geografi — i samma format som under Statistik för riskbedömning.';
+    var empty = isVerksamhet
+      ? 'Ni har ännu inte fyllt i byråns interna profil i enkäten.'
+      : 'Ni har ännu inte fyllt i kundstocken i enkäten.';
+    var section = isVerksamhet ? 'intern' : 'kundstock';
+    var cta = isVerksamhet ? 'Fyll i intern profil' : 'Fyll i kundstocken';
+    if (embed) {
+      root.innerHTML =
+        '<div class="kundrisker-enkat is-empty kundrisker-enkat--embed">' +
+          '<p class="kundrisker-enkat-empty">' + escapeHtml(empty) + '</p>' +
+          '<a class="btn btn-secondary btn-sm kundrisker-enkat-cta" href="byra-profil-enkate.html?section=' +
+            section + '">' + escapeHtml(cta) + '</a>' +
+        '</div>';
+      return;
+    }
     root.innerHTML =
       '<div class="kundrisker-enkat is-empty">' +
         '<div class="kundrisker-enkat-head">' +
-          '<h3>Vilka är våra kunder <span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span></h3>' +
+          '<h3>' + escapeHtml(title) +
+            ' <span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span></h3>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Här samlas enkätens uppgifter om kundstock och geografi — i samma format som under Statistik för riskbedömning.</p>' +
-        '<p class="kundrisker-enkat-empty">Ni har ännu inte fyllt i kundstocken i enkäten.</p>' +
-        '<a class="btn btn-secondary kundrisker-enkat-cta" href="byra-profil-enkate.html?section=kundstock">Fyll i kundstocken</a>' +
+        '<p class="kundrisker-enkat-lead">' + escapeHtml(lead) + '</p>' +
+        '<p class="kundrisker-enkat-empty">' + escapeHtml(empty) + '</p>' +
+        '<a class="btn btn-secondary kundrisker-enkat-cta" href="byra-profil-enkate.html?section=' +
+          section + '">' + escapeHtml(cta) + '</a>' +
       '</div>';
   }
 
@@ -1932,9 +2110,13 @@
     }
     _lastNestedRiskIds = collectNestedRiskIds({ cards: cards });
 
-    var headTitle = 'Vilka är våra kunder';
-    var lead =
-      'Uppgifter från byråprofilen och Clientflow samlade i kort: antal kunder, branscher (högrisk enligt Samordningsfunktionen), residualrisk, bolagsformer, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Där live-data finns används Clientflow-siffror (klickbara chips). Analyserade riskfaktorer visas under respektive kort.';
+    var page = enkatPageId();
+    var embedInKaskad = page === 'verksamhet' && document.getElementById('byra-profil-kaskad');
+    var headTitle = page === 'verksamhet' ? 'Verksamhetsspecifika riskfaktorer' : 'Vilka är våra kunder';
+    var lead = page === 'verksamhet'
+      ? 'Byråprofilens interna uppgifter i sammansatta kort: storlek & ekonomi, system, kompetens, leverans & kontroll, högrisktjänster, historik & tillsyn samt koncentration & outsourcing. Analyserade riskfaktorer visas under respektive kort.'
+      : 'Uppgifter från byråprofilen och Clientflow samlade i kort: antal kunder, branscher (högrisk enligt Samordningsfunktionen), residualrisk, bolagsformer, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Där live-data finns används Clientflow-siffror (klickbara chips). Analyserade riskfaktorer visas under respektive kort.';
+    var enkateSection = page === 'verksamhet' ? 'intern' : 'kundstock';
 
     var cardsHtml =
       '<div class="statistik-sections kundrisker-enkat-stat-sections kundrisker-enkat-cards">' +
@@ -1943,20 +2125,36 @@
       }).join('') +
       '</div>';
 
-    root.innerHTML =
-      '<div class="kundrisker-enkat kundrisker-enkat--stat">' +
-        '<div class="kundrisker-enkat-head">' +
-          '<h3>' + escapeHtml(headTitle) + '</h3>' +
-          '<div class="kundrisker-enkat-head-links">' +
-            '<a class="kundrisker-enkat-edit" href="statistik-riskbedomning.html">Öppna all statistik</a>' +
-            '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
+    if (embedInKaskad) {
+      root.innerHTML =
+        '<div class="kundrisker-enkat kundrisker-enkat--stat kundrisker-enkat--embed">' +
+          '<p class="kundrisker-enkat-lead">' + escapeHtml(lead) + '</p>' +
+          checklistSummaryHtml() +
+          '<div class="kundrisker-enkat-groups">' + cardsHtml + '</div>' +
+          chipAnalysBarHtml() +
+        '</div>';
+      var chipsEl = document.getElementById('byra-profil-kaskad-chips');
+      if (chipsEl) chipsEl.hidden = true;
+      var emptyEl = document.getElementById('byra-profil-kaskad-empty');
+      if (emptyEl) emptyEl.hidden = true;
+    } else {
+      root.innerHTML =
+        '<div class="kundrisker-enkat kundrisker-enkat--stat">' +
+          '<div class="kundrisker-enkat-head">' +
+            '<h3>' + escapeHtml(headTitle) + '</h3>' +
+            '<div class="kundrisker-enkat-head-links">' +
+              '<a class="kundrisker-enkat-edit" href="statistik-riskbedomning.html">Öppna all statistik</a>' +
+              '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=' +
+                enkateSection +
+              '">Ändra i enkäten</a>' +
+            '</div>' +
           '</div>' +
-        '</div>' +
-        '<p class="kundrisker-enkat-lead">' + lead + '</p>' +
-        checklistSummaryHtml() +
-        '<div class="kundrisker-enkat-groups">' + cardsHtml + '</div>' +
-        chipAnalysBarHtml() +
-      '</div>';
+          '<p class="kundrisker-enkat-lead">' + escapeHtml(lead) + '</p>' +
+          checklistSummaryHtml() +
+          '<div class="kundrisker-enkat-groups">' + cardsHtml + '</div>' +
+          chipAnalysBarHtml() +
+        '</div>';
+    }
 
     bindPanelEvents(root, summary);
     bindChipSelection(root, summary);
@@ -2685,6 +2883,8 @@
       pruneChipSelection: pruneChipSelection,
       cardsForCurrentPage: cardsForCurrentPage,
       COMPOSITE_CARDS: COMPOSITE_CARDS,
+      VERKSAMHET_SECTION_IDS: VERKSAMHET_SECTION_IDS,
+      sectionIdsForCurrentPage: sectionIdsForCurrentPage,
       nestedRiskChipHtml: nestedRiskChipHtml,
       isOfficialHogriskRiskNamn: isOfficialHogriskRiskNamn,
       nestedRiskChipClass: nestedRiskChipClass,

@@ -422,18 +422,26 @@ class RiskFactorsManager {
             : [];
         const answered = summary.filter((r) => r.answered);
         const Koppling = window.ByraProfilAnalysKoppling;
+        const enkatEmbed = document.getElementById('kundrisker-enkat-root');
+        const useCompositeCards = !!(this.isVerksamhetPage() && enkatEmbed);
         if (chips) {
-            chips.innerHTML = summary.map((row) => {
-                const val = row.answered ? this.esc(row.value) : '–';
-                const cls = row.answered ? '' : ' is-empty';
-                const section = Koppling && Koppling.enkateSectionForFieldKey
-                    ? Koppling.enkateSectionForFieldKey(row.key)
-                    : '';
-                const href = section && Koppling.enkateHref
-                    ? Koppling.enkateHref(section)
-                    : 'byra-profil-enkate.html';
-                return `<a class="byra-profil-chip${cls}" href="${this.esc(href)}" data-profil-key="${this.esc(row.key)}" title="${this.esc(row.label)} — öppna i byråprofilen"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></a>`;
-            }).join('');
+            if (useCompositeCards) {
+                chips.hidden = true;
+                chips.innerHTML = '';
+            } else {
+                chips.hidden = false;
+                chips.innerHTML = summary.map((row) => {
+                    const val = row.answered ? this.esc(row.value) : '–';
+                    const cls = row.answered ? '' : ' is-empty';
+                    const section = Koppling && Koppling.enkateSectionForFieldKey
+                        ? Koppling.enkateSectionForFieldKey(row.key)
+                        : '';
+                    const href = section && Koppling.enkateHref
+                        ? Koppling.enkateHref(section)
+                        : 'byra-profil-enkate.html';
+                    return `<a class="byra-profil-chip${cls}" href="${this.esc(href)}" data-profil-key="${this.esc(row.key)}" title="${this.esc(row.label)} — öppna i byråprofilen"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></a>`;
+                }).join('');
+            }
         }
         const allSuggestions = API.suggestFromProfil(this.byraProfil || {});
         const scopedSuggestions = allSuggestions.filter((s) => {
@@ -447,7 +455,7 @@ class RiskFactorsManager {
             this._profilForslagDismissed || []
         );
         if (forslagWrap) forslagWrap.hidden = open.length === 0;
-        if (empty) empty.hidden = answered.length > 0 || open.length > 0;
+        if (empty) empty.hidden = useCompositeCards || answered.length > 0 || open.length > 0;
         if (forslagHost) {
             forslagHost.innerHTML = open.map((s) => {
                 const fokus = this.fokusIdForRiskTyp(s.typ) || '';
