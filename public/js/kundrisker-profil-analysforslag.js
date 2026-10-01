@@ -688,11 +688,11 @@
 
   function filterOpenGroups(groups, risks, skippedIds, linkedMap) {
     var skipped = skippedIdSet(skippedIds);
-    var linked = normalizeLinkedMap(linkedMap);
     return (groups || []).map(function (g) {
-      if (!g || skipped[g.id] || (linked[g.id] && linked[g.id].length)) return null;
+      if (!g || skipped[g.id]) return null;
+      if (groupIsFullyLinked(g, linkedMap)) return null;
       var items = (g.items || []).filter(function (it) {
-        return !itemAlreadyCovered(it, risks);
+        return !itemAlreadyCovered(it, risks) && !itemIsLinked(it, g.id, linkedMap);
       });
       if (!items.length) return null;
       return Object.assign({}, g, { items: items });
@@ -721,8 +721,21 @@
   }
 
   /**
-   * { [groupId]: [{ id, namn }] } — länkar statistikgrupp till befintlig riskfaktor.
+   * { [groupId]: [{ id, namn, itemIds? }] } — länkar statistikgrupp/post till riskfaktor.
+   * Tom/saknad itemIds = hela gruppen (bakåtkompatibelt).
    */
+  function normalizeItemIds(list) {
+    var seen = Object.create(null);
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (raw) {
+      var key = trimStr(raw);
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      out.push(key);
+    });
+    return out.slice(0, 50);
+  }
+
   function normalizeLinkedMap(map) {
     if (!map || typeof map !== 'object' || Array.isArray(map)) return Object.create(null);
     var out = Object.create(null);
@@ -741,7 +754,10 @@
         var dedupe = id || fold(namn);
         if (seen[dedupe]) return;
         seen[dedupe] = true;
-        links.push({ id: id, namn: namn });
+        var itemIds = normalizeItemIds(row.itemIds);
+        var link = { id: id, namn: namn };
+        if (itemIds.length) link.itemIds = itemIds;
+        links.push(link);
       });
       if (links.length) out[groupId] = links.slice(0, 20);
     });
@@ -756,6 +772,43 @@
 
   function groupIsLinked(linkedMap, groupId) {
     return linksForGroup(linkedMap, groupId).length > 0;
+  }
+
+  /** Tom itemIds = hela gruppen täcks av länken. */
+  function linkCoversWholeGroup(link) {
+    return !link || !Array.isArray(link.itemIds) || !link.itemIds.length;
+  }
+
+  function itemIsLinked(item, groupId, linkedMap) {
+    if (!item || !item.id) return false;
+    var links = linksForGroup(linkedMap, groupId);
+    if (!links.length) return false;
+    for (var i = 0; i < links.length; i++) {
+      var link = links[i];
+      if (linkCoversWholeGroup(link)) return true;
+      if (link.itemIds.indexOf(item.id) >= 0) return true;
+    }
+    return false;
+  }
+
+  function groupIsFullyLinked(group, linkedMap) {
+    var items = (group && group.items) || [];
+    var links = linksForGroup(linkedMap, group && group.id);
+    if (!links.length) return false;
+    if (links.some(linkCoversWholeGroup)) return true;
+    if (!items.length) return true;
+    return items.every(function (it) {
+      return itemIsLinked(it, group.id, linkedMap);
+    });
+  }
+
+  function countLinkedItems(group, linkedMap) {
+    var items = (group && group.items) || [];
+    var n = 0;
+    items.forEach(function (it) {
+      if (itemIsLinked(it, group.id, linkedMap)) n += 1;
+    });
+    return n;
   }
 
   function countCoveredItems(group, risks) {
@@ -780,29 +833,86 @@
   }
 
   /**
+   * Hitta analysposter som matchar en riskfaktors namn (för förval i Koppla-modal).
+   * @returns {Array<{group, item}>}
+   */
+  function findItemsMatchingRiskName(groups, riskName) {
+    var name = trimStr(riskName);
+    if (!name) return [];
+    var folded = fold(name);
+    var formKeys = formsCoveredByRiskName(name);
+    var out = [];
+    (groups || []).forEach(function (g) {
+      (g.items || []).forEach(function (it) {
+        if (!it) return;
+        if (fold(it.riskfaktor) === folded) {
+          out.push({ group: g, item: it });
+          return;
+        }
+        if (it.mergeName && fold(it.mergeName) === folded) {
+          out.push({ group: g, item: it });
+          return;
+        }
+        var itemForm = bolagsformKeyFromItem(it);
+        if (itemForm && formKeys.indexOf(itemForm) >= 0) {
+          out.push({ group: g, item: it });
+          return;
+        }
+        var labelForm = fold(String(it.label || '').split(/\s*·\s*/)[0] || '');
+        if (labelForm && folded.indexOf(labelForm) >= 0 && labelForm.length >= 3) {
+          out.push({ group: g, item: it });
+        }
+      });
+    });
+    return out;
+  }
+
+  /**
    * Checklist-status per analysförslagsgrupp.
    * Analyserad (helt eller delvis) vinner över kopplad/avstådd; kopplad vinner över avstådd.
+   * Post-nivå-koppling (itemIds) ger delvis kopplad tills alla poster är täckta.
    * @returns {{status:'analyserad'|'kopplad'|'avstadd'|'pending', label:string, links?:Array}|null}
    */
   function resolveGroupChecklistStatus(group, risks, skippedIds, linkedMap) {
     if (!group) return null;
-    var total = ((group && group.items) || []).length;
-    var covered = countCoveredItems(group, risks);
-    if (total && covered >= total) {
+    var items = (group.items || []);
+    var total = items.length;
+    var analysed = countCoveredItems(group, risks);
+    var linkedCount = 0;
+    items.forEach(function (it) {
+      if (!itemAlreadyCovered(it, risks) && itemIsLinked(it, group.id, linkedMap)) {
+        linkedCount += 1;
+      }
+    });
+    var links = linksForGroup(linkedMap, group.id);
+    var done = analysed + linkedCount;
+
+    if (total && analysed >= total) {
       return { status: 'analyserad', label: 'Analyserad' };
     }
-    if (covered > 0) {
+    if (total && done >= total && analysed > 0) {
+      return { status: 'analyserad', label: 'Analyserad' };
+    }
+    if (analysed > 0) {
       return {
         status: 'analyserad',
-        label: 'Delvis analyserad (' + covered + '/' + total + ')'
+        label: 'Delvis analyserad (' + done + '/' + total + ')'
       };
     }
-    var links = linksForGroup(linkedMap, group.id);
-    if (links.length) {
-      var namn = links.map(function (l) { return l.namn; }).filter(Boolean).join(', ');
+    if (links.length && (groupIsFullyLinked(group, linkedMap) || (!total && links.length))) {
+      var namnFull = links.map(function (l) { return l.namn; }).filter(Boolean).join(', ');
       return {
         status: 'kopplad',
-        label: namn ? ('Kopplad · ' + namn) : 'Kopplad',
+        label: namnFull ? ('Kopplad · ' + namnFull) : 'Kopplad',
+        links: links
+      };
+    }
+    if (linkedCount > 0) {
+      var namnPart = links.map(function (l) { return l.namn; }).filter(Boolean).join(', ');
+      return {
+        status: 'kopplad',
+        label: 'Delvis kopplad (' + linkedCount + '/' + total + ')' +
+          (namnPart ? ' · ' + namnPart : ''),
         links: links
       };
     }
@@ -899,6 +1009,10 @@
     normalizeLinkedMap: normalizeLinkedMap,
     linksForGroup: linksForGroup,
     groupIsLinked: groupIsLinked,
+    itemIsLinked: itemIsLinked,
+    groupIsFullyLinked: groupIsFullyLinked,
+    countLinkedItems: countLinkedItems,
+    findItemsMatchingRiskName: findItemsMatchingRiskName,
     groupIsFullyCovered: groupIsFullyCovered,
     resolveGroupChecklistStatus: resolveGroupChecklistStatus,
     summarizeChecklistStatuses: summarizeChecklistStatuses

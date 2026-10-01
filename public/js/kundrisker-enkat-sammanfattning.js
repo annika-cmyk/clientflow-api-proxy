@@ -2082,13 +2082,22 @@
   }
 
   function setLinked(map, root, summary) {
+    var Forslag = API();
     state.linkedMap = normalizeLinked(map);
     writeLocalLinked(state.linkedMap);
     if (state.linkGroupId && state.linkedMap[state.linkGroupId]) {
-      state.linkGroupId = null;
+      var linkGroup = (state.allGroups || []).find(function (g) { return g.id === state.linkGroupId; });
+      var fullyLinked = Forslag && Forslag.groupIsFullyLinked
+        ? Forslag.groupIsFullyLinked(linkGroup || { id: state.linkGroupId, items: [] }, state.linkedMap)
+        : true;
+      if (fullyLinked) state.linkGroupId = null;
     }
     if (state.openGroupId && state.linkedMap[state.openGroupId]) {
-      state.openGroupId = null;
+      var openGroup = (state.allGroups || []).find(function (g) { return g.id === state.openGroupId; });
+      var openFully = Forslag && Forslag.groupIsFullyLinked
+        ? Forslag.groupIsFullyLinked(openGroup || { id: state.openGroupId, items: [] }, state.linkedMap)
+        : true;
+      if (openFully) state.openGroupId = null;
     }
     persistChecklistToByraResa();
     renderSummary(root, summary);
@@ -2414,7 +2423,8 @@
   }
 
   /**
-   * Från riskfaktor-modal: koppla den aktuella analyserade faktorn till en statistikgrupp.
+   * Från riskfaktor-modal: koppla den aktuella analyserade faktorn till exakt statistikpost.
+   * Statistikområden är fällbara; inuti väljs chip/post (t.ex. bolagsform Region).
    */
   function openLinkFromRisk(riskId, riskNamn) {
     var root = document.getElementById('kundrisker-enkat-root');
@@ -2427,49 +2437,149 @@
       return;
     }
     refreshGroups();
+    var Forslag = API();
     var options = (state.allGroups || []).slice();
     if (!options.length) {
       window.alert('Inga statistikområden att koppla till just nu.');
       return;
     }
+    var matches = Forslag && Forslag.findItemsMatchingRiskName
+      ? Forslag.findItemsMatchingRiskName(options, riskNamn)
+      : [];
+    var preferred = matches[0] || null;
     var existing = root.querySelector('.kundrisker-risk-link-overlay');
     if (existing) existing.remove();
+
+    function groupTitle(g) {
+      return String(g.buttonLabel || g.title || g.id || '').replace(/^Analysera\s+/i, '') || g.id;
+    }
+
+    var groupsHtml = options.map(function (g) {
+      var items = g.items || [];
+      var isPreferredGroup = !!(preferred && preferred.group && preferred.group.id === g.id);
+      var openClass = isPreferredGroup || items.length <= 1 ? ' is-open' : '';
+      var ariaExp = openClass ? 'true' : 'false';
+      var itemsHtml = items.map(function (it) {
+        var val = g.id + '::' + it.id;
+        var pre = preferred && preferred.item && preferred.item.id === it.id && isPreferredGroup;
+        return (
+          '<label class="kundrisker-analys-check kundrisker-risk-link-item">' +
+            '<input type="radio" name="risk-link-statistik" value="' + escapeHtml(val) + '"' +
+              (pre ? ' checked' : '') + '>' +
+            '<span class="kundrisker-analys-check-label">' +
+              '<strong>' + escapeHtml(it.label || it.riskfaktor || it.id) + '</strong>' +
+              (it.detail
+                ? '<span class="kundrisker-analys-check-detail">' + escapeHtml(it.detail) + '</span>'
+                : '') +
+            '</span>' +
+          '</label>'
+        );
+      }).join('');
+      if (items.length > 1) {
+        itemsHtml +=
+          '<label class="kundrisker-analys-check kundrisker-risk-link-item kundrisker-risk-link-item--whole">' +
+            '<input type="radio" name="risk-link-statistik" value="' + escapeHtml(g.id + '::') + '">' +
+            '<span class="kundrisker-analys-check-label"><strong>Hela området</strong>' +
+              '<span class="kundrisker-analys-check-detail">Alla poster i «' +
+                escapeHtml(groupTitle(g)) + '»</span></span>' +
+          '</label>';
+      } else if (!items.length) {
+        itemsHtml =
+          '<label class="kundrisker-analys-check kundrisker-risk-link-item">' +
+            '<input type="radio" name="risk-link-statistik" value="' + escapeHtml(g.id + '::') + '"' +
+              (isPreferredGroup ? ' checked' : '') + '>' +
+            '<span class="kundrisker-analys-check-label"><strong>Hela området</strong></span>' +
+          '</label>';
+      }
+      return (
+        '<div class="kundrisker-risk-link-group' + openClass + '" data-link-group-block="' +
+          escapeHtml(g.id) + '">' +
+          '<button type="button" class="kundrisker-risk-link-group-toggle" aria-expanded="' +
+            ariaExp + '" data-link-group-toggle="' + escapeHtml(g.id) + '">' +
+            '<span class="kundrisker-risk-link-chevron" aria-hidden="true"></span>' +
+            '<span class="kundrisker-risk-link-group-title">' +
+              escapeHtml(g.buttonLabel || g.id) +
+            '</span>' +
+            '<span class="kundrisker-risk-link-group-count">' + items.length + '</span>' +
+          '</button>' +
+          '<div class="kundrisker-risk-link-group-body">' + itemsHtml + '</div>' +
+        '</div>'
+      );
+    }).join('');
+
     var overlay = document.createElement('div');
     overlay.className = 'kundrisker-risk-link-overlay';
     overlay.innerHTML =
       '<div class="kundrisker-risk-link-dialog" role="dialog" aria-label="Koppla till statistik">' +
         '<h4>Koppla «' + escapeHtml(riskNamn || 'riskfaktor') + '» till statistik</h4>' +
-        '<p class="kundrisker-analys-panel-hint">Välj vilket statistikområde som redan täcks av den här riskfaktorn.</p>' +
-        '<div class="kundrisker-analys-checks">' +
-          options.map(function (g) {
-            return (
-              '<label class="kundrisker-analys-check">' +
-                '<input type="radio" name="risk-link-statistik" value="' + escapeHtml(g.id) + '">' +
-                '<span class="kundrisker-analys-check-label"><strong>' +
-                  escapeHtml(g.buttonLabel || g.id) +
-                '</strong></span>' +
-              '</label>'
-            );
-          }).join('') +
-        '</div>' +
+        '<p class="kundrisker-analys-panel-hint">Fäll ut ett statistikområde och välj exakt post (t.ex. bolagsform eller bransch) som redan täcks.</p>' +
+        '<div class="kundrisker-risk-link-groups">' + groupsHtml + '</div>' +
         '<div class="kundrisker-analys-actions">' +
           '<button type="button" class="btn btn-primary btn-sm" data-risk-link-confirm>Koppla</button>' +
           '<button type="button" class="btn btn-ghost btn-sm" data-risk-link-cancel>Avbryt</button>' +
         '</div>' +
       '</div>';
     root.appendChild(overlay);
+
+    overlay.querySelectorAll('[data-link-group-toggle]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var block = btn.closest('[data-link-group-block]');
+        if (!block) return;
+        var open = block.classList.toggle('is-open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    });
+
+    overlay.querySelectorAll('input[name="risk-link-statistik"]').forEach(function (input) {
+      input.addEventListener('change', function () {
+        var block = input.closest('[data-link-group-block]');
+        if (!block || block.classList.contains('is-open')) return;
+        block.classList.add('is-open');
+        var toggle = block.querySelector('[data-link-group-toggle]');
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+      });
+    });
+
     overlay.querySelector('[data-risk-link-cancel]').addEventListener('click', function () {
       overlay.remove();
+    });
+    overlay.addEventListener('click', function (ev) {
+      if (ev.target === overlay) overlay.remove();
     });
     overlay.querySelector('[data-risk-link-confirm]').addEventListener('click', function () {
       var selected = overlay.querySelector('input[name="risk-link-statistik"]:checked');
       if (!selected) {
+        window.alert('Fäll ut ett område och välj en statistikpost.');
+        return;
+      }
+      var parts = String(selected.value || '').split('::');
+      var groupId = parts[0] || '';
+      var itemId = parts.slice(1).join('::') || '';
+      if (!groupId) {
         window.alert('Välj ett statistikområde.');
         return;
       }
-      var groupId = selected.value;
+      var link = { id: String(riskId || ''), namn: String(riskNamn || '') };
+      if (itemId) link.itemIds = [itemId];
       var next = Object.assign({}, state.linkedMap);
-      next[groupId] = [{ id: String(riskId || ''), namn: String(riskNamn || '') }];
+      var prev = Array.isArray(next[groupId]) ? next[groupId].slice() : [];
+      prev = prev.filter(function (row) {
+        if (!row) return false;
+        if (link.id && String(row.id) === String(link.id)) return false;
+        if (!link.id && link.namn && String(row.namn || '').toLowerCase() === link.namn.toLowerCase()) {
+          return false;
+        }
+        return true;
+      });
+      if (!itemId) {
+        next[groupId] = [link];
+      } else {
+        prev = prev.filter(function (row) {
+          return row.itemIds && row.itemIds.length;
+        });
+        prev.push(link);
+        next[groupId] = prev;
+      }
       overlay.remove();
       setLinked(next, root, state.summary);
     });
@@ -2501,7 +2611,8 @@
       COMPOSITE_CARDS: COMPOSITE_CARDS,
       nestedRiskChipHtml: nestedRiskChipHtml,
       isOfficialHogriskRiskNamn: isOfficialHogriskRiskNamn,
-      nestedRiskChipClass: nestedRiskChipClass
+      nestedRiskChipClass: nestedRiskChipClass,
+      openLinkFromRisk: openLinkFromRisk
     }
   };
 })();

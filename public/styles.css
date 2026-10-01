@@ -20716,7 +20716,9 @@ body.byra-resa-page .risk-header h1 {
   padding: 1rem;
 }
 .kundrisker-risk-link-dialog {
-  width: min(28rem, 100%);
+  width: min(32rem, 100%);
+  max-height: min(90vh, 40rem);
+  overflow: auto;
   background: #fff;
   border-radius: 0.75rem;
   padding: 1.1rem 1.2rem;
@@ -20725,6 +20727,77 @@ body.byra-resa-page .risk-header h1 {
 .kundrisker-risk-link-dialog h4 {
   margin: 0 0 0.4rem;
   font-size: 1.05rem;
+}
+.kundrisker-risk-link-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.75rem 0 1rem;
+  max-height: min(55vh, 24rem);
+  overflow: auto;
+}
+.kundrisker-risk-link-group {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.55rem;
+  background: #f8fafc;
+}
+.kundrisker-risk-link-group-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: #0f172a;
+}
+.kundrisker-risk-link-group-toggle:hover {
+  background: #f1f5f9;
+}
+.kundrisker-risk-link-chevron {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid #64748b;
+  border-bottom: 2px solid #64748b;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+  margin-right: 0.15rem;
+}
+.kundrisker-risk-link-group.is-open .kundrisker-risk-link-chevron {
+  transform: rotate(45deg);
+  margin-top: -0.15rem;
+}
+.kundrisker-risk-link-group-title {
+  flex: 1 1 auto;
+  font-weight: 650;
+  font-size: 0.92rem;
+}
+.kundrisker-risk-link-group-count {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  background: #e2e8f0;
+  border-radius: 999px;
+  min-width: 1.35rem;
+  text-align: center;
+  padding: 0.1rem 0.35rem;
+}
+.kundrisker-risk-link-group-body {
+  display: none;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0 0.55rem 0.55rem 1.55rem;
+}
+.kundrisker-risk-link-group.is-open .kundrisker-risk-link-group-body {
+  display: flex;
+}
+.kundrisker-risk-link-item--whole .kundrisker-analys-check-label {
+  color: #475569;
 }
 .tjanst-modal-name-row {
   display: flex;
