@@ -525,15 +525,26 @@ class RiskFactorsManager {
         const namn = String(fields.Riskfaktor || fields['Riskfaktor'] || 'Namnlös riskfaktor').trim();
         const scored = this.scoredRisk ? this.scoredRisk(fields) : {};
         const level = scored.residualLevel || scored.level || '';
-        const S = window.RiskSkala;
-        const cls = S && S.riskClass ? S.riskClass(level) : '';
+        const hogrisk = this.isOfficialHogriskRiskNamn(namn);
+        const chipClass = hogrisk
+            ? 'kundrisker-enkat-nested-chip is-analyserad is-hogrisk'
+            : 'kundrisker-enkat-nested-chip btn btn-sm btn-success is-analyserad';
         return (
-            '<button type="button" class="kundrisker-enkat-nested-chip ' + this.esc(cls) + '" ' +
-              'data-nested-risk-id="' + this.esc(risk.id) + '" title="Öppna analys">' +
+            '<button type="button" class="' + this.esc(chipClass) + '" ' +
+              'data-nested-risk-id="' + this.esc(risk.id) + '"' +
+              (hogrisk ? ' data-hogrisk-analys="1"' : '') +
+              ' title="' + (hogrisk ? 'Högriskanalys — öppna' : 'Öppna analys') + '">' +
               '<span class="kundrisker-enkat-nested-chip-name">' + this.esc(namn) + '</span>' +
               (level ? '<span class="kundrisker-enkat-nested-chip-level">' + this.esc(level) + '</span>' : '') +
             '</button>'
         );
+    }
+
+    isOfficialHogriskRiskNamn(namn) {
+        const s = String(namn || '').trim();
+        return /^Kunder i högriskbransch\b/i.test(s)
+            || /^Andel kunder i högriskbransch/i.test(s)
+            || /^Byrån har kunder inom högriskbransch/i.test(s);
     }
 
     renderByraProfilKaskadLinks() {
