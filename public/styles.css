@@ -14904,6 +14904,28 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
   border-color: #38bdf8;
   outline: none;
 }
+.statistik-stat-chip--hogrisk {
+  border-color: #f0abfc;
+  background: #fdf4ff;
+}
+.statistik-stat-chip--hogrisk:hover,
+.statistik-stat-chip--hogrisk:focus-visible {
+  background: #fae8ff;
+  border-color: #e879f9;
+}
+.statistik-stat-chip-hogrisk-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #86198f;
+  background: #f5d0fe;
+  vertical-align: middle;
+}
 .stat-card-clickable { cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; }
 .stat-card-clickable:hover { border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18); }
 .stat-list { display: flex; flex-direction: column; gap: 0.35rem; }
@@ -20561,6 +20583,8 @@ body.byra-resa-page .risk-header h1 {
   cursor: pointer;
   line-height: inherit;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
 }
 .statistik-stat-chip--static .statistik-stat-chip-hit {
   cursor: default;
