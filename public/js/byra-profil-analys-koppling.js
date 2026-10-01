@@ -26,12 +26,12 @@
 
   var VERKSAMHET_TARGET = {
     fokus: 'verksamhet',
-    pageHref: 'ovriga-riskfaktorer.html',
+    pageHref: 'verksamhetsspecifika-riskfaktorer.html',
     ctaLabel: 'Bedöm verksamhetsspecifika risker',
     shortLabel: 'Verksamhetsspecifika riskfaktorer',
-    pageTitle: 'Övriga riskfaktorer',
+    pageTitle: 'Verksamhetsspecifika riskfaktorer',
     hint:
-      'Svaren här används som underlag för verksamhetsspecifika riskfaktorer under Övriga riskfaktorer.'
+      'Svaren här används som underlag för verksamhetsspecifika riskfaktorer och branschstatistik.'
   };
 
   /**
@@ -49,7 +49,7 @@
    * fokus används som ?fokus= på Övriga / AR (scroll till riskgrupp eller block).
    *
    * Mapping:
-   * 1 intern (+beroende +outsourcing) → Övriga verksamhetsspecifika
+   * 1 intern (+beroende +outsourcing) → Verksamhetsspecifika riskfaktorer
    * 2 kundstock → Vilka är våra kunder
    * 3 distribution → Övriga distributionskanaler
    * 4 tjanster (+hogrisktjanster) → Byråns tjänster
@@ -113,7 +113,7 @@
       VERKSAMHET_TARGET,
       {
         hint:
-          'Ekonomiska beroenden ingår nu i Byråns interna profil och ger verksamhetsspecifika förslag under Övriga riskfaktorer.'
+          'Ekonomiska beroenden ingår nu i Byråns interna profil och ger verksamhetsspecifika förslag under Verksamhetsspecifika riskfaktorer.'
       }
     ),
     kundintro: {
@@ -131,7 +131,7 @@
       VERKSAMHET_TARGET,
       {
         hint:
-          'Outsourcing ingår nu i Byråns interna profil och ger verksamhetsspecifika förslag under Övriga riskfaktorer.'
+          'Outsourcing ingår nu i Byråns interna profil och ger verksamhetsspecifika förslag under Verksamhetsspecifika riskfaktorer.'
       }
     )
   };

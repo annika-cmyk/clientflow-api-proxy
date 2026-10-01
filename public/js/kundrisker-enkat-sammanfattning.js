@@ -19,7 +19,9 @@
       title: 'Antal kunder',
       icon: 'fa-users',
       desc: 'Totalt antal pågående kunder.',
-      keys: ['antalKunder']
+      keys: ['antalKunder'],
+      /** Visas på verksamhetssidan (kontext till branschsammanfattning), inte på Vilka är våra kunder — där antal redan syns via Byråns tjänster. */
+      pages: ['verksamhet']
     },
     {
       id: 'branscher',
@@ -31,14 +33,16 @@
       absorbKeys: ['branscherKundstock', 'andelHogriskbransch'],
       blockLabels: {
         kundernasBranscher: 'Alla branscher'
-      }
+      },
+      pages: ['verksamhet']
     },
     {
       id: 'bolagsformer',
       title: 'Bolagsformer i kundstocken',
       icon: 'fa-building',
       desc: 'Fördelning av juridiska former bland kunderna.',
-      keys: ['vanligasteBolagsformer']
+      keys: ['vanligasteBolagsformer'],
+      pages: ['kundrisker']
     },
     {
       id: 'betalning',
@@ -49,7 +53,8 @@
       blockLabels: {
         andelKontantintensiva: 'Kontantintensiva kunder',
         betalningsmonster: 'Betalningsmönster'
-      }
+      },
+      pages: ['kundrisker']
     },
     {
       id: 'personkopplingar',
@@ -61,20 +66,21 @@
         komplexaAgarstrukturer: 'Komplexa ägarstrukturer',
         utlandskaAgare: 'Utländska ägare',
         pepKunder: 'PEP eller sanktionslistor'
-      }
+      },
+      pages: ['kundrisker']
     },
     {
       id: 'geografi',
       title: 'Kundernas geografi',
       icon: 'fa-map-marker-alt',
-      desc: 'Geografisk marknad, internationell handel, sanktions-/högriskländer och kunder i utsatta områden.',
-      keys: ['geografiskMarknad', 'andelInternationellHandel', 'sanktionslander', 'kunderIUtsattaOmraden'],
+      desc: 'Internationell handel, sanktions-/högriskländer och kunder i utsatta områden.',
+      keys: ['andelInternationellHandel', 'sanktionslander', 'kunderIUtsattaOmraden'],
       blockLabels: {
-        geografiskMarknad: 'Geografisk marknad',
         andelInternationellHandel: 'Andel kunder med internationell handel',
         sanktionslander: 'Sanktionsländer / högriskländer',
         kunderIUtsattaOmraden: 'Kunder i utsatta områden'
-      }
+      },
+      pages: ['kundrisker']
     },
     {
       id: 'ursprung',
@@ -85,9 +91,26 @@
       blockLabels: {
         kundIntroduktion: 'Hur nya kunder kommer in',
         andelNystartadeBolag: 'Andel nystartade bolag'
-      }
+      },
+      pages: ['kundrisker']
     }
   ];
+
+  function enkatPageId() {
+    var fromBody = document.body && document.body.dataset && document.body.dataset.enkatPage;
+    if (fromBody) return String(fromBody);
+    var scope = document.body && document.body.dataset && document.body.dataset.riskPageScope;
+    if (scope === 'verksamhet') return 'verksamhet';
+    return 'kundrisker';
+  }
+
+  function cardsForCurrentPage() {
+    var page = enkatPageId();
+    return COMPOSITE_CARDS.filter(function (def) {
+      var pages = def.pages || ['kundrisker'];
+      return pages.indexOf(page) !== -1;
+    });
+  }
   var state = {
     profil: null,
     schema: null,
@@ -764,7 +787,14 @@
     var cards = [];
     var answeredCount = 0;
 
+    var pageCardDefs = cardsForCurrentPage();
+    var pageCardKeySet = Object.create(null);
     COMPOSITE_CARDS.forEach(function (def) {
+      (def.keys || []).forEach(function (k) { pageCardKeySet[k] = true; });
+      (def.absorbKeys || []).forEach(function (k) { pageCardKeySet[k] = true; });
+    });
+
+    pageCardDefs.forEach(function (def) {
       var blocks = [];
       (def.keys || []).forEach(function (key) {
         usedKeys[key] = true;
@@ -804,6 +834,13 @@
         blocks: blocks
       });
     });
+
+    // Nycklar som hör till andra sidors kort ska inte bli "extra"-kort här.
+    Object.keys(pageCardKeySet).forEach(function (key) {
+      usedKeys[key] = true;
+    });
+    // Byråns geografiska marknad visas under Övriga / distribution — inte som kundkort.
+    usedKeys.geografiskMarknad = true;
 
     // Övriga ifyllda fält (t.ex. residualrisk) som egna enkla kort.
     allFields.forEach(function (field) {
@@ -845,6 +882,96 @@
       considerKey(key, { key: key });
     });
     return rows;
+  }
+
+  function risksMatchingCard(card) {
+    var Forslag = API();
+    var risks = risksList();
+    var seen = Object.create(null);
+    var out = [];
+    function addRisk(risk) {
+      if (!risk || !risk.id || seen[risk.id]) return;
+      seen[risk.id] = true;
+      out.push(risk);
+    }
+    uniqueAnalysGroupsForCard(card).forEach(function (row) {
+      var group = row.group;
+      if (!group) return;
+      (group.items || []).forEach(function (item) {
+        if (Forslag && Forslag.itemAlreadyCovered && Forslag.itemAlreadyCovered(item, risks)) {
+          risks.forEach(function (risk) {
+            if (Forslag.itemAlreadyCovered(item, [risk])) addRisk(risk);
+          });
+        }
+      });
+      var links = Forslag && Forslag.linksForGroup
+        ? Forslag.linksForGroup(state.linkedMap, group.id)
+        : [];
+      links.forEach(function (link) {
+        var hit = risks.find(function (r) {
+          if (link.id && String(r.id) === String(link.id)) return true;
+          var namn = Forslag.riskNamn ? Forslag.riskNamn(r) : '';
+          return link.namn && namn && namn.toLowerCase() === String(link.namn).toLowerCase();
+        });
+        if (hit) addRisk(hit);
+      });
+    });
+    return out;
+  }
+
+  function nestedRiskChipHtml(risk) {
+    var Forslag = API();
+    var namn = Forslag && Forslag.riskNamn
+      ? Forslag.riskNamn(risk)
+      : String((risk.fields || {}).Riskfaktor || '').trim();
+    var fields = risk.fields || {};
+    var level = '';
+    try {
+      if (window.riskManager && typeof window.riskManager.scoredRisk === 'function') {
+        var scored = window.riskManager.scoredRisk(fields);
+        level = scored.residualLevel || scored.level || '';
+      }
+    } catch (_) { /* ignore */ }
+    return (
+      '<button type="button" class="kundrisker-enkat-nested-chip" data-nested-risk-id="' +
+        escapeHtml(risk.id) + '" title="Öppna analys">' +
+        '<span class="kundrisker-enkat-nested-chip-name">' + escapeHtml(namn || 'Riskfaktor') + '</span>' +
+        (level ? '<span class="kundrisker-enkat-nested-chip-level">' + escapeHtml(level) + '</span>' : '') +
+      '</button>'
+    );
+  }
+
+  function nestedRisksHtml(card) {
+    var risks = risksMatchingCard(card);
+    if (!risks.length) return '';
+    return (
+      '<div class="kundrisker-enkat-nested-risks is-under-card">' +
+        '<h4 class="kundrisker-enkat-nested-title">Analyserade riskfaktorer</h4>' +
+        '<div class="kundrisker-enkat-nested-list">' +
+          risks.map(nestedRiskChipHtml).join('') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function collectNestedRiskIds(summary) {
+    var ids = [];
+    var seen = Object.create(null);
+    ((summary && summary.cards) || []).forEach(function (card) {
+      risksMatchingCard(card).forEach(function (risk) {
+        var id = String(risk.id || '');
+        if (!id || seen[id]) return;
+        seen[id] = true;
+        ids.push(id);
+      });
+    });
+    return ids;
+  }
+
+  var _lastNestedRiskIds = [];
+
+  function getNestedRiskIds() {
+    return _lastNestedRiskIds.slice();
   }
 
   function aggregateCardStatus(card) {
@@ -1628,6 +1755,7 @@
           ? '<p class="statistik-section-desc">' + escapeHtml(liveDesc) + '</p>'
           : '') +
         '<div class="kundrisker-enkat-card-blocks">' + blocksHtml + '</div>' +
+        nestedRisksHtml(card) +
         panels +
       '</section>'
     );
@@ -1702,6 +1830,13 @@
     if (!cards.length && summary.groups && summary.groups[0] && summary.groups[0].items) {
       cards = summary.groups[0].items;
     }
+    _lastNestedRiskIds = collectNestedRiskIds({ cards: cards });
+
+    var page = enkatPageId();
+    var headTitle = page === 'verksamhet' ? 'Verksamhetsspecifika riskfaktorer' : 'Vilka är våra kunder';
+    var lead = page === 'verksamhet'
+      ? 'Branschstatistik från byråprofilen och Clientflow. Högriskbranscher markeras enligt Samordningsfunktionen. Bocka i chips eller använd Analysera, Koppla och Avstå. Analyserade riskfaktorer visas under respektive kort.'
+      : 'Uppgifter från byråprofilen och Clientflow samlade i kort: bolagsformer, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Branschstatistik ligger under Verksamhetsspecifika riskfaktorer. Där live-data finns används Clientflow-siffror (klickbara chips). Analyserade riskfaktorer visas under respektive kort.';
 
     var cardsHtml =
       '<div class="statistik-sections kundrisker-enkat-stat-sections kundrisker-enkat-cards">' +
@@ -1713,13 +1848,15 @@
     root.innerHTML =
       '<div class="kundrisker-enkat kundrisker-enkat--stat">' +
         '<div class="kundrisker-enkat-head">' +
-          '<h3>Vilka är våra kunder</h3>' +
+          '<h3>' + escapeHtml(headTitle) + '</h3>' +
           '<div class="kundrisker-enkat-head-links">' +
             '<a class="kundrisker-enkat-edit" href="statistik-riskbedomning.html">Öppna all statistik</a>' +
-            '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
+            '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=' +
+              (page === 'verksamhet' ? 'kundstock' : 'kundstock') +
+            '">Ändra i enkäten</a>' +
           '</div>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Uppgifter från byråprofilen och Clientflow samlade i kort: kundernas branscher, bolagsformer, betalningsmönster, personkopplingar, geografi samt ursprung och introduktion. Där live-data finns används Clientflow-siffror (klickbara chips). Bocka i chips för att välja poster och skapa analys via den flytande knappen, eller använd <strong>Analysera</strong>, <strong>Koppla</strong> och <strong>Avstå</strong> per område.</p>' +
+        '<p class="kundrisker-enkat-lead">' + lead + '</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + cardsHtml + '</div>' +
         chipAnalysBarHtml() +
@@ -1728,6 +1865,18 @@
     bindPanelEvents(root, summary);
     bindChipSelection(root, summary);
     bindBranschChips(root);
+    bindNestedRiskChips(root);
+  }
+
+  function bindNestedRiskChips(root) {
+    root.querySelectorAll('[data-nested-risk-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-nested-risk-id');
+        if (id && window.riskManager && typeof window.riskManager.openEditModal === 'function') {
+          window.riskManager.openEditModal(id);
+        }
+      });
+    });
   }
 
   function bindChipSelection(root, summary) {
@@ -2241,6 +2390,68 @@
     mount();
   }
 
+  /**
+   * Från riskfaktor-modal: koppla den aktuella analyserade faktorn till en statistikgrupp.
+   */
+  function openLinkFromRisk(riskId, riskNamn) {
+    var root = document.getElementById('kundrisker-enkat-root');
+    if (!root) {
+      window.alert('Öppna en sida med statistik-kort (Vilka är våra kunder eller Verksamhetsspecifika) för att koppla.');
+      return;
+    }
+    if (!state.summary || !state.summary.hasAnswers) {
+      window.alert('Statistik-korten har inte laddats ännu.');
+      return;
+    }
+    refreshGroups();
+    var options = (state.allGroups || []).slice();
+    if (!options.length) {
+      window.alert('Inga statistikområden att koppla till just nu.');
+      return;
+    }
+    var existing = root.querySelector('.kundrisker-risk-link-overlay');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.className = 'kundrisker-risk-link-overlay';
+    overlay.innerHTML =
+      '<div class="kundrisker-risk-link-dialog" role="dialog" aria-label="Koppla till statistik">' +
+        '<h4>Koppla «' + escapeHtml(riskNamn || 'riskfaktor') + '» till statistik</h4>' +
+        '<p class="kundrisker-analys-panel-hint">Välj vilket statistikområde som redan täcks av den här riskfaktorn.</p>' +
+        '<div class="kundrisker-analys-checks">' +
+          options.map(function (g) {
+            return (
+              '<label class="kundrisker-analys-check">' +
+                '<input type="radio" name="risk-link-statistik" value="' + escapeHtml(g.id) + '">' +
+                '<span class="kundrisker-analys-check-label"><strong>' +
+                  escapeHtml(g.buttonLabel || g.id) +
+                '</strong></span>' +
+              '</label>'
+            );
+          }).join('') +
+        '</div>' +
+        '<div class="kundrisker-analys-actions">' +
+          '<button type="button" class="btn btn-primary btn-sm" data-risk-link-confirm>Koppla</button>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-risk-link-cancel>Avbryt</button>' +
+        '</div>' +
+      '</div>';
+    root.appendChild(overlay);
+    overlay.querySelector('[data-risk-link-cancel]').addEventListener('click', function () {
+      overlay.remove();
+    });
+    overlay.querySelector('[data-risk-link-confirm]').addEventListener('click', function () {
+      var selected = overlay.querySelector('input[name="risk-link-statistik"]:checked');
+      if (!selected) {
+        window.alert('Välj ett statistikområde.');
+        return;
+      }
+      var groupId = selected.value;
+      var next = Object.assign({}, state.linkedMap);
+      next[groupId] = [{ id: String(riskId || ''), namn: String(riskNamn || '') }];
+      overlay.remove();
+      setLinked(next, root, state.summary);
+    });
+  }
+
   window.KundriskerEnkatSammanfattning = {
     buildSummary: buildSummary,
     buildBranschSummaryDesc: buildBranschSummaryDesc,
@@ -2248,6 +2459,8 @@
     mount: mount,
     refresh: refresh,
     drillTypForField: drillTypForField,
+    getNestedRiskIds: getNestedRiskIds,
+    openLinkFromRisk: openLinkFromRisk,
     getState: function () { return state; },
     /** Test-/debughjälpare för chip-val och flytande Skapa analys. */
     __test: {
@@ -2260,7 +2473,9 @@
       prefillsFromChipSelection: prefillsFromChipSelection,
       chipAnalysBarHtml: chipAnalysBarHtml,
       refreshGroups: refreshGroups,
-      pruneChipSelection: pruneChipSelection
+      pruneChipSelection: pruneChipSelection,
+      cardsForCurrentPage: cardsForCurrentPage,
+      COMPOSITE_CARDS: COMPOSITE_CARDS
     }
   };
 })();

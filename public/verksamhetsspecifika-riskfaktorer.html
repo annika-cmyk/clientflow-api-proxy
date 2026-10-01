@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClientFlow • Vilka är våra kunder</title>
+    <title>ClientFlow • Verksamhetsspecifika riskfaktorer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css?v=20261001verksamhet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body data-risk-page-scope="kundrisker" data-enkat-page="kundrisker">
+<body data-risk-page-scope="verksamhet" data-enkat-page="verksamhet">
 
     <div class="app-container">
         <div class="sidebar-container"></div>
@@ -19,36 +19,60 @@
             <div class="container">
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
-                        <h1>Vilka är våra kunder</h1>
-                        <p class="risk-header-sub">Kundkategorier, egen hemvist, motparters geografi, varningsflaggor och risksänkande omständigheter</p>
+                        <h1>Verksamhetsspecifika riskfaktorer</h1>
+                        <p class="risk-header-sub">Byråns organisation och kundernas branscher — underlag för verksamhetsspecifik riskbedömning</p>
                         <div class="risk-header-body">
                             <p>
-                                Här samlar ni allt om <strong>kunden och deras verksamhet</strong>: kundkategorier (bransch, PEP, kontanter, import/export med mera) och kundens geografi i två skilda underrubriker — <strong>egen hemvist</strong> respektive <strong>motparters geografi</strong>. Under listan styr ni även byråns <strong>varningsflaggor</strong> (kort A–C på kundkortet) och <strong>risksänkande faktorer</strong>.
+                                Här samlar ni <strong>verksamhetsspecifika</strong> omständigheter: byråns storlek, kompetens, outsourcing och kontrollmiljö, samt statistik om <strong>kundernas branscher</strong> (inkl. högrisk enligt Samordningsfunktionen). Kundkategorier och kundens geografi ligger kvar på
+                                <a href="kundrisker-mm.html">Vilka är våra kunder</a>. Distributionskanaler bedöms på
+                                <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.
                             </p>
                             <h3>Tänk särskilt på:</h3>
                             <ul>
-                                <li>Kundtyper som i sig innebär förhöjd risk — till exempel PEP, kontanthantering, utländska huvudmän eller ideella föreningar.</li>
-                                <li>Egen hemvist — var kunden själv finns (närområde, Europa, högriskländer, särskilt utsatta områden).</li>
-                                <li>Motparters geografi — var kundens kunder och leverantörer finns.</li>
-                                <li>Varningsflaggor som höjer residualen ensamt eller i kombination, och risksänkande omständigheter som dokumenterar varför kvarvarande risk är lägre.</li>
+                                <li>Hur byråns organisation och arbetssätt påverkar möjligheten att upptäcka missbruk av redovisningstjänster.</li>
+                                <li>Vilka huvudbranscher kunderna finns i, och vilka som räknas som högrisk för penningtvätt eller terrorfinansiering.</li>
+                                <li>Outsourcing, personalomsättning och utbildning som påverkar den inre sårbarheten.</li>
                             </ul>
                             <p class="risk-header-note">
-                                Byråns eget arbetssätt — distributionskanaler — ligger på
-                                <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.
-                                Verksamhetsspecifika faktorer och kundernas branscher ligger på
-                                <a href="verksamhetsspecifika-riskfaktorer.html">Verksamhetsspecifika riskfaktorer</a>.
+                                Analysera branscherna och verksamhetsspecifika faktorer här. Tjänster bedöms under
+                                <a href="riskbedomning-byra.html">Byråns tjänster</a>.
                             </p>
                         </div>
                     </div>
                 </header>
 
-            <section class="kundrisker-nav-alert-section" id="kundrisker-nav-alert-section" aria-live="polite">
+            <section class="byra-profil-kaskad" id="byra-profil-kaskad" hidden>
                 <div class="container">
-                    <div id="kundrisker-nav-alert" hidden></div>
+                    <div class="byra-profil-kaskad-card">
+                        <div class="byra-profil-kaskad-head">
+                            <div>
+                                <h2>Från byråprofilen</h2>
+                                <p class="byra-profil-kaskad-lead">
+                                    Fakta om byråns interna profil. Här bedömer ni vad det betyder som verksamhetsspecifik risk.
+                                </p>
+                                <p class="byra-profil-katalogversion" id="byra-profil-katalogversion" hidden>
+                                    Riskfaktorkatalog version <span id="byra-profil-katalogversion-nr">1</span>
+                                </p>
+                            </div>
+                            <div class="byra-profil-kaskad-links" id="byra-profil-kaskad-links">
+                                <a class="btn btn-secondary btn-sm" href="byra-profil-enkate.html?section=intern">Intern profil</a>
+                            </div>
+                        </div>
+                        <div id="byra-profil-kaskad-chips" class="byra-profil-kaskad-chips" aria-live="polite"></div>
+                        <div id="byra-profil-kaskad-nested-risks" class="kundrisker-enkat-nested-risks" hidden></div>
+                        <div id="byra-profil-kaskad-forslag-wrap" class="byra-profil-kaskad-forslag-wrap" hidden>
+                            <h3>Föreslagna riskfaktorer utifrån profilen</h3>
+                            <p class="byra-profil-kaskad-hint">Acceptera öppnar formuläret förifylld. Avfärda döljer förslaget för den här sessionen.</p>
+                            <div id="byra-profil-kaskad-forslag" class="byra-profil-kaskad-forslag"></div>
+                        </div>
+                        <p id="byra-profil-kaskad-empty" class="byra-profil-kaskad-empty" hidden>
+                            Fyll i byråprofilens interna steg så kan vi föreslå verksamhetsspecifika risker att bedöma.
+                        </p>
+                    </div>
                 </div>
             </section>
 
-            <section class="kundrisker-enkat-section" id="kundrisker-enkat-section" aria-label="Kundstatistik från byråprofilen">
+            <section class="kundrisker-enkat-section" id="kundrisker-enkat-section" aria-label="Branschstatistik från byråprofilen">
                 <div class="container">
                     <div id="kundrisker-enkat-root"></div>
                 </div>
@@ -57,7 +81,7 @@
             <section class="risk-assessment-section">
                 <div class="container">
                     <div class="risk-list-header">
-                        <h3>Kundkategorier och geografi</h3>
+                        <h3>Verksamhetsspecifika riskfaktorer</h3>
                         <div class="risk-header-actions">
                             <div class="filter-controls">
                                 <div class="filter-group">
@@ -83,14 +107,6 @@
                                         <option value="unchecked">Ej aktuell</option>
                                     </select>
                                 </div>
-                                <button id="apply-filters" class="btn btn-primary" style="display: none;">
-                                    <i class="fas fa-search"></i>
-                                    Applicera filter
-                                </button>
-                                <button id="clear-filters" class="btn btn-secondary" style="display: none;">
-                                    <i class="fas fa-times"></i>
-                                    Rensa filter
-                                </button>
                             </div>
                             <div class="risk-stats">
                                 <span class="stat-item">
@@ -118,63 +134,7 @@
                 </div>
             </section>
 
-            <section class="riskhoj-katalog-section" id="riskhoj-katalog-section">
-                <div class="container">
-                    <div class="collapsible-card open" id="riskhoj-katalog-card">
-                        <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
-                            <div class="collapsible-title"><i class="fas fa-tags"></i> Övriga varningsflaggor</div>
-                            <i class="fas fa-chevron-down collapsible-chevron"></i>
-                        </div>
-                        <div class="collapsible-body">
-                            <p class="kyc-hint">Styr hur kryssen på kundkortet påverkar beräknad residual och i vilket kort de syns. <strong>Oacceptabel</strong> sätter hela riskbedömningen till Oacceptabel ensam. <strong>Hög-aktiv</strong> sätter minst Hög ensam. <strong>Bidrar vid kombination</strong> sätter Hög när minst två sådana är valda. <strong>Informativ</strong> syns bara i motiveringen. Kategorin styr om flaggan ligger under A. Hur samarbetar vi?, B. Vem är kunden? eller C. Vad gör kunden? Under varje kategori finns <strong>Övriga förslag</strong> som ni kan lägga till med plus-knappen.</p>
-                            <div id="riskhoj-katalog-list" class="riskhoj-katalog-list"></div>
-                            <div class="riskhoj-katalog-add">
-                                <input id="riskhoj-katalog-ny" class="form-input" placeholder="Ny flagga, t.ex. många byten av redovisningsbyråer">
-                                <select id="riskhoj-katalog-ny-kategori" class="form-select riskhoj-katalog-kategori">
-                                    <option value="samarbete">A. Hur samarbetar vi?</option>
-                                    <option value="kunden">B. Vem är kunden?</option>
-                                    <option value="verksamheten" selected>C. Vad gör kunden?</option>
-                                </select>
-                                <select id="riskhoj-katalog-ny-klass" class="form-select riskhoj-katalog-klass">
-                                    <option value="BIDRAR_VID_KOMBINATION">Bidrar vid kombination</option>
-                                    <option value="GOLV_HOG">Hög-aktiv</option>
-                                    <option value="OACCEPTABEL">Oacceptabel</option>
-                                    <option value="INFORMATIV">Informativ</option>
-                                </select>
-                                <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-add-btn" id="riskhoj-katalog-add" title="Lägg till flagga" aria-label="Lägg till flagga">
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                            </div>
-                            <button type="button" class="btn btn-primary" id="riskhoj-katalog-save">Spara katalogen</button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="riskhoj-katalog-section" id="risksank-katalog-section">
-                <div class="container">
-                    <div class="collapsible-card open" id="risksank-katalog-card">
-                        <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
-                            <div class="collapsible-title"><i class="fas fa-arrow-trend-down"></i> Risksänkande faktorer</div>
-                            <i class="fas fa-chevron-down collapsible-chevron"></i>
-                        </div>
-                        <div class="collapsible-body">
-                            <p class="kyc-hint">Byråns lista på kundkortet. Förklaring och källa syns på varje faktor. Ändringen sparas på byrån.</p>
-                            <div id="risksank-katalog-list" class="risksank-katalog-list"></div>
-                            <div class="riskhoj-katalog-add">
-                                <input id="risksank-katalog-ny" class="form-input" placeholder="Ny faktor, t.ex. långvarig kundrelation">
-                                <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-add-btn" id="risksank-katalog-add" title="Lägg till faktor" aria-label="Lägg till faktor">
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                            </div>
-                            <button type="button" class="btn btn-primary" id="risksank-katalog-save">Spara katalogen</button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Analyskort Din resa: gemensam mall (js/analyskort-mall.js), samma som tjänst -->
-            <div data-analyskort-modals="kundrisker"></div>
+            <div data-analyskort-modals="verksamhet"></div>
 
         </main>
     </div>
@@ -205,7 +165,7 @@
     <script src="js/config.js" defer></script>
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
-    <script src="js/components.js?v=2.4" defer></script>
+    <script src="js/components.js?v=2.5" defer></script>
     <script src="app.js?v=2.9" defer></script>
     <script src="js/analyskort-mall.js?v=3" defer></script>
     <script src="js/risk-skala.js?v=10" defer></script>
@@ -220,6 +180,8 @@
     <script src="js/ai-prompt-debug.js?v=1" defer></script>
     <script src="js/ai-falt-granskning.js?v=17" defer></script>
     <script src="js/eu-hogrisk-lander.js?v=5" defer></script>
+    <script src="js/byra-profil-risk-forslag.js?v=4" defer></script>
+    <script src="js/byra-profil-analys-koppling.js?v=4" defer></script>
     <script src="js/ovriga-riskfaktorer.js?v=58" defer></script>
     <script src="js/kund-bransch-aggregat.js?v=20261001branschmerge" defer></script>
     <script src="js/statistik-kunder-modal.js?v=4" defer></script>
