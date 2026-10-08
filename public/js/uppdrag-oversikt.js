@@ -1013,7 +1013,7 @@
           </td>
           <td>${runCell}</td>
           <td>
-            <button type="button" class="uppdragboard-donebtn ${done ? 'is-done' : ''}" data-action="done" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}" data-period-key="${esc(periodKey)}" data-run-id="${esc(runId)}" title="Klarmarkera">
+            <button type="button" class="uppdragboard-donebtn ${isKlar ? 'is-done' : ''}" data-action="done" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}" data-period-key="${esc(periodKey)}" data-run-id="${esc(runId)}" title="${isKlar ? 'Klarmarkerad' : 'Klarmarkera'}">
               <i class="fas fa-check"></i>
             </button>
           </td>
