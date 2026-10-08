@@ -11195,24 +11195,30 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     width: 34px;
     height: 34px;
     border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--card-bg);
-    color: var(--ink-3);
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #9ca3af;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+    transition: background 0.15s, box-shadow 0.15s, border-color 0.15s, color 0.15s;
 }
 .uppdragboard-donebtn:hover {
-    background: var(--muted);
-    border-color: var(--accent);
+    background: #ffffff;
+    border-color: #9ca3af;
+    color: #6b7280;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
 .uppdragboard-donebtn.is-done {
-    background: rgba(22, 163, 74, 0.12);
-    border-color: rgba(22, 163, 74, 0.35);
-    color: var(--success);
+    background: var(--success);
+    border-color: var(--success);
+    color: #ffffff;
+}
+.uppdragboard-donebtn.is-done:hover {
+    background: color-mix(in srgb, var(--success) 88%, #000);
+    border-color: color-mix(in srgb, var(--success) 88%, #000);
+    color: #ffffff;
 }
 
 .uppdragboard-link {
@@ -11348,11 +11354,16 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .uppdragboard-row.is-done td {
-    opacity: 0.72;
+    background: rgba(22, 163, 74, 0.10);
 }
-
 .uppdragboard-row.is-done .uppdragboard-link {
-    color: var(--success);
+    color: #15803d;
+    font-weight: 750;
+}
+.uppdragboard-row.is-done .uppdragboard-donebtn:not(.is-done) {
+    background: #ffffff;
+    border-color: #d1d5db;
+    color: #9ca3af;
 }
 
 .uppdragboard-row.is-overdue td {
