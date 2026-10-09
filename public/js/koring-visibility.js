@@ -37,6 +37,16 @@
         return st === 'Klar' || st === 'Avslutad';
     }
 
+    /**
+     * Uppdragsboard / översikt: en körning är klar endast via Status
+     * (från Uppdragskörning eller Historik). Använd inte uppdragets
+     * "Senast utförd" — det datumet hör till föregående klarmarkering och
+     * ligger ofta i nästa periods fönster, vilket ger falskt gröna rader.
+     */
+    function isBoardRunKlar(status) {
+        return isDoneStatus(status);
+    }
+
     function isYearlyAssignment(fields) {
         const typ = String(field(fields, ['Typ', 'type', 'assignmentType'])).trim();
         const freq = String(field(fields, ['Frekvens', 'frequency'])).toLowerCase();
@@ -141,6 +151,7 @@
         toDateStr,
         parseYm,
         isDoneStatus,
+        isBoardRunKlar,
         isRunOpenInMonth,
         isOverdueNotDone,
         isDueSoon,

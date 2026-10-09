@@ -1807,27 +1807,6 @@ class CustomerCardManager {
             if (f.includes('engång')) return 0;
             return 1;
         };
-        const isDoneForPeriod = (fields, instanceDeadlineIso) => {
-            const doneAt = String(fields?.['Senast utförd'] || '').trim();
-            const nextDeadline = String(instanceDeadlineIso || fields?.['Nästa deadline'] || '').trim();
-            const freq = String(fields?.['Frekvens'] || '').toLowerCase();
-            if (!doneAt || !nextDeadline) return false;
-            const toD = (iso) => {
-                const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
-                return Number.isNaN(d.getTime()) ? null : d;
-            };
-            const doneD = toD(doneAt);
-            const nextD = toD(nextDeadline);
-            if (!doneD || !nextD) return false;
-            const start = new Date(nextD.getTime());
-            if (freq.includes('kvartal')) start.setMonth(start.getMonth() - 3);
-            else if (freq.includes('månad')) start.setMonth(start.getMonth() - 1);
-            else if (freq.includes('årsvis')) start.setFullYear(start.getFullYear() - 1);
-            else if (freq.includes('veck')) start.setDate(start.getDate() - 7);
-            else start.setMonth(start.getMonth() - 1);
-            return doneD >= start && doneD < nextD;
-        };
-
         const monthNow = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
         if (!this._kundUppdragBoardMonth) this._kundUppdragBoardMonth = new Date(monthNow.getFullYear(), monthNow.getMonth(), 1);
         const monthMin = new Date(monthNow.getFullYear(), monthNow.getMonth() - 12, 1);
@@ -2463,7 +2442,6 @@ class CustomerCardManager {
                 const rec = ctx.rec;
                 const f = ctx.f;
                 const instDeadline = ctx.instDeadline || '';
-                const done = instDeadline ? isDoneForPeriod(f, instDeadline) : false;
                 const freq = ctx.freq || '—';
                 const boardKey = ctx.boardKey || t;
                 const displayTitle = ctx.displayTitle || t;
@@ -2521,9 +2499,13 @@ class CustomerCardManager {
                 const runStatus = runStatusFromUppdragHistory(f, prefillPeriodKey)
                     || String(runRec?.fields?.['Status'] || '').trim()
                     || '';
+                // Endast körningens Status/Historik — samma källa som uppdragsöversikten.
+                const isKlar = (KV && KV.isBoardRunKlar)
+                    ? KV.isBoardRunKlar(runStatus)
+                    : (runStatus === 'Klar' || runStatus === 'Avslutad');
                 const attention = (KV && KV.runAttentionKind)
                     ? KV.runAttentionKind({
-                        Status: runStatus,
+                        Status: isKlar ? 'Klar' : runStatus,
                         Deadline: instDeadline || String(runRec?.fields?.['Deadline'] || '').trim()
                     }, todayIso)
                     : '';
@@ -2617,7 +2599,7 @@ class CustomerCardManager {
                 const riskRequiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(f);
                 const riskDoneAtgarder = this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
                 const riskDoneSet = new Set(riskDoneAtgarder.map((x) => String(x.text || '').toLowerCase()));
-                const riskLocked = runStatus === 'Klar';
+                const riskLocked = isKlar;
                 let riskBlockHtml = '';
                 if (!riskRequiredAtgarder.length) {
                     riskBlockHtml = '';
@@ -2762,7 +2744,6 @@ class CustomerCardManager {
                     </div>
                 `;
 
-                const isKlar = runStatus === 'Klar';
                 const requiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(f);
                 const doneAtgarder = this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
                 const allRiskDone = this._riskAtgarderAllChecked(requiredAtgarder, doneAtgarder);
