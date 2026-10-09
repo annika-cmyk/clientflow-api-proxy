@@ -45,7 +45,7 @@
         return `<option value="${esc(opt)}"${opt === v ? ' selected' : ''}>${esc(label)}</option>`;
       })
       .join('');
-    return `<select class="form-control kundformular-select--compact" data-kf="${esc(name)}"${readOnly ? ' disabled' : ''}>${opts}</select>`;
+    return `<select class="form-select kundformular-select--compact" data-kf="${esc(name)}"${readOnly ? ' disabled' : ''}>${opts}</select>`;
   }
 
   function vhBekraftelseSelect(selected, readOnly) {
@@ -58,7 +58,7 @@
     ].map((opt) =>
       `<option value="${esc(opt.value)}"${opt.value === v ? ' selected' : ''}>${esc(opt.label)}</option>`
     ).join('');
-    return `<select class="form-control" data-kf="vh_bekraftelse"${readOnly ? ' disabled' : ''}>${opts}</select>`;
+    return `<select class="form-select" data-kf="vh_bekraftelse"${readOnly ? ' disabled' : ''}>${opts}</select>`;
   }
 
   function isSwedenHemvist(value) {
@@ -78,23 +78,23 @@
       <div class="kundformular-person-row" data-kf-person-row="${esc(prefix)}" data-idx="${idx}">
         <div class="kundformular-grid kundformular-grid--person">
           <label>Namn
-            <input type="text" class="form-control" data-kf-field="namn" value="${esc(p.namn || '')}" autocomplete="off"${ro}>
+            <input type="text" class="kunduppgifter-input" data-kf-field="namn" value="${esc(p.namn || '')}" autocomplete="off"${ro}>
           </label>
           <label>Personnummer
-            <input type="text" class="form-control" data-kf-field="personnr" value="${esc(p.personnr || '')}" autocomplete="off"${ro}>
+            <input type="text" class="kunduppgifter-input" data-kf-field="personnr" value="${esc(p.personnr || '')}" autocomplete="off"${ro}>
           </label>
           <label>Skatterättslig hemvist
-            <input type="text" class="form-control" data-kf-field="hemvist" value="${esc(hemvist)}" autocomplete="off"${ro}>
+            <input type="text" class="kunduppgifter-input" data-kf-field="hemvist" value="${esc(hemvist)}" autocomplete="off"${ro}>
           </label>
           <label data-kf-tin${showTin ? '' : ' hidden'}>TIN (om ej Sverige)
-            <input type="text" class="form-control" data-kf-field="tin" value="${esc(p.tin || '')}" autocomplete="off"${ro}>
+            <input type="text" class="kunduppgifter-input" data-kf-field="tin" value="${esc(p.tin || '')}" autocomplete="off"${ro}>
           </label>
           ${prefix === 'huvudman'
             ? `<label>Ägarandel %
-                <input type="text" class="form-control" data-kf-field="agarandel" value="${esc(p.agarandel || '')}" autocomplete="off"${ro}>
+                <input type="text" class="kunduppgifter-input" data-kf-field="agarandel" value="${esc(p.agarandel || '')}" autocomplete="off"${ro}>
               </label>`
             : `<label>Roll
-                <input type="text" class="form-control" data-kf-field="roll" value="${esc(p.roll || '')}" autocomplete="off"${ro}>
+                <input type="text" class="kunduppgifter-input" data-kf-field="roll" value="${esc(p.roll || '')}" autocomplete="off"${ro}>
               </label>`}
         </div>
         ${readOnly ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-remove-person title="Ta bort rad"><i class="fas fa-times"></i></button>'}
@@ -177,12 +177,12 @@
     if (!opts.length) {
       return '<p class="kundformular-hint">Inga tjänster i byråns katalog ännu. Koppla tjänster på kundkortet först.</p>';
     }
-    return `<div class="kundformular-tjanster" data-kf-tjanster>${opts.map((t) => {
+    return `<div class="kundformular-tjanster" data-kf-tjanster role="group" aria-label="Uppdrag / tjänster">${opts.map((t) => {
       const id = t.id || '';
       const namn = t.namn || id;
       const checked = sel.some((s) => (id && s.id && s.id === id)
         || ((s.namn || '').toLowerCase() === namn.toLowerCase()));
-      return `<label class="kundformular-check kundformular-check--tjanst">
+      return `<label class="kundformular-tjanst-chip${checked ? ' is-selected' : ''}${readOnly ? ' is-readonly' : ''}">
         <input type="checkbox" data-kf-tjanst data-kf-tjanst-id="${esc(id)}" data-kf-tjanst-namn="${esc(namn)}" value="${esc(namn)}"${checked ? ' checked' : ''}${readOnly ? ' disabled' : ''}>
         <span>${esc(namn)}</span>
       </label>`;
@@ -217,14 +217,14 @@
       const needsVarfor = c.typ === 'ja_nej_varfor';
       return `<div class="kundformular-villkorad" data-kf-villkorad="${esc(c.id)}" data-kf-villkorad-typ="${esc(c.typ || 'ja_nej')}">
         <label class="kundformular-villkorad-svar">${esc(c.frage)}
-          <select class="form-control kundformular-select--compact" data-kf-villkorad-svar${readOnly ? ' disabled' : ''}>
+          <select class="form-select kundformular-select--compact" data-kf-villkorad-svar${readOnly ? ' disabled' : ''}>
             <option value="">—</option>
             <option value="Ja"${row.svar === 'Ja' ? ' selected' : ''}>Ja</option>
             <option value="Nej"${row.svar === 'Nej' ? ' selected' : ''}>Nej</option>
           </select>
         </label>
         <label class="kundformular-villkorad-varfor"${showVarfor ? '' : ' hidden'}>Kort förklaring
-          <input type="text" class="form-control" data-kf-villkorad-varfor value="${esc(row.varfor || '')}" placeholder="${needsVarfor ? 'Beskriv kort' : 'Valfritt'}"${readOnly ? ' readonly' : ''}>
+          <input type="text" class="kunduppgifter-input" data-kf-villkorad-varfor value="${esc(row.varfor || '')}" placeholder="${needsVarfor ? 'Beskriv kort' : 'Valfritt'}"${readOnly ? ' readonly' : ''}>
         </label>
       </div>`;
     }).join('');
@@ -339,7 +339,7 @@
         ${inviteUrl && !customerMode ? `<div class="kundformular-invite-box" role="status">
           <p><strong>Kundlänk</strong> (giltig tills formuläret besvarats${summary.inviteExpiresAt ? ` eller till ${esc(fmtDate(summary.inviteExpiresAt))}` : ''}):</p>
           <div class="kundformular-invite-row">
-            <input type="text" class="form-control" readonly value="${esc(inviteUrl)}" data-kf-invite-url>
+            <input type="text" class="kunduppgifter-input" readonly value="${esc(inviteUrl)}" data-kf-invite-url>
             <button type="button" class="btn btn-secondary btn-sm" data-kf-copy-invite title="Kopiera länk"><i class="fas fa-copy"></i> Kopiera</button>
             ${summary.canRemind ? `<button type="button" class="btn btn-ghost btn-sm" data-kf-action="remind" title="Skicka påminnelsemejl till kundens e-post"><i class="fas fa-envelope"></i> Skicka påminnelse</button>` : ''}
           </div>
@@ -364,10 +364,10 @@
             <h4>${sForetag}. Företag</h4>
             <div class="kundformular-grid">
               <label>${fieldLabel('Företagsnamn')}
-                <input type="text" class="form-control" data-kf="foretagsnamn" value="${esc(a.foretagsnamn || '')}" readonly>
+                <input type="text" class="kunduppgifter-input" data-kf="foretagsnamn" value="${esc(a.foretagsnamn || '')}" readonly>
               </label>
               <label>${fieldLabel('Organisationsnummer')}
-                <input type="text" class="form-control" data-kf="orgnr" value="${esc(a.orgnr || '')}" readonly>
+                <input type="text" class="kunduppgifter-input" data-kf="orgnr" value="${esc(a.orgnr || '')}" readonly>
               </label>
             </div>
           </section>
@@ -382,20 +382,20 @@
           <section class="kundformular-section">
             <h4>${sSyfte}. Syfte, verksamhet och omfattning</h4>
             <label>${fieldLabel('Syfte med affärsförbindelsen')}
-              <textarea class="form-control" rows="2" data-kf="syfte_affarsrelation" placeholder="t.ex. sedvanliga redovisningstjänster"${ro}>${esc(a.syfte_affarsrelation || '')}</textarea>
+              <textarea class="kunduppgifter-input" rows="2" data-kf="syfte_affarsrelation" placeholder="t.ex. sedvanliga redovisningstjänster"${ro}>${esc(a.syfte_affarsrelation || '')}</textarea>
             </label>
             <label>${fieldLabel('Verksamhetens art i praktiken')}
-              <textarea class="form-control" rows="3" data-kf="verksamhet" placeholder="Vad gör företaget konkret — inte bara SNI-kod"${ro}>${esc(a.verksamhet || '')}</textarea>
+              <textarea class="kunduppgifter-input" rows="3" data-kf="verksamhet" placeholder="Vad gör företaget konkret — inte bara SNI-kod"${ro}>${esc(a.verksamhet || '')}</textarea>
             </label>
             <label>${fieldLabel('Förväntad omfattning och art av transaktioner')}
-              <textarea class="form-control" rows="2" data-kf="forvantad_omfattning" placeholder="Volym, frekvens, typiska motparter"${ro}>${esc(a.forvantad_omfattning || '')}</textarea>
+              <textarea class="kunduppgifter-input" rows="2" data-kf="forvantad_omfattning" placeholder="Volym, frekvens, typiska motparter"${ro}>${esc(a.forvantad_omfattning || '')}</textarea>
             </label>
             <label>${fieldLabel('Källa till kapital / medlens ursprung')}
-              <textarea class="form-control" rows="2" data-kf="kapitalUrsprung" placeholder="t.ex. vinst från verksamheten, ägartillskott"${ro}>${esc(a.kapitalUrsprung || '')}</textarea>
+              <textarea class="kunduppgifter-input" rows="2" data-kf="kapitalUrsprung" placeholder="t.ex. vinst från verksamheten, ägartillskott"${ro}>${esc(a.kapitalUrsprung || '')}</textarea>
             </label>
             <div class="kundformular-skarpt"${showSkarpt ? '' : ' hidden'} data-kf-skarpt>
               <label>${fieldLabel('Källa till de specifika tillgångarna (skärpta åtgärder)')}
-                <textarea class="form-control" rows="2" data-kf="kapitalUrsprungSkarpt" placeholder="Ursprung till de aktuella medlen"${ro}>${esc(a.kapitalUrsprungSkarpt || '')}</textarea>
+                <textarea class="kunduppgifter-input" rows="2" data-kf="kapitalUrsprungSkarpt" placeholder="Ursprung till de aktuella medlen"${ro}>${esc(a.kapitalUrsprungSkarpt || '')}</textarea>
               </label>
             </div>
             <div class="kundformular-grid kundformular-grid--pair">
@@ -403,7 +403,7 @@
                 ${jaNejSelect('internationellHandel', a.internationellHandel, readOnly)}
               </label>
               <label data-kf-internationella-lander${a.internationellHandel === 'Ja' ? '' : ' hidden'}>${fieldLabel('Kundens nätverksgeografi (länder)')}
-                <input type="text" class="form-control" data-kf="internationellaLander" value="${esc(a.internationellaLander || '')}" placeholder="t.ex. Norge, Tyskland"${ro}>
+                <input type="text" class="kunduppgifter-input" data-kf="internationellaLander" value="${esc(a.internationellaLander || '')}" placeholder="t.ex. Norge, Tyskland"${ro}>
               </label>
             </div>
           </section>
@@ -424,7 +424,7 @@
             </div>
             <div class="kundformular-agarstruktur"${showAgarstruktur ? '' : ' hidden'} data-kf-agarstruktur>
               <label>${fieldLabel('Beskriv ägarstrukturen / kedjan')}
-                <textarea class="form-control" rows="3" data-kf="vh_agarstruktur" placeholder="Ägarled, utländska bolag, andelar under 25 % …"${ro}>${esc(a.vh_agarstruktur || '')}</textarea>
+                <textarea class="kunduppgifter-input" rows="3" data-kf="vh_agarstruktur" placeholder="Ägarled, utländska bolag, andelar under 25 % …"${ro}>${esc(a.vh_agarstruktur || '')}</textarea>
               </label>
             </div>
           </section>` : `
@@ -475,7 +475,7 @@
                   ${jaNejSelect('pep', a.pep, readOnly)}
                 </label>
                 <label data-kf-pep-detaljer${a.pep === 'Ja' ? '' : ' hidden'}>${fieldLabel('Detaljer PEP')}
-                  <input type="text" class="form-control" data-kf="pepDetaljer" value="${esc(a.pepDetaljer || '')}" placeholder="Namn och roll"${ro}>
+                  <input type="text" class="kunduppgifter-input" data-kf="pepDetaljer" value="${esc(a.pepDetaljer || '')}" placeholder="Namn och roll"${ro}>
                 </label>
               </div>
               <div class="kundformular-conditional-pair">
@@ -483,7 +483,7 @@
                   ${jaNejSelect('pepFamilj', a.pepFamilj, readOnly)}
                 </label>
                 <label data-kf-pep-familj-detaljer${a.pepFamilj === 'Ja' ? '' : ' hidden'}>${fieldLabel('Detaljer närstående')}
-                  <input type="text" class="form-control" data-kf="pepFamiljDetaljer" value="${esc(a.pepFamiljDetaljer || '')}"${ro}>
+                  <input type="text" class="kunduppgifter-input" data-kf="pepFamiljDetaljer" value="${esc(a.pepFamiljDetaljer || '')}"${ro}>
                 </label>
               </div>
               <div class="kundformular-conditional-pair">
@@ -491,7 +491,7 @@
                   ${jaNejSelect('kontanter', a.kontanter, readOnly)}
                 </label>
                 <label data-kf-kontanter-andel${a.kontanter === 'Ja' ? '' : ' hidden'}>${fieldLabel('Andel kontanter')}
-                  <input type="text" class="form-control" data-kf="kontanterAndel" value="${esc(a.kontanterAndel || '')}" placeholder="t.ex. 10 %"${ro}>
+                  <input type="text" class="kunduppgifter-input" data-kf="kontanterAndel" value="${esc(a.kontanterAndel || '')}" placeholder="t.ex. 10 %"${ro}>
                 </label>
               </div>
             </div>
@@ -500,10 +500,10 @@
                 ${jaNejSelect('kryptovaluta', a.kryptovaluta, readOnly)}
               </label>
               <label>${fieldLabel('Ungefärlig omsättning')}
-                <input type="text" class="form-control" data-kf="omsattning" value="${esc(a.omsattning || '')}"${ro}>
+                <input type="text" class="kunduppgifter-input" data-kf="omsattning" value="${esc(a.omsattning || '')}"${ro}>
               </label>
               <label>${fieldLabel('Antal anställda')}
-                <input type="text" class="form-control" data-kf="anstallda" value="${esc(a.anstallda || '')}"${ro}>
+                <input type="text" class="kunduppgifter-input" data-kf="anstallda" value="${esc(a.anstallda || '')}"${ro}>
               </label>
             </div>
           </section>
@@ -565,6 +565,8 @@
     root.addEventListener('change', (e) => {
       if (readOnly) return;
       if (e.target.matches('[data-kf-tjanst]')) {
+        const chip = e.target.closest('.kundformular-tjanst-chip');
+        if (chip) chip.classList.toggle('is-selected', e.target.checked);
         refreshVillkoradeFromTjanster();
         syncConditionalUi();
         return;
