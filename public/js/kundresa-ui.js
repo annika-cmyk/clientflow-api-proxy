@@ -1,5 +1,5 @@
 /**
- * Kundresa-UI (Lager C fas 2) — stegs koordinator på kundkortet.
+ * Kundresa-UI — stegkort på kundkortet (samma kortmönster som Byråns AML-profil).
  * VH-steget utelämnas för enskild firma / fysisk person.
  * När VH visas: byråns bekräftelse mot register (inte samma sak som kundformulär-steget).
  */
@@ -17,6 +17,15 @@
     if (status === 'gated') return 'is-gated';
     if (status === 'soon') return 'is-soon';
     return 'is-pending';
+  }
+
+  function trailIcon(status) {
+    if (status === 'done') return 'fa-check-circle';
+    if (status === 'next') return 'fa-arrow-right';
+    if (status === 'attention') return 'fa-exclamation-circle';
+    if (status === 'gated') return 'fa-lock';
+    if (status === 'soon') return 'fa-clock';
+    return 'fa-circle';
   }
 
   function alignmentClass(status) {
@@ -57,59 +66,67 @@
   function render(container, summary, opts) {
     if (!container) return;
     const onStep = typeof opts?.onStep === 'function' ? opts.onStep : null;
-    const onVh = typeof opts?.onVhSave === 'function' ? opts.onVhSave : null;
+    const onVhSave = typeof opts?.onVhSave === 'function' ? opts.onVhSave : null;
     const s = summary || {};
     const steps = Array.isArray(s.steps) ? s.steps : [];
     const gate = s.vhGate || {};
     const align = s.vhAlignment || {};
     const register = s.vhRegister || align.register || [];
-    // Endast byråns sparade värde — aldrig kundens svar i dropdownen.
     const byraVal = s.byraVhBekraftelse || (gate.source === 'byra' ? gate.value : '') || '';
     const showNote = byraVal === 'Osaker' || byraVal === 'Nej' || !!(s.byraVhNote || '').trim();
-    const activeStepId = s.nextStepId || (steps.find((st) => st.status === 'attention') || {}).id || null;
+    const activeStepId = s.activeStepId != null
+      ? s.activeStepId
+      : (s.nextStepId || (steps.find((st) => st.status === 'attention') || {}).id || null);
     const showAlign = align.relevant !== false && align.status && align.status !== 'n/a'
       && (align.status !== 'pending' || !byraVal);
+    const showVhPanel = gate.relevant !== false
+      && (Number(activeStepId) === 2 || gate.blocked || byraVal);
 
     container.innerHTML = `
-      <section class="kundresa-shell" aria-label="Kundresa onboarding">
+      <section class="kundresa-shell" aria-label="Onboarding och KYC">
         <div class="kundresa-shell-head">
           <div>
-            <h3 class="kundresa-shell-title">Kundresa</h3>
-            <p class="kundresa-shell-lead">${esc(s.progressLabel || '')} · 3 kap PTL</p>
+            <h3 class="kundresa-shell-title">Onboarding &amp; KYC</h3>
+            <p class="kundresa-shell-lead">${esc(s.progressLabel || '')} · Informationsinsamling och riskbedömning (3 kap PTL). Kundöversikten under flikarna visar insamlad info och löpande arbete.</p>
           </div>
         </div>
         ${gate.blocked ? `<div class="kundresa-gate-banner" role="alert">
           <strong>VH blockerar.</strong> ${esc(gate.message || 'Bekräfta verklig huvudman innan ni går vidare.')}
         </div>` : ''}
-        <ol class="kundresa-steps">
+        <ol class="kundresa-steps kundresa-steps--cards">
           ${steps.map((step) => {
             const isFocus = Number(step.id) === Number(activeStepId);
-            const showDesc = isFocus || step.status === 'next' || step.status === 'attention';
             const displayNum = step.number != null ? step.number : step.id;
+            const st = statusClass(step.status);
             return `
-            <li class="kundresa-step ${statusClass(step.status)}${step.comingSoonBankId ? ' is-soon' : ''}${isFocus ? ' is-active-panel' : ''}"
+            <li class="kundresa-step byra-resa-step-card ${st}${step.comingSoonBankId ? ' is-soon' : ''}${isFocus ? ' is-active-panel' : ''}"
                 data-kundresa-step="${esc(String(step.id))}">
-              <button type="button" class="kundresa-step-btn"
+              <button type="button" class="kundresa-step-btn kundresa-step-btn--card"
                 data-kundresa-goto="${esc(step.tab || '')}"
                 data-kundresa-focus="${esc(step.focus || '')}"
                 data-kundresa-step-id="${esc(String(step.id))}"
+                data-kundresa-key="${esc(step.key || '')}"
                 ${step.gated ? 'disabled' : ''}
                 title="${esc(step.gated ? 'Blockerad tills VH är bekräftad' : step.linkLabel || step.title)}">
-                <span class="kundresa-step-icon" aria-hidden="true"><i class="fas ${esc(step.icon || 'fa-circle')}"></i></span>
-                <span class="kundresa-step-body">
-                  <span class="kundresa-step-meta">${esc(String(displayNum))} · ${esc(step.label || '')}</span>
-                  <span class="kundresa-step-title">${esc(step.title)}</span>
-                  ${showDesc ? `<span class="kundresa-step-desc">${esc(step.desc || '')}</span>` : ''}
+                <span class="byra-resa-step-card-top">
+                  <span class="byra-resa-step-card-heading">
+                    <span class="byra-resa-step-icon" aria-hidden="true"><i class="fas ${esc(step.icon || 'fa-circle')}"></i></span>
+                    <span class="byra-resa-step-status-label">${esc(String(displayNum))} · ${esc(step.label || '')}</span>
+                  </span>
+                  <span class="byra-resa-step-trail" aria-hidden="true"><i class="fas ${trailIcon(step.status)}"></i></span>
                 </span>
+                <span class="byra-resa-step-title">${esc(step.title)}</span>
+                <span class="byra-resa-step-desc">${esc(step.desc || '')}</span>
+                <span class="byra-resa-step-link">${esc(step.linkLabel || 'Öppna steg')}</span>
               </button>
             </li>`;
           }).join('')}
         </ol>
 
-        ${gate.relevant !== false ? `<div class="kundresa-vh-box" id="kundresa-vh-panel" data-kundresa-vh-panel>
+        ${gate.relevant !== false ? `<div class="kundresa-vh-box"${showVhPanel ? '' : ' hidden'} id="kundresa-vh-panel" data-kundresa-vh-panel>
           <div class="kundresa-vh-box-head">
-            <h4>Steg 2 — Verklig huvudman</h4>
-            <p class="kundresa-hint">Byråns kontroll mot registret. Kundens intygande sker i formuläret (steg 4) och ska stämma med samma lista.</p>
+            <h4>Verifiera verklig huvudman</h4>
+            <p class="kundresa-hint">Byråns kontroll mot registret. Kundens intygande sker i formuläret och ska stämma med samma lista.</p>
           </div>
 
           <div class="kundresa-vh-layout">
@@ -166,26 +183,28 @@
         const tab = btn.getAttribute('data-kundresa-goto') || '';
         const focus = btn.getAttribute('data-kundresa-focus') || '';
         const stepId = Number(btn.getAttribute('data-kundresa-step-id') || 0);
-        if (focus === 'vh' || stepId === 2) {
+        const key = btn.getAttribute('data-kundresa-key') || '';
+        if (focus === 'vh' || stepId === 2 || key === 'vh_ombud') {
           const panel = container.querySelector('[data-kundresa-vh-panel]');
+          if (panel) panel.hidden = false;
           if (panel && panel.scrollIntoView) {
             panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }
           panel?.classList.add('is-flash');
           setTimeout(() => panel?.classList.remove('is-flash'), 900);
-          if (onStep) onStep({ tab: '', focus: 'vh', stepId: 2 }, btn);
+          if (onStep) onStep({ tab: '', focus: 'vh', stepId: 2, key: 'vh_ombud' }, btn);
           return;
         }
-        if (onStep) onStep({ tab, focus, stepId }, btn);
+        if (onStep) onStep({ tab, focus, stepId, key }, btn);
       });
     });
 
     const saveBtn = container.querySelector('[data-kundresa-vh-save]');
-    if (saveBtn && onVh) {
+    if (saveBtn && onVhSave) {
       saveBtn.addEventListener('click', () => {
         const sel = container.querySelector('[data-kundresa-vh]');
         const note = container.querySelector('[data-kundresa-vh-note]');
-        onVh({
+        onVhSave({
           byraVhBekraftelse: sel ? sel.value : '',
           byraVhNote: note ? note.value : ''
         }, saveBtn);
