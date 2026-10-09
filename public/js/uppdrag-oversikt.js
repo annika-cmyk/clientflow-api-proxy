@@ -127,27 +127,11 @@
     }
   }
 
-  function isDoneForPeriod(fields, instanceDeadlineIso) {
-    const doneAt = String(fields?.['Senast utförd'] || '').trim();
-    // Viktigt: när vi visar 12 månader framåt måste "klar för perioden" beräknas per instans (deadline),
-    // annars blir alla framtida rader gröna om en tidigare period är klar.
-    const nextDeadline = String(instanceDeadlineIso || fields?.['Nästa deadline'] || '').trim();
-    const freq = String(fields?.['Frekvens'] || '').toLowerCase();
-    if (!doneAt || !nextDeadline) return false;
-    const toD = (iso) => {
-      const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
-      return Number.isNaN(d.getTime()) ? null : d;
-    };
-    const doneD = toD(doneAt);
-    const nextD = toD(nextDeadline);
-    if (!doneD || !nextD) return false;
-    const start = new Date(nextD.getTime());
-    if (freq.includes('kvartal')) start.setMonth(start.getMonth() - 3);
-    else if (freq.includes('månad')) start.setMonth(start.getMonth() - 1);
-    else     if (freq.includes('årsvis')) start.setFullYear(start.getFullYear() - 1);
-    else if (freq.includes('veck')) start.setDate(start.getDate() - 7);
-    else start.setMonth(start.getMonth() - 1);
-    return doneD >= start && doneD < nextD;
+  function isInstanceKlar(x) {
+    const st = runStatusForInstance(x);
+    const KV = window.KoringVisibility;
+    if (KV && typeof KV.isBoardRunKlar === 'function') return KV.isBoardRunKlar(st);
+    return st === 'Klar' || st === 'Avslutad';
   }
 
   function recordMatchesSearch(r) {
@@ -609,7 +593,7 @@
   function matchesStatusFilter(x) {
     if (!showKlara && !showEjKlara) return true;
     if (showKlara && showEjKlara) return true;
-    const isKlar = runStatusForInstance(x) === 'Klar';
+    const isKlar = isInstanceKlar(x);
     if (showKlara) return isKlar;
     if (showEjKlara) return !isKlar;
     return true;
@@ -619,11 +603,11 @@
     return new Date().toISOString().slice(0, 10);
   }
 
-  function attentionForInstance(x, runStatus, done) {
+  function attentionForInstance(x, runStatus, isKlar) {
     const KV = window.KoringVisibility || null;
     if (!KV || !KV.runAttentionKind) return '';
     return KV.runAttentionKind({
-      Status: (done || runStatus === 'Klar') ? 'Klar' : runStatus,
+      Status: isKlar ? 'Klar' : runStatus,
       Deadline: x?.deadline
     }, todayIso());
   }
@@ -926,7 +910,6 @@
       const kundLabel = kundNamn || (kundId ? kundId : 'Kund');
       const link = kundId ? `kundkort.html?id=${encodeURIComponent(kundId)}` : '';
 
-      const done = isDoneForPeriod(f, x.deadline) ? 1 : 0;
       const freq = String(f['Frekvens'] || '').trim();
       const modeForPrefill = getModeForUppdrag(activeType, freq);
       const periodKey = x.periodKey || ((modeForPrefill === 'quarter')
@@ -942,8 +925,11 @@
           : String(x.periodLabel || '').trim());
       const showRunName = (isLoneTyp(x.typ) || x.typ === 'Momsredovisning' || isOvrigaTyp(x.typ)) && runName;
       const runStatus = runStatusForInstance(x);
-      const isKlar = done || runStatus === 'Klar';
-      const attention = attentionForInstance(x, runStatus, done);
+      // Endast körningens Status/Historik — inte uppdragets "Senast utförd"
+      // (det ger falskt gröna rader efter föregående periods klarmarkering).
+      const isKlar = isInstanceKlar(x);
+      const done = isKlar ? 1 : 0;
+      const attention = attentionForInstance(x, runStatus, isKlar);
       const pillTone = isKlar
         ? 'is-done'
         : (attention === 'overdue' ? 'is-overdue' : (attention === 'due-soon' ? 'is-due-soon' : ''));
@@ -968,7 +954,7 @@
       const runId = String(x.runRec?.id || '').trim();
       const { riskValda, done: riskDone } = getRiskState(f, x.runRec?.fields || {});
       const doneSet = new Set((riskDone || []).map((a) => String(a.text || '').toLowerCase()));
-      const riskLocked = runStatus === 'Klar';
+      const riskLocked = isKlar;
       const riskList = Array.isArray(riskValda) && riskValda.length
         ? `<div class="uppdrag-riskbox-items" data-risk-box="${esc(x.key)}">
             ${riskValda.slice(0, 20).map((a) => {
