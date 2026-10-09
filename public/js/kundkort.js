@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v16.56', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v16.69', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -137,6 +137,8 @@ class CustomerCardManager {
         this.userData = null;
         this.userByraIds = [];
         this.hogriskSni = { matches: [], branscher: [], codes: [] };
+        this._kundkortMode = 'onboarding';
+        this._activeKundresaStepId = null;
         
         this.init();
     }
@@ -145,10 +147,13 @@ class CustomerCardManager {
         // Parse URL + wire UI immediately so we can fetch as soon as auth/config are ready.
         this.setupEventListeners();
         this.setupTabNavigation();
+        this.setupKundkortModeSwitch();
+        this.setupWorkSubnav();
         this.setupRollerEventDelegation();
         this._ensureTabStatusElements();
         this._updateKlarTabIndicators({});
         this.ensureFirstTabVisible();
+        this.setKundkortMode('onboarding', { skipTabSwitch: true });
 
         console.log('🔍 INIT - Current URL:', window.location.href);
         console.log('🔍 INIT - URL search:', window.location.search);
@@ -327,29 +332,113 @@ class CustomerCardManager {
             button.addEventListener('click', (e) => {
                 e.preventDefault();
                 const targetTab = button.getAttribute('data-tab');
-                
-                // Remove active class from all buttons and panes
-                tabButtons.forEach(btn => btn.classList.remove('active'));
-                tabPanes.forEach(pane => {
-                    pane.classList.remove('active');
-                    pane.style.display = 'none';
-                    pane.style.visibility = 'hidden';
-                    pane.style.opacity = '0';
-                });
-                
-                // Add active class to clicked button and corresponding pane
-                button.classList.add('active');
-                const targetPane = document.getElementById(targetTab);
-                if (targetPane) {
-                    targetPane.classList.add('active');
-                    targetPane.style.display = 'block';
-                    targetPane.style.visibility = 'visible';
-                    targetPane.style.opacity = '1';
+                const group = button.getAttribute('data-nav-group') || this._navGroupForTab(targetTab);
+                if (group === 'oversikt' && this._kundkortMode !== 'oversikt') {
+                    this.setKundkortMode('oversikt', { skipTabSwitch: true });
+                } else if (group === 'arbete' && this._kundkortMode !== 'onboarding') {
+                    this.setKundkortMode('onboarding', { skipTabSwitch: true });
                 }
-                
-                // Load content for the selected tab
+                this.switchToTab(targetTab);
                 this.loadTabContent(targetTab);
+                this._syncWorkSubnav(targetTab);
             });
+        });
+    }
+
+    setupKundkortModeSwitch() {
+        document.querySelectorAll('[data-kundkort-mode]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const mode = btn.getAttribute('data-kundkort-mode');
+                if (mode) this.setKundkortMode(mode);
+            });
+        });
+    }
+
+    setupWorkSubnav() {
+        const host = document.getElementById('kundresa-work-subnav');
+        if (!host || host.dataset.bound === '1') return;
+        host.dataset.bound = '1';
+        host.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-work-pane]');
+            if (!btn) return;
+            e.preventDefault();
+            const pane = btn.getAttribute('data-work-pane');
+            if (!pane) return;
+            host.querySelectorAll('.kundresa-work-subnav-btn').forEach((b) => {
+                b.classList.toggle('is-active', b === btn);
+            });
+            this.setKundkortMode('onboarding', { skipTabSwitch: true });
+            this.switchToTab(pane);
+            this.loadTabContent(pane);
+        });
+    }
+
+    _navGroupForTab(tab) {
+        const oversikt = new Set(['uppdragsavtal', 'uppdrag', 'anteckningar', 'avvikelser', 'dokumentation', 'samarbete']);
+        return oversikt.has(String(tab || '')) ? 'oversikt' : 'arbete';
+    }
+
+    setKundkortMode(mode, opts = {}) {
+        const next = mode === 'oversikt' ? 'oversikt' : 'onboarding';
+        this._kundkortMode = next;
+        document.body.classList.toggle('kundkort-mode-oversikt', next === 'oversikt');
+        document.body.classList.toggle('kundkort-mode-onboarding', next === 'onboarding');
+
+        document.querySelectorAll('[data-kundkort-mode]').forEach((btn) => {
+            const active = btn.getAttribute('data-kundkort-mode') === next;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+
+        const arbeteNav = document.querySelector('[data-kundkort-nav="arbete"]');
+        const oversiktNav = document.querySelector('[data-kundkort-nav="oversikt"]');
+        const resa = document.getElementById('kundresa-shell');
+        const lead = document.getElementById('kundkort-mode-lead');
+        if (arbeteNav) arbeteNav.hidden = next !== 'onboarding';
+        if (oversiktNav) oversiktNav.hidden = next !== 'oversikt';
+        if (resa) {
+            // Visa stegkorten bara i onboarding-läge (när vi har data)
+            if (next === 'onboarding' && this._kundresa) resa.hidden = false;
+            else if (next === 'oversikt') resa.hidden = true;
+        }
+        if (lead) {
+            lead.textContent = next === 'onboarding'
+                ? 'Jobba igenom informationsinsamling, screening, formulär, riskprofil och godkännande. Insamlad info och löpande arbete finns under Kundöversikt.'
+                : 'Här ser ni insamlad information och löpande kundarbete (avtal, uppdrag, anteckningar, dokumentation och samarbete). Onboarding & KYC ligger under det andra läget.';
+        }
+
+        if (opts.skipTabSwitch) return;
+
+        if (next === 'oversikt') {
+            const activeOversikt = document.querySelector('[data-kundkort-nav="oversikt"] .tab-button.active');
+            const tab = (activeOversikt && activeOversikt.getAttribute('data-tab')) || 'uppdrag';
+            this.switchToTab(tab);
+            this.loadTabContent(tab);
+            this._syncWorkSubnav(null);
+        } else {
+            const nextStep = this._kundresa?.nextStepId;
+            const step = (this._kundresa?.steps || []).find((s) => Number(s.id) === Number(nextStep))
+                || (this._kundresa?.steps || [])[0];
+            if (step) {
+                this._gotoKundresaStep(step);
+            } else {
+                this.switchToTab('foretagsinformation');
+                this.loadTabContent('foretagsinformation');
+            }
+        }
+    }
+
+    _syncWorkSubnav(tabName) {
+        const host = document.getElementById('kundresa-work-subnav');
+        if (!host) return;
+        const show = this._kundkortMode === 'onboarding'
+            && (tabName === 'kundformular' || tabName === 'kycformular' || this._activeKundresaFocus === 'formular_kyc');
+        host.hidden = !show;
+        if (!show) return;
+        host.querySelectorAll('[data-work-pane]').forEach((btn) => {
+            const pane = btn.getAttribute('data-work-pane');
+            btn.classList.toggle('is-active', pane === tabName || (tabName === 'kundformular' && pane === 'kundformular'));
         });
     }
 
@@ -358,6 +447,12 @@ class CustomerCardManager {
         const tabPanes = document.querySelectorAll('.tab-pane');
         const button = document.querySelector(`.tab-button[data-tab="${targetTab}"]`);
         if (!button) return;
+        const group = button.getAttribute('data-nav-group') || this._navGroupForTab(targetTab);
+        if (group === 'oversikt' && this._kundkortMode !== 'oversikt') {
+            this.setKundkortMode('oversikt', { skipTabSwitch: true });
+        } else if (group === 'arbete' && this._kundkortMode !== 'onboarding') {
+            this.setKundkortMode('onboarding', { skipTabSwitch: true });
+        }
         tabButtons.forEach(btn => btn.classList.remove('active'));
         tabPanes.forEach(pane => {
             pane.classList.remove('active');
@@ -373,6 +468,7 @@ class CustomerCardManager {
             targetPane.style.visibility = 'visible';
             targetPane.style.opacity = '1';
         }
+        this._syncWorkSubnav(targetTab);
     }
 
     setupRollerEventDelegation() {
@@ -493,7 +589,8 @@ class CustomerCardManager {
                 const shouldOpenSamarbete = hash === 'samarbete';
                 const shouldOpenDokumentation = hash === 'dokumentation';
                 const shouldOpenUppdrag = hash === 'uppdrag';
-                const initialTab = shouldOpenAnteckningar
+                const shouldOpenGodkannande = hash === 'godkannande';
+                const oversiktTab = shouldOpenAnteckningar
                     ? 'anteckningar'
                     : (shouldOpenAvvikelser
                         ? 'avvikelser'
@@ -501,9 +598,20 @@ class CustomerCardManager {
                             ? 'samarbete'
                             : (shouldOpenDokumentation
                                 ? 'dokumentation'
-                                : (shouldOpenUppdrag ? 'uppdrag' : 'foretagsinformation'))));
-                this.switchToTab(initialTab);
-                this.loadTabContent(initialTab);
+                                : (shouldOpenUppdrag ? 'uppdrag' : null))));
+                if (oversiktTab) {
+                    this.setKundkortMode('oversikt', { skipTabSwitch: true });
+                    this.switchToTab(oversiktTab);
+                    this.loadTabContent(oversiktTab);
+                } else if (shouldOpenGodkannande) {
+                    this.setKundkortMode('onboarding', { skipTabSwitch: true });
+                    this.switchToTab('godkannande');
+                    this.loadTabContent('godkannande');
+                } else {
+                    this.setKundkortMode('onboarding', { skipTabSwitch: true });
+                    this.switchToTab('foretagsinformation');
+                    this.loadTabContent('foretagsinformation');
+                }
                 // Tab badge API fan-out after first paint so it does not compete with LCP.
                 const deferIndicators = typeof requestIdleCallback === 'function'
                     ? (fn) => requestIdleCallback(fn, { timeout: 1500 })
@@ -1372,6 +1480,9 @@ class CustomerCardManager {
                 break;
             case 'kycformular':
                 this.loadKYCFormular();
+                break;
+            case 'godkannande':
+                this.loadGodkannande();
                 break;
             case 'anteckningar':
                 this.loadNotes();
@@ -5444,6 +5555,20 @@ class CustomerCardManager {
 
             ${this._renderBehorighetCardHtml(fields)}
 
+            <!-- Tjänster (nykundsmöte / steg 1) -->
+            <div class="collapsible-card" id="nykund-tjanster-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('nykund-tjanster-card')">
+                    <div class="collapsible-title"><i class="fas fa-briefcase"></i><span>Tjänster kunden vill anlita</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+                    <p class="kundresa-hint" style="margin:0 0 0.75rem;">Välj tjänster redan vid nykundsmötet — samma katalog som senare används i riskbedömningen.</p>
+                    <div id="nykund-tjanster" class="tjanster-host">
+                        <p class="lead-empty">Laddar tjänster…</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- KORT 3: Beskrivning av kunden -->
             <div class="collapsible-card is-collapsed" id="beskrivning-card">
                 <div class="collapsible-header" onclick="customerCardManager.toggleCard('beskrivning-card')">
@@ -5623,6 +5748,9 @@ class CustomerCardManager {
         }
         this._maybeMigrateBeskrivningTillVerksamhet();
         this._maybeAutoRecheckUtsattOmrade();
+        if (document.getElementById('nykund-tjanster')) {
+            this.loadServices().catch((e) => console.warn('nykund-tjanster:', e));
+        }
     }
 
     async refreshBolagsverketData() {
@@ -10099,6 +10227,9 @@ class CustomerCardManager {
         if (document.getElementById('ovrigkyc-tjanster')) {
             this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'ovrigkyc-tjanster');
         }
+        if (document.getElementById('nykund-tjanster')) {
+            this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'nykund-tjanster');
+        }
         this._refreshRiskForutsattningUi();
         this._refreshForeslagnaAtgarderFromTjanster();
         this._updateKundRiskprofilWarnings();
@@ -10566,6 +10697,9 @@ class CustomerCardManager {
         if (document.getElementById('ovrigkyc-tjanster')) {
             this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'ovrigkyc-tjanster');
         }
+        if (document.getElementById('nykund-tjanster')) {
+            this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'nykund-tjanster');
+        }
         this._restoreTjanstDetails(openIds);
         this._refreshRiskprofilForeslagenUi();
     }
@@ -10653,7 +10787,7 @@ class CustomerCardManager {
             }
 
             const byraHighRisk = this.customerData?.fields?.['Lookup Byråns högrisktjänster'] || [];
-            ['services-content', 'ovrigkyc-tjanster'].forEach(tid => {
+            ['services-content', 'ovrigkyc-tjanster', 'nykund-tjanster'].forEach(tid => {
                 if (document.getElementById(tid)) this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, tid);
             });
             // Synka "Byråns tjänster" i KYC-formuläret med de aktiva tjänsterna
@@ -10791,28 +10925,69 @@ class CustomerCardManager {
             vhRegister: summary.vhRegister || summary.vhAlignment?.register || [],
             vhAlignment: summary.vhAlignment || null
         };
-        KundresaUi.render(host, enriched, {
-            onStep: (target) => {
-                const tab = typeof target === 'string' ? target : (target && target.tab) || '';
-                const focus = typeof target === 'object' && target ? target.focus : '';
-                if (focus === 'vh' || !tab) return;
-                this.switchToTab(tab);
-                this.loadTabContent(tab);
-                if (tab === 'foretagsinformation') {
-                    setTimeout(() => {
-                        const el = document.getElementById('bolagsverket-card') || document.querySelector('.roller-screening-toolbar');
-                        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }, 250);
-                }
-                if (tab === 'kundformular') {
-                    setTimeout(() => {
-                        const el = document.querySelector('[data-kf-vh-section], #kundformular-content');
-                        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }, 250);
-                }
-            },
+        KundresaUi.render(host, {
+            ...enriched,
+            activeStepId: this._activeKundresaStepId || enriched.nextStepId
+        }, {
+            onStep: (target) => this._gotoKundresaStep(target),
             onVhSave: (payload, btn) => this._onKundresaVhSave(payload, btn)
         });
+        if (this._kundkortMode === 'oversikt') host.hidden = true;
+    }
+
+    _gotoKundresaStep(target) {
+        const step = target && typeof target === 'object' ? target : { tab: target };
+        const tab = step.tab || '';
+        const focus = step.focus || '';
+        const stepId = step.stepId != null ? step.stepId : step.id;
+        const key = step.key || '';
+        this._activeKundresaStepId = stepId != null ? Number(stepId) : this._activeKundresaStepId;
+        this._activeKundresaFocus = focus || key || '';
+        this.setKundkortMode('onboarding', { skipTabSwitch: true });
+        if (focus === 'vh' || key === 'vh_ombud' || !tab) {
+            this._renderKundresa();
+            return;
+        }
+        this.switchToTab(tab);
+        this.loadTabContent(tab);
+        this._syncWorkSubnav(tab);
+        setTimeout(() => this._focusKundresaSurface(focus, tab), 280);
+        this._renderKundresa();
+    }
+
+    _focusKundresaSurface(focus, tab) {
+        if (focus === 'screening') {
+            this._ensureCardOpen('roller-card');
+            const el = document.getElementById('roller-card') || document.querySelector('.roller-screening-toolbar');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+        if (focus === 'nykund' || tab === 'foretagsinformation') {
+            this._ensureCardOpen('bolagsverket-card');
+            this._ensureCardOpen('nykund-tjanster-card');
+            const el = document.getElementById('nykund-tjanster-card')
+                || document.getElementById('bolagsverket-card');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+        if (focus === 'formular_kyc') {
+            const el = document.getElementById('kundresa-work-subnav') || document.getElementById('kundformular-content');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+        if (focus === 'godkannande' || tab === 'godkannande') {
+            const el = document.getElementById('godkannande-content');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+        if (tab === 'kundformular') {
+            const el = document.querySelector('[data-kf-vh-section], #kundformular-content');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        if (tab === 'ovrigkyc') {
+            const el = document.getElementById('ovrigkyc-content');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
 
     async _onKundresaVhSave(payload, btn) {
@@ -10852,6 +11027,262 @@ class CustomerCardManager {
         } catch (e) {
             console.error('_onKundresaVhSave:', e);
             this.showNotification(`Kunde inte spara VH: ${e.message}`, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+        }
+    }
+
+    async loadGodkannande() {
+        const container = document.getElementById('godkannande-content');
+        if (!container) return;
+        if (!this.customerId) {
+            container.innerHTML = '<p class="lead-empty">Ingen kund vald.</p>';
+            return;
+        }
+        container.innerHTML = `
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Laddar godkännande...</p>
+            </div>
+        `;
+        try {
+            if (!this._kundresa) await this.loadKundresa();
+            await this._ensureByraUsers();
+            await this._renderGodkannande();
+        } catch (e) {
+            console.error('loadGodkannande:', e);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Kunde inte ladda godkännande.</p>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.loadGodkannande()">
+                        <i class="fas fa-redo"></i> Försök igen
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    _godkannandeStepStatus() {
+        const step = (this._kundresa?.steps || []).find((s) => s.key === 'godkannande');
+        return step || { status: 'pending', label: 'Ej påbörjat', done: false };
+    }
+
+    _riskprofilSummaryHtml() {
+        const f = this.customerData?.fields || {};
+        const residual = String(
+            f.Riskniva || f['Kund residual riskprofil'] || f['Kund residualnivå'] || f['sammanlagd risk'] || ''
+        ).trim();
+        const foreslagen = String(f['Kund föreslagen nivå'] || '').trim();
+        const datum = String(f['Senaste riskbedömning'] || f['Riskbedömning datum'] || '').trim().slice(0, 10);
+        const riskStep = (this._kundresa?.steps || []).find((s) => s.key === 'riskprofil');
+        const klar = residual && riskStep?.done;
+        return `
+            <div class="godkannande-stat">
+                <span class="godkannande-stat-label">Residual risk</span>
+                <strong>${residual ? this._esc(residual) : '—'}</strong>
+            </div>
+            <div class="godkannande-stat">
+                <span class="godkannande-stat-label">Föreslagen nivå</span>
+                <strong>${foreslagen ? this._esc(foreslagen) : '—'}</strong>
+            </div>
+            <div class="godkannande-stat">
+                <span class="godkannande-stat-label">Riskprofil</span>
+                <strong class="${klar ? 'is-ok' : 'is-warn'}">${klar ? 'Klar' : 'Saknas / ofullständig'}</strong>
+            </div>
+            <div class="godkannande-stat">
+                <span class="godkannande-stat-label">Senast bedömd</span>
+                <strong>${datum ? this._esc(datum) : '—'}</strong>
+            </div>
+        `;
+    }
+
+    async _renderGodkannande() {
+        const container = document.getElementById('godkannande-content');
+        if (!container) return;
+        const f = this.customerData?.fields || {};
+        const step = this._godkannandeStepStatus();
+        const kycStatus = String(f['KYC status'] || '').trim();
+        const kycDatum = String(f['KYC UTFÖRD DATUM'] || '').trim().slice(0, 10);
+        const utanfor = f['KYC-formulär utanför ClientFlow'] === true || f['KYC-formulär utanför ClientFlow'] === 'Ja';
+        const users = Array.isArray(this._byraUsers) ? this._byraUsers : [];
+        const userOpts = users.map((u) => {
+            const id = String(u.id || '');
+            const name = String(u.name || u.email || id);
+            return `<option value="${this._esc(id)}" data-name="${this._esc(name)}">${this._esc(name)}</option>`;
+        }).join('');
+        const pending = Array.isArray(this._riskGranskningPending) ? this._riskGranskningPending : [];
+
+        container.innerHTML = `
+            <section class="godkannande-shell" aria-label="Godkännande och granskning">
+                <header class="godkannande-head">
+                    <div>
+                        <h3 class="godkannande-title">Godkännande / avslag</h3>
+                        <p class="godkannande-lead">Samla DD-beslutet här. Skicka riskprofilen till en kollega om någon annan ska bedöma eller granska innan ni godkänner kunden.</p>
+                    </div>
+                    <span class="godkannande-badge godkannande-badge--${this._esc(step.status || 'pending')}">${this._esc(step.label || 'Ej påbörjat')}</span>
+                </header>
+
+                <div class="godkannande-grid">
+                    <article class="godkannande-card">
+                        <h4><i class="fas fa-chart-line"></i> Riskprofil</h4>
+                        <div class="godkannande-stats">${this._riskprofilSummaryHtml()}</div>
+                        <div class="godkannande-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" data-godk-goto="risk">
+                                <i class="fas fa-arrow-right"></i> Öppna riskbedömning
+                            </button>
+                        </div>
+                    </article>
+                    <article class="godkannande-card">
+                        <h4><i class="fas fa-id-card"></i> Identifiering (KYC)</h4>
+                        <div class="godkannande-stats">
+                            <div class="godkannande-stat">
+                                <span class="godkannande-stat-label">Status</span>
+                                <strong>${kycStatus ? this._esc(kycStatus) : (utanfor ? 'Utanför ClientFlow' : '—')}</strong>
+                            </div>
+                            <div class="godkannande-stat">
+                                <span class="godkannande-stat-label">Utförd</span>
+                                <strong>${kycDatum ? this._esc(kycDatum) : '—'}</strong>
+                            </div>
+                        </div>
+                        <div class="godkannande-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" data-godk-goto="kyc">
+                                <i class="fas fa-arrow-right"></i> Öppna KYC-formulär
+                            </button>
+                        </div>
+                    </article>
+                </div>
+
+                <article class="godkannande-card godkannande-card--wide">
+                    <h4><i class="fas fa-user-check"></i> Skicka riskprofil för granskning</h4>
+                    <p class="kundresa-hint">Skapar en intern anteckning till vald kollega. Ni kan också öppna riskbedömningen direkt efteråt.</p>
+                    <div class="godkannande-share-form">
+                        <label class="kundresa-vh-field">
+                            <span>Kollega på byrån</span>
+                            <select id="godkannande-kollega" class="form-control">
+                                <option value="">— Välj kollega —</option>
+                                ${userOpts || '<option value="" disabled>Inga användare hittades</option>'}
+                            </select>
+                        </label>
+                        <label class="kundresa-vh-field">
+                            <span>Meddelande (valfritt)</span>
+                            <input type="text" id="godkannande-meddelande" class="form-control" maxlength="400"
+                                placeholder="t.ex. Kan du bedöma residualrisken innan vi godkänner?">
+                        </label>
+                        <div class="godkannande-actions">
+                            <button type="button" class="btn btn-primary btn-sm" id="godkannande-skicka-btn">
+                                <i class="fas fa-paper-plane"></i> Skicka begäran
+                            </button>
+                        </div>
+                    </div>
+                    ${pending.length ? `<ul class="godkannande-pending">
+                        ${pending.map((p) => `<li>
+                            <strong>${this._esc(p.name || 'Kollega')}</strong>
+                            <span>${this._esc(p.at || '')}</span>
+                            ${p.message ? `<span class="uppdrag-muted">${this._esc(p.message)}</span>` : ''}
+                        </li>`).join('')}
+                    </ul>` : ''}
+                </article>
+
+                <article class="godkannande-card godkannande-card--wide">
+                    <h4><i class="fas fa-stamp"></i> Nästa steg i DD</h4>
+                    <p class="kundresa-hint">Formellt godkännande sker när KYC är signerat (eller markerat som utfört utanför ClientFlow). BankID-signering byggs ut vidare här.</p>
+                    <div class="godkannande-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" data-godk-goto="kyc">
+                            <i class="fas fa-file-signature"></i> Hantera KYC-signering
+                        </button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-godk-goto="dokumentation">
+                            <i class="fas fa-folder-open"></i> Dokumentation
+                        </button>
+                    </div>
+                </article>
+            </section>
+        `;
+
+        container.querySelectorAll('[data-godk-goto]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const dest = btn.getAttribute('data-godk-goto');
+                if (dest === 'risk') {
+                    this._gotoKundresaStep({ tab: 'ovrigkyc', focus: 'risk', key: 'riskprofil', stepId: 5 });
+                } else if (dest === 'kyc') {
+                    this.setKundkortMode('onboarding', { skipTabSwitch: true });
+                    this.switchToTab('kycformular');
+                    this.loadTabContent('kycformular');
+                    this._syncWorkSubnav('kycformular');
+                } else if (dest === 'dokumentation') {
+                    this.setKundkortMode('oversikt', { skipTabSwitch: true });
+                    this.switchToTab('dokumentation');
+                    this.loadTabContent('dokumentation');
+                }
+            });
+        });
+
+        const sendBtn = document.getElementById('godkannande-skicka-btn');
+        if (sendBtn) {
+            sendBtn.addEventListener('click', () => this._skickaRiskgranskning(sendBtn));
+        }
+
+        const done = !!step.done;
+        this._setTabStatus(
+            'godkannande',
+            done
+                ? '<i class="fas fa-check-circle tab-status--ok" aria-hidden="true"></i>'
+                : '<i class="fas fa-exclamation-circle tab-status--incomplete" aria-hidden="true"></i>',
+            done ? 'Godkännande klart' : (step.label || 'Godkännande')
+        );
+    }
+
+    async _skickaRiskgranskning(btn) {
+        const sel = document.getElementById('godkannande-kollega');
+        const msgEl = document.getElementById('godkannande-meddelande');
+        const opt = sel?.selectedOptions?.[0];
+        const userId = sel?.value || '';
+        const name = opt?.getAttribute('data-name') || opt?.textContent || '';
+        const message = String(msgEl?.value || '').trim();
+        if (!userId) {
+            this.showNotification('Välj en kollega att skicka till.', 'warning');
+            return;
+        }
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skickar...'; }
+        try {
+            const fields = this.customerData?.fields || {};
+            const byraId = fields['Byrå ID'] || fields['ByråID'] || this.userByraIds?.[0] || '';
+            const orgnr = fields.Orgnr || fields['Organisationsnummer'] || '';
+            const companyName = fields.Namn || fields['Företagsnamn'] || '';
+            const noteText = [
+                `Begäran om granskning av riskprofil.`,
+                `Till: ${name}`,
+                message ? `Meddelande: ${message}` : '',
+                `Länk: kundkort.html?id=${this.customerId}#godkannande`
+            ].filter(Boolean).join('\n');
+
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/notes`, {
+                method: 'POST',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({
+                    typAvAnteckning: ['Arbetsanteckningar'],
+                    notes: noteText,
+                    datum: new Date().toISOString().slice(0, 10),
+                    byraId: byraId ? String(byraId) : '',
+                    orgnr: orgnr ? String(orgnr) : '',
+                    foretagsnamn: companyName || '',
+                    person: name || ''
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+
+            this._riskGranskningPending = [
+                ...(Array.isArray(this._riskGranskningPending) ? this._riskGranskningPending : []),
+                { name, message, at: new Date().toISOString().slice(0, 16).replace('T', ' ') }
+            ];
+            this.showNotification(`Begäran skickad till ${name}.`, 'success');
+            await this._renderGodkannande();
+        } catch (e) {
+            console.error('_skickaRiskgranskning:', e);
+            this.showNotification(`Kunde inte skicka begäran: ${e.message}`, 'error');
         } finally {
             if (btn) { btn.disabled = false; btn.innerHTML = orig; }
         }

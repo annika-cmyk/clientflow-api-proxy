@@ -20091,6 +20091,69 @@ body.byra-resa-page .risk-header h1 {
   line-height: 1.45;
 }
 
+/* Kundkort: onboarding-läge vs kundöversikt */
+.kundkort-mode-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  margin: 0 0 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.kundkort-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 0;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 650;
+  padding: 0.55rem 0.9rem;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.kundkort-mode-btn:hover { color: #0f172a; background: #fff; }
+.kundkort-mode-btn.is-active {
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.kundkort-mode-lead {
+  margin: 0 0 1rem;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  max-width: 52rem;
+}
+.kundresa-work-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.85rem;
+}
+.kundresa-work-subnav-btn {
+  border: 1px solid #dbe3ee;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.kundresa-work-subnav-btn.is-active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+body.kundkort-mode-oversikt .tab-navigation--arbete { display: none !important; }
+body.kundkort-mode-onboarding .tab-navigation--oversikt { display: none !important; }
+
 .kundresa-shell-host {
   margin: 0 0 1.25rem;
 }
@@ -20131,6 +20194,41 @@ body.byra-resa-page .risk-header h1 {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.4rem;
 }
+.kundresa-steps--cards {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+.kundresa-steps--cards .kundresa-step {
+  margin: 0;
+  min-height: 100%;
+}
+.kundresa-step-btn--card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  min-height: 11rem;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+.kundresa-step-btn--card:hover:not(:disabled) {
+  border-color: transparent;
+  box-shadow: none;
+}
+.kundresa-step-btn--card .byra-resa-step-title,
+.kundresa-step-btn--card .byra-resa-step-desc,
+.kundresa-step-btn--card .byra-resa-step-link {
+  pointer-events: none;
+}
+.kundresa-steps--cards .byra-resa-step-card.is-active-panel {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 1px;
+}
 .kundresa-step-btn {
   width: 100%;
   text-align: left;
@@ -20143,6 +20241,115 @@ body.byra-resa-page .risk-header h1 {
   cursor: pointer;
   min-height: 100%;
   transition: border-color .15s ease, box-shadow .15s ease;
+}
+.godkannande-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.godkannande-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.godkannande-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 750;
+  color: #0f172a;
+}
+.godkannande-lead {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  max-width: 40rem;
+}
+.godkannande-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+}
+.godkannande-badge--done { background: #dcfce7; color: #15803d; }
+.godkannande-badge--next { background: #dbeafe; color: #1d4ed8; }
+.godkannande-badge--attention { background: #fee2e2; color: #b91c1c; }
+.godkannande-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.85rem;
+}
+.godkannande-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  padding: 1rem 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.godkannande-card--wide { grid-column: 1 / -1; }
+.godkannande-card h4 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #0f172a;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.godkannande-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.65rem;
+}
+.godkannande-stat-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: #64748b;
+  margin-bottom: 0.15rem;
+}
+.godkannande-stat strong { color: #0f172a; font-size: 0.95rem; }
+.godkannande-stat strong.is-ok { color: #15803d; }
+.godkannande-stat strong.is-warn { color: #b45309; }
+.godkannande-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.godkannande-share-form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 36rem;
+}
+.godkannande-pending {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.godkannande-pending li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  font-size: 0.88rem;
+}
+@media (max-width: 900px) {
+  .kundresa-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kundresa-steps--cards { grid-template-columns: 1fr; }
 }
 .kundresa-step-btn:hover:not(:disabled) {
   border-color: #93c5fd;

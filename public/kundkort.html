@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260916aipromptblob">
+    <link rel="stylesheet" href="styles.css?v=20261009kundflode">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="kundkort-page">
@@ -35,44 +35,66 @@
                 <!-- Customer Details Section -->
                 <section class="customer-details-section">
                     <div class="container">
+                        <div class="kundkort-mode-switch" role="tablist" aria-label="Kundkortsläge">
+                            <button type="button" class="kundkort-mode-btn is-active" data-kundkort-mode="onboarding" role="tab" aria-selected="true">
+                                <i class="fas fa-route" aria-hidden="true"></i>
+                                <span>Onboarding &amp; KYC</span>
+                            </button>
+                            <button type="button" class="kundkort-mode-btn" data-kundkort-mode="oversikt" role="tab" aria-selected="false">
+                                <i class="fas fa-folder-open" aria-hidden="true"></i>
+                                <span>Kundöversikt</span>
+                            </button>
+                        </div>
+                        <p class="kundkort-mode-lead" id="kundkort-mode-lead">Jobba igenom informationsinsamling, screening, formulär, riskprofil och godkännande. Insamlad info och löpande arbete finns under Kundöversikt.</p>
                         <div id="kundresa-shell" class="kundresa-shell-host" hidden></div>
-                        <!-- Tab Navigation -->
-                        <div class="tab-navigation">
-                            <button type="button" class="tab-button active" data-tab="foretagsinformation">
+                        <div id="kundresa-work-subnav" class="kundresa-work-subnav" hidden>
+                            <button type="button" class="kundresa-work-subnav-btn is-active" data-work-pane="kundformular">Kundformulär</button>
+                            <button type="button" class="kundresa-work-subnav-btn" data-work-pane="kycformular">Identifiering (KYC)</button>
+                        </div>
+                        <!-- Arbetsflikar (onboarding) — expertläge in i samma ytor som stegen -->
+                        <div class="tab-navigation tab-navigation--arbete" data-kundkort-nav="arbete">
+                            <button type="button" class="tab-button active" data-tab="foretagsinformation" data-nav-group="arbete">
                                 <span class="tab-status" data-tab-status="foretagsinformation" aria-hidden="true"></span>
                                 <span class="tab-button-label">Företagsinformation</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="kundformular">
+                            <button type="button" class="tab-button" data-tab="kundformular" data-nav-group="arbete">
                                 <span class="tab-status" data-tab-status="kundformular" aria-hidden="true"></span>
                                 <span class="tab-button-label">Kundformulär</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="kycformular">
+                            <button type="button" class="tab-button" data-tab="kycformular" data-nav-group="arbete">
                                 <span class="tab-status" data-tab-status="kycformular" aria-hidden="true"></span>
                                 <span class="tab-button-label">KYC-formulär</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="ovrigkyc">
+                            <button type="button" class="tab-button" data-tab="ovrigkyc" data-nav-group="arbete">
                                 <span class="tab-status" data-tab-status="ovrigkyc" aria-hidden="true"></span>
                                 <span class="tab-button-label">Riskbedömning</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="uppdragsavtal">
+                            <button type="button" class="tab-button" data-tab="godkannande" data-nav-group="arbete">
+                                <span class="tab-status" data-tab-status="godkannande" aria-hidden="true"></span>
+                                <span class="tab-button-label">Godkännande</span>
+                            </button>
+                        </div>
+                        <!-- Översiktsflikar — insamlad info och löpande kundarbete -->
+                        <div class="tab-navigation tab-navigation--oversikt" data-kundkort-nav="oversikt" hidden>
+                            <button type="button" class="tab-button" data-tab="uppdragsavtal" data-nav-group="oversikt">
                                 <span class="tab-status" data-tab-status="uppdragsavtal" aria-hidden="true"></span>
                                 <span class="tab-button-label">Uppdragsavtal</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="uppdrag">
+                            <button type="button" class="tab-button" data-tab="uppdrag" data-nav-group="oversikt">
                                 <span class="tab-status" data-tab-status="uppdrag" aria-hidden="true"></span>
                                 <span class="tab-button-label">Uppdrag</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="anteckningar">
+                            <button type="button" class="tab-button" data-tab="anteckningar" data-nav-group="oversikt">
                                 <span class="tab-button-label">Anteckningar</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="avvikelser">
+                            <button type="button" class="tab-button" data-tab="avvikelser" data-nav-group="oversikt">
                                 <span class="tab-status" data-tab-status="avvikelser" aria-hidden="true"></span>
                                 <span class="tab-button-label">Avvikelser</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="dokumentation">
+                            <button type="button" class="tab-button" data-tab="dokumentation" data-nav-group="oversikt">
                                 <span class="tab-button-label">Dokumentation</span>
                             </button>
-                            <button type="button" class="tab-button" data-tab="samarbete">
+                            <button type="button" class="tab-button" data-tab="samarbete" data-nav-group="oversikt">
                                 <span class="tab-status" data-tab-status="samarbete" aria-hidden="true"></span>
                                 <span class="tab-button-label">Samarbete</span>
                             </button>
@@ -116,6 +138,16 @@
                                     <div class="loading-spinner">
                                         <i class="fas fa-spinner fa-spin"></i>
                                         <p>Laddar riskbedömning...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Godkännande Tab -->
+                            <div id="godkannande" class="tab-pane">
+                                <div id="godkannande-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar godkännande...</p>
                                     </div>
                                 </div>
                             </div>
@@ -231,7 +263,7 @@
     <script src="js/html-plain-text.js?v=1" defer></script>
     <script src="js/identitet-kontroll.js?v=5" defer></script>
     <script src="js/kundformular-ui.js?v=8" defer></script>
-    <script src="js/kundresa-ui.js?v=4" defer></script>
-    <script src="js/kundkort.js?v=16.68" defer></script>
+    <script src="js/kundresa-ui.js?v=5" defer></script>
+    <script src="js/kundkort.js?v=16.69" defer></script>
 </body>
 </html>
