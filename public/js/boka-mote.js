@@ -334,19 +334,14 @@
 
   function clearPickHint() {
     const hint = document.getElementById('boka-next-hint');
-    if (hint) hint.classList.add('hidden');
+    if (hint) {
+      hint.textContent = '';
+      hint.classList.add('hidden');
+    }
   }
 
   function showPickHint(msg) {
-    let hint = document.getElementById('boka-next-hint');
-    if (!hint && el.next && el.next.parentElement) {
-      hint = document.createElement('p');
-      hint.id = 'boka-next-hint';
-      hint.className = 'boka-error';
-      hint.style.margin = '0.5rem 1.25rem 0 0';
-      hint.style.textAlign = 'right';
-      el.next.parentElement.insertBefore(hint, el.next);
-    }
+    const hint = document.getElementById('boka-next-hint');
     if (hint) {
       hint.textContent = msg || 'Välj en tid först.';
       hint.classList.remove('hidden');
