@@ -87,6 +87,7 @@ const {
 } = require('./lib/yearly-uppdrag-runs');
 const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag-runs');
 const UppdragTyp = require('./public/js/uppdrag-typ');
+const KalenderScheduleBlocks = require('./public/js/kalender-schedule-blocks');
 const {
   nextSelectWriteFallback
 } = require('./lib/airtable-select-write-fallback');
@@ -21047,6 +21048,7 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Planerad start', type: 'dateTime', description: 'Avsatt starttid i kalendern (tidblock)', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
   { name: 'Planerad slut', type: 'dateTime', description: 'Avsatt sluttid i kalendern (tidblock)', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
+  { name: 'Planerade block (JSON)', type: 'multilineText', description: 'JSON-array med flera tidblock [{id,start,end}] så samma körning kan schemaläggas vid flera tillfällen' },
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Planerad' }, { name: 'Pågående' }, { name: 'Klar' }, { name: 'Sen' }] } },
   { name: 'Ansvarig', type: 'singleLineText', description: 'Tilldelad handläggare för just denna körning (kan skilja sig från uppdragets ansvarig)' },
   { name: 'Skapad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
@@ -21212,7 +21214,7 @@ async function airtablePatchRecordWithFieldFallback(url, fields, headers, maxRet
 }
 
 async function ensureUppdragRunsScheduleFields(airtableToken, baseId) {
-  const wanted = ['Planerad start', 'Planerad slut'];
+  const wanted = ['Planerad start', 'Planerad slut', 'Planerade block (JSON)'];
   try {
     const t = await getUppdragRunsTableMeta(airtableToken, baseId);
     if (!t?.id) return { ok: false, reason: 'table_missing' };
@@ -21478,7 +21480,7 @@ async function listUppdragRunsForByra({ airtableToken, baseId, byraId, maxPages 
     'Anteckning', 'Uppdaterad', 'Skapad'
   ];
   const fieldLists = [
-    [...baseFieldList, 'Planerad start', 'Planerad slut'],
+    [...baseFieldList, 'Planerad start', 'Planerad slut', 'Planerade block (JSON)'],
     baseFieldList
   ];
   for (const fieldList of fieldLists) {
@@ -22414,8 +22416,12 @@ app.post('/api/uppdrag/ensure-runs', authenticateToken, async (req, res) => {
   }
 });
 
-// PATCH /api/uppdrag/runs/:runId/schedule – avsatt tidblock (planerad start/slut) i kalendern
-// Body: { start: ISO datetime|null, end: ISO datetime|null } — null rensar blocket
+// PATCH /api/uppdrag/runs/:runId/schedule – ett eller flera tidblock i kalendern
+// Body:
+//   { start, end } — legacy: ersätt med ett block (eller null/null för att rensa)
+//   { start, end, mode: 'add' } — lägg till ytterligare tillfälle
+//   { start, end, blockId, mode: 'update' } — flytta/ändra ett block
+//   { blockId, mode: 'remove' } — ta bort ett block
 app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, res) => {
   try {
     const { runId } = req.params || {};
@@ -22425,38 +22431,17 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
     const body = req.body || {};
     const hasStart = Object.prototype.hasOwnProperty.call(body, 'start');
     const hasEnd = Object.prototype.hasOwnProperty.call(body, 'end');
-    if (!hasStart && !hasEnd) {
+    const hasMode = Object.prototype.hasOwnProperty.call(body, 'mode');
+    const hasBlockId = Object.prototype.hasOwnProperty.call(body, 'blockId');
+    const modeRaw = String(body.mode || '').trim().toLowerCase();
+    if (!hasStart && !hasEnd && modeRaw !== 'remove') {
       return res.status(400).json({ error: 'Ange start och/eller end (ISO-datetime), eller null för att rensa.' });
     }
 
-    const parseDt = (v) => {
-      if (v == null || v === '') return null;
-      const s = String(v).trim();
-      if (!s) return null;
-      const d = new Date(s);
-      if (Number.isNaN(d.getTime())) return undefined;
-      // Spara som lokal-liknande ISO utan timezone-suffix om klient skickar YYYY-MM-DDTHH:mm:ss
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) {
-        return s.length >= 19 ? s.slice(0, 19) : `${s}:00`.slice(0, 19);
-      }
-      return d.toISOString();
-    };
-
-    let startVal;
-    let endVal;
-    if (hasStart) {
-      startVal = parseDt(body.start);
-      if (startVal === undefined) return res.status(400).json({ error: 'Ogiltig start-tid' });
-    }
-    if (hasEnd) {
-      endVal = parseDt(body.end);
-      if (endVal === undefined) return res.status(400).json({ error: 'Ogiltig slut-tid' });
-    }
-
-    if (startVal && endVal) {
-      const a = new Date(startVal).getTime();
-      const b = new Date(endVal).getTime();
-      if (!(b > a)) return res.status(400).json({ error: 'Slut måste vara efter start' });
+    let mode = modeRaw || 'set';
+    if (!modeRaw && hasBlockId && body.blockId) mode = 'update';
+    if (mode === 'remove' && !body.blockId) {
+      return res.status(400).json({ error: 'blockId krävs för mode=remove' });
     }
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -22479,16 +22464,30 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
       return res.status(403).json({ error: 'Du saknar behörighet att uppdatera denna uppdragskörning.' });
     }
 
-    // Best-effort: skapa Planerad start/slut om de saknas
+    // Best-effort: skapa Planerad start/slut + Planerade block om de saknas
     try { await ensureUppdragRunsScheduleFields(airtableAccessToken, airtableBaseId); } catch (_) {}
 
-    const fields = { Uppdaterad: new Date().toISOString() };
-    if (hasStart) fields['Planerad start'] = startVal;
-    if (hasEnd) fields['Planerad slut'] = endVal;
+    let nextBlocks;
+    try {
+      const current = KalenderScheduleBlocks.parseBlocksFromFields(f);
+      nextBlocks = KalenderScheduleBlocks.applyMutation(current, {
+        mode,
+        blockId: body.blockId,
+        start: hasStart ? body.start : undefined,
+        end: hasEnd ? body.end : undefined
+      });
+    } catch (mutErr) {
+      return res.status(400).json({ error: mutErr.message || 'Ogiltig tidblock-ändring' });
+    }
+
+    const blockFields = KalenderScheduleBlocks.fieldsForBlocks(nextBlocks);
+    const fields = { Uppdaterad: new Date().toISOString(), ...blockFields };
 
     let patched = await airtablePatchRecordWithFieldFallback(url, fields, headers);
-    if ((patched.dropped || []).includes('Planerad start') || (patched.dropped || []).includes('Planerad slut')) {
-      // Försök skapa fält igen och retry en gång
+    const criticalDropped = (patched.dropped || []).filter((n) =>
+      n === 'Planerad start' || n === 'Planerad slut' || n === KalenderScheduleBlocks.FIELD_BLOCKS
+    );
+    if (criticalDropped.includes('Planerad start') || criticalDropped.includes('Planerad slut')) {
       try { await ensureUppdragRunsScheduleFields(airtableAccessToken, airtableBaseId); } catch (_) {}
       patched = await airtablePatchRecordWithFieldFallback(url, fields, headers);
     }
@@ -22499,33 +22498,54 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
       });
     }
 
-    // Best-effort: push till användarens Google-kalender om sync är på
+    // Best-effort: push alla block till Google (composite key per block) + rensa legacy/borttagna
     try {
       const outFields = patched.record?.fields || {};
-      const startIso = hasStart
-        ? startVal
-        : (outFields['Planerad start'] != null ? outFields['Planerad start'] : f['Planerad start']) || null;
-      const endIso = hasEnd
-        ? endVal
-        : (outFields['Planerad slut'] != null ? outFields['Planerad slut'] : f['Planerad slut']) || null;
       const typ = String(outFields['Typ'] || f['Typ'] || '').trim();
       const period = String(outFields['Period Label'] || f['Period Label'] || outFields['PeriodKey'] || f['PeriodKey'] || '').trim();
       const titleParts = ['ClientFlow', typ, period].filter(Boolean);
+      const description = [
+        f['Kund ID'] ? `Kund-ID: ${f['Kund ID']}` : '',
+        (outFields['Deadline'] || f['Deadline']) ? `Deadline: ${outFields['Deadline'] || f['Deadline']}` : ''
+      ].filter(Boolean).join('\n');
+      const prevBlocks = KalenderScheduleBlocks.parseBlocksFromFields(f);
+      const nextIds = new Set(nextBlocks.map((b) => b.id));
+      // Rensa gamla en-block-nyckeln
       await gmailIntegration.pushRunScheduleForUser(userData, {
         runId: id,
         title: titleParts.join(' · '),
-        description: [
-          f['Kund ID'] ? `Kund-ID: ${f['Kund ID']}` : '',
-          (outFields['Deadline'] || f['Deadline']) ? `Deadline: ${outFields['Deadline'] || f['Deadline']}` : ''
-        ].filter(Boolean).join('\n'),
-        start: startIso && endIso ? startIso : null,
-        end: startIso && endIso ? endIso : null
+        description,
+        start: null,
+        end: null
       });
+      for (const b of prevBlocks) {
+        if (!nextIds.has(b.id)) {
+          await gmailIntegration.pushRunScheduleForUser(userData, {
+            runId: `${id}:${b.id}`,
+            title: titleParts.join(' · '),
+            description,
+            start: null,
+            end: null
+          });
+        }
+      }
+      for (const b of nextBlocks) {
+        await gmailIntegration.pushRunScheduleForUser(userData, {
+          runId: `${id}:${b.id}`,
+          title: titleParts.join(' · '),
+          description,
+          start: b.start,
+          end: b.end
+        });
+      }
     } catch (syncErr) {
       console.warn('google-calendar schedule hook:', syncErr.message);
     }
 
-    return res.json({ record: patched.record });
+    return res.json({
+      record: patched.record,
+      blocks: nextBlocks
+    });
   } catch (error) {
     console.error('❌ PATCH /api/uppdrag/runs/:runId/schedule:', error.response?.data || error.message);
     const status = error.response?.status || 500;

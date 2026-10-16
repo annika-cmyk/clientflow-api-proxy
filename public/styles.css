@@ -22203,7 +22203,33 @@ a.byra-profil-chip:hover {
     font: inherit;
     margin-bottom: 0;
 }
+.kalender-side-item.is-draggable { cursor: grab; }
+.kalender-side-item.is-dragging { opacity: 0.55; cursor: grabbing; }
 .kalender-side-item:hover { background: var(--muted, #e3eef0); }
+.kalender-detail-blocks {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.kalender-detail-block-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.45rem;
+    background: color-mix(in srgb, var(--accent, #13505c) 6%, white);
+    border-radius: 4px;
+}
+.kalender-detail-blocks-hint {
+    margin: 0 0 0.85rem;
+    font-size: 0.78rem;
+    color: var(--text);
+    opacity: 0.85;
+}
 .kalender-side-item--klar { border-left-color: var(--success, #1f7a4d); }
 .kalender-side-item--pagande { border-left-color: var(--warning, #b07414); }
 .kalender-side-item--planerad { border-left-color: var(--accent, #13505c); }

@@ -4,12 +4,14 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    module.exports = factory(require('./kalender-schedule-blocks.js'));
   } else {
-    root.KalenderEvents = factory();
+    root.KalenderEvents = factory(root.KalenderScheduleBlocks);
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (ScheduleBlocks) {
   'use strict';
+
+  const SB = ScheduleBlocks || null;
 
   function toDate(iso) {
     const s = String(iso || '').slice(0, 10);
@@ -61,10 +63,18 @@
       const pk = String(putOpts.periodKey || dl.slice(0, 7)).trim();
       const key = `${rec.id}:${pk}`;
       const status = String(putOpts.status || '').trim();
+      const blocks = Array.isArray(putOpts.scheduleBlocks)
+        ? putOpts.scheduleBlocks
+        : (SB && putOpts.runRec
+          ? SB.parseBlocksFromFields(putOpts.runRec.fields || {})
+          : []);
+      const primaryStart = blocks[0]?.start || String(putOpts.scheduledStart || '').trim();
+      const primaryEnd = blocks[0]?.end || String(putOpts.scheduledEnd || '').trim();
       const prev = map.get(key);
       if (!prev) {
         map.set(key, {
           key,
+          runKey: key,
           record: rec,
           runRec: putOpts.runRec || null,
           typ: String(rec.fields?.['Typ'] || putOpts.typ || ''),
@@ -73,8 +83,10 @@
           periodKey: pk,
           periodLabel: String(putOpts.periodLabel || '').trim(),
           status: status || 'Planerad',
-          scheduledStart: String(putOpts.scheduledStart || '').trim(),
-          scheduledEnd: String(putOpts.scheduledEnd || '').trim(),
+          scheduledStart: primaryStart,
+          scheduledEnd: primaryEnd,
+          scheduleBlocks: blocks,
+          blockId: null,
           inRange: false
         });
       } else {
@@ -83,15 +95,20 @@
         else if ((!prev.status || prev.status === 'Planerad') && status) prev.status = status;
         if (!prev.periodLabel && putOpts.periodLabel) prev.periodLabel = String(putOpts.periodLabel);
         if (!prev.startDate && putOpts.startDate) prev.startDate = toDate(putOpts.startDate);
-        if (!prev.scheduledStart && putOpts.scheduledStart) {
-          prev.scheduledStart = String(putOpts.scheduledStart).trim();
-        }
-        if (!prev.scheduledEnd && putOpts.scheduledEnd) {
-          prev.scheduledEnd = String(putOpts.scheduledEnd).trim();
+        if ((!prev.scheduleBlocks || !prev.scheduleBlocks.length) && blocks.length) {
+          prev.scheduleBlocks = blocks;
+          prev.scheduledStart = primaryStart;
+          prev.scheduledEnd = primaryEnd;
+        } else if (!prev.scheduledStart && primaryStart) {
+          prev.scheduledStart = primaryStart;
+          prev.scheduledEnd = primaryEnd;
         }
       }
       const cur = map.get(key);
-      cur.inRange = inVisibleRangeForEvent(cur.deadline, cur.scheduledStart, range);
+      const blockStarts = (cur.scheduleBlocks || []).map((b) => b.start).filter(Boolean);
+      if (!blockStarts.length && cur.scheduledStart) blockStarts.push(cur.scheduledStart);
+      cur.inRange = inVisibleRangeForEvent(cur.deadline, cur.scheduledStart, range)
+        || blockStarts.some((s) => inVisibleRangeForEvent(cur.deadline, s, range));
     };
 
     runRecords.forEach((rr) => {
@@ -127,6 +144,7 @@
         || (typ === 'Momsredovisning' && MomsPeriod && pk ? MomsPeriod.displayLabel(pk, freq) : '')
         || (isLoneTyp(typ, helpers) && LonePeriod && pk ? LonePeriod.displayLabel(pk, typ) : '');
 
+      const scheduleBlocks = SB ? SB.parseBlocksFromFields(ff) : [];
       put(rec, {
         typ,
         periodKey: pk || (dl ? dl.slice(0, 7) : ''),
@@ -135,8 +153,9 @@
         periodLabel: label,
         status: String(ff['Status'] || '').trim(),
         runRec: rr,
-        scheduledStart: ff['Planerad start'] || '',
-        scheduledEnd: ff['Planerad slut'] || ''
+        scheduleBlocks,
+        scheduledStart: scheduleBlocks[0]?.start || ff['Planerad start'] || '',
+        scheduledEnd: scheduleBlocks[0]?.end || ff['Planerad slut'] || ''
       });
     });
 
@@ -145,6 +164,12 @@
 
   return {
     toDate,
-    buildEventsFromRuns
+    buildEventsFromRuns,
+    expandScheduleInstances: SB && SB.expandScheduleInstances
+      ? SB.expandScheduleInstances
+      : (events) => events || [],
+    uniqueRunEvents: SB && SB.uniqueRunEvents
+      ? SB.uniqueRunEvents
+      : (events) => events || []
   };
 });
