@@ -95,6 +95,77 @@
     };
   }
 
+  function decodeBasicEntities(s) {
+    return String(s || '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/<br\s*\/?>/gi, '\n');
+  }
+
+  /** Ta bort HTML-taggar och normalisera whitespace. */
+  function stripHtml(raw) {
+    let s = decodeBasicEntities(raw);
+    s = s.replace(/<[^>]+>/g, ' ');
+    s = s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ');
+    return s.trim();
+  }
+
+  /**
+   * Ta bort Reclaim.ai:s standardboilerplate men behåll övrig beskrivning/agenda.
+   */
+  function cleanGcalDescription(raw) {
+    let s = String(raw || '');
+    if (!s) return '';
+
+    // Reclaim lägger sin footer sist – klipp bort från den meningen och framåt
+    const reclaimIdx = s.search(/This event was created by Reclaim\./i);
+    if (reclaimIdx >= 0) {
+      s = s.slice(0, reclaimIdx);
+    }
+    // Variant utan rubrikraden
+    s = s.replace(/You can edit it[\s\S]*?reschedule(?:<\/a>)?\.?/gi, '');
+    s = s.replace(/https?:\/\/(?:app\.)?reclaim\.ai\/[^\s<>"']+/gi, '');
+
+    return stripHtml(s);
+  }
+
+  /**
+   * Hitta videomöteslänk: hangoutLink, conferenceData eller URL i beskrivning.
+   */
+  function extractMeetingUrl(input) {
+    const src = input || {};
+    const direct = String(src.hangoutLink || src.meetingUrl || '').trim();
+    if (/^https?:\/\//i.test(direct)) return direct;
+
+    const entries = Array.isArray(src.conferenceEntryPoints)
+      ? src.conferenceEntryPoints
+      : Array.isArray(src.conferenceData?.entryPoints)
+        ? src.conferenceData.entryPoints
+        : [];
+    for (const ep of entries) {
+      const type = String(ep?.entryPointType || '').toLowerCase();
+      const uri = String(ep?.uri || '').trim();
+      if (type === 'video' && /^https?:\/\//i.test(uri)) return uri;
+    }
+    for (const ep of entries) {
+      const uri = String(ep?.uri || '').trim();
+      if (/^https?:\/\/meet\.google\.com\//i.test(uri)) return uri;
+    }
+
+    const blob = [src.description, src.location, src.htmlLink].map((x) => String(x || '')).join('\n');
+    const meet = blob.match(/https:\/\/meet\.google\.com\/[a-z0-9-]+/i);
+    if (meet) return meet[0];
+    const zoom = blob.match(/https:\/\/[\w.-]*zoom\.us\/j\/[^\s<>"']+/i);
+    if (zoom) return zoom[0].replace(/[),.;]+$/g, '');
+    const teams = blob.match(/https:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\s<>"']+/i);
+    if (teams) return teams[0].replace(/[),.;]+$/g, '');
+    return '';
+  }
+
   /**
    * Bygg POST /api/notes-payload för mötesanteckning.
    */
@@ -131,6 +202,9 @@
     toLocalDateTimeIso,
     hoursBetween,
     buildGcalTidPayload,
-    buildGcalNotePayload
+    buildGcalNotePayload,
+    stripHtml,
+    cleanGcalDescription,
+    extractMeetingUrl
   };
 });
