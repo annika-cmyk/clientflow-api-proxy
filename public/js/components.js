@@ -18,7 +18,7 @@ class ComponentLoader {
                 return true;
             }
 
-            const response = await fetch(`Components/${componentName}.html?v=addon2`);
+            const response = await fetch(`Components/${componentName}.html?v=addon3`);
             if (!response.ok) {
                 throw new Error(`Failed to load component: ${componentName}`);
             }
