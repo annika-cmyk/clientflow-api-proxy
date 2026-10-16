@@ -21,6 +21,7 @@
     console.error('Kalender: saknar kalender-schedule-blocks.js');
     return;
   }
+  const GA = window.KalenderGcalActions;
 
   const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || 'http://localhost:3001';
   const authOpts = () => (window.AuthManager && AuthManager.getAuthFetchOptions
@@ -82,6 +83,9 @@
   let gcalPullSeq = 0;
   /** Uppdaterar «nu»-markören i vecko-/dagsvy (varje minut). */
   let nowMarkerTimer = null;
+  /** Kundlista för Google-möte → tid/anteckning. */
+  let gcalCustomers = [];
+  let gcalCustomersLoaded = false;
 
   function show(node, on) { if (node) node.style.display = on ? '' : 'none'; }
   function esc(s) {
@@ -1450,6 +1454,302 @@
     });
   }
 
+  async function ensureGcalCustomers() {
+    if (gcalCustomersLoaded) return gcalCustomers;
+    try {
+      const res = await fetch(`${baseUrl}/api/kunddata`, {
+        method: 'POST',
+        ...authOpts(),
+        body: JSON.stringify({})
+      });
+      if (!res.ok) return gcalCustomers;
+      const data = await res.json().catch(() => ({}));
+      const records = (data.success && data.data) ? data.data : [];
+      gcalCustomers = records.map((r) => {
+        const f = r.fields || {};
+        return {
+          id: r.id,
+          namn: String(f.Namn || f['Företagsnamn'] || 'Namn saknas').trim(),
+          orgnr: String(f.Orgnr || f.orgnr || '').trim(),
+          byraId: String(f['Byrå ID'] || f.byraId || '').replace(/,/g, '').trim()
+        };
+      }).sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
+      gcalCustomersLoaded = true;
+    } catch (err) {
+      console.warn('Kalender kundlista:', err);
+    }
+    return gcalCustomers;
+  }
+
+  function resolveGcalCustomerFromForm(root) {
+    if (!root) return null;
+    const search = root.querySelector('#kal-gcal-customer');
+    const idInput = root.querySelector('#kal-gcal-customer-id');
+    const name = String((search && search.value) || '').trim();
+    const id = String((idInput && idInput.value) || '').trim();
+    const byName = gcalCustomers.find((c) => c.namn === name);
+    if (byName) {
+      if (idInput) idInput.value = byName.id;
+      return byName;
+    }
+    if (id) {
+      const byId = gcalCustomers.find((c) => c.id === id);
+      if (byId) return byId;
+    }
+    return name ? { id: '', namn: name, orgnr: '', byraId: '' } : null;
+  }
+
+  function gcalFormTimes(root, fallbackSched) {
+    const startEl = root.querySelector('#kal-gcal-start');
+    const endEl = root.querySelector('#kal-gcal-end');
+    const startHm = String((startEl && startEl.value) || '').trim()
+      || (fallbackSched ? KV.fmtTimeLabel(fallbackSched.startMin) : '');
+    const endHm = String((endEl && endEl.value) || '').trim()
+      || (fallbackSched ? KV.fmtTimeLabel(fallbackSched.endMin) : '');
+    return { startHm, endHm };
+  }
+
+  function syncGcalHoursHint(root, fallbackSched) {
+    const hint = root && root.querySelector('[data-gcal-hours]');
+    if (!hint || !GA) return;
+    const { startHm, endHm } = gcalFormTimes(root, fallbackSched);
+    const a = GA.parseHm(startHm);
+    const b = GA.parseHm(endHm);
+    if (a == null || b == null || !(b > a)) {
+      hint.textContent = 'Ange giltig start och slut';
+      return;
+    }
+    hint.textContent = `${GA.hoursBetween(a, b)} t`;
+  }
+
+  async function submitGcalTid(ev, root) {
+    if (!GA || typeof GA.buildGcalTidPayload !== 'function') {
+      showSaveToast('Saknar kalender-gcal-actions.js', true);
+      return;
+    }
+    const cust = resolveGcalCustomerFromForm(root);
+    if (!cust || !cust.id) {
+      showSaveToast('Välj kund från listan', true);
+      return;
+    }
+    const sched = scheduleOf(ev);
+    const date = toDate(ev.deadline) || (sched && sched.date) || '';
+    const { startHm, endHm } = gcalFormTimes(root, sched);
+    let tidBody;
+    try {
+      tidBody = GA.buildGcalTidPayload({
+        customerId: cust.id,
+        customerName: cust.namn,
+        date,
+        startHm,
+        endHm,
+        title: ev.summary || '',
+        status: 'Klar'
+      });
+    } catch (err) {
+      showSaveToast((err && err.message) || 'Kunde inte bygga tidpost', true);
+      return;
+    }
+    const btn = root.querySelector('[data-gcal-tid]');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar…';
+    }
+    try {
+      await postTidPayload(tidBody);
+      // Uppdatera lokal vy så blocket speglar faktisk tid
+      if (tidBody.start && tidBody.end) {
+        ev.scheduledStart = tidBody.start;
+        ev.scheduledEnd = tidBody.end;
+        const idx = googleEvents.findIndex((g) => g.key === ev.key);
+        if (idx >= 0) {
+          googleEvents[idx] = { ...googleEvents[idx], scheduledStart: tidBody.start, scheduledEnd: tidBody.end };
+        }
+      }
+      showSaveToast(`Tid registrerad · ${tidBody.hours} t`);
+      render();
+      refreshOpenDetail();
+    } catch (err) {
+      console.error('Kalender GCal tid:', err);
+      showSaveToast((err && err.message) || 'Kunde inte registrera tid', true);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-clock"></i> Registrera tid';
+      }
+    }
+  }
+
+  async function submitGcalNote(ev, root) {
+    if (!GA || typeof GA.buildGcalNotePayload !== 'function') {
+      showSaveToast('Saknar kalender-gcal-actions.js', true);
+      return;
+    }
+    const cust = resolveGcalCustomerFromForm(root);
+    if (!cust || !cust.id) {
+      showSaveToast('Välj kund från listan', true);
+      return;
+    }
+    const noteEl = root.querySelector('#kal-gcal-note');
+    const sched = scheduleOf(ev);
+    const { startHm, endHm } = gcalFormTimes(root, sched);
+    const user = window.AuthManager && AuthManager.getCurrentUser ? AuthManager.getCurrentUser() : null;
+    const userByra = user && (user.byraId || (user.byraIds && user.byraIds[0])) || '';
+    let noteBody;
+    try {
+      noteBody = GA.buildGcalNotePayload({
+        customerId: cust.id,
+        customerName: cust.namn,
+        byraId: cust.byraId || String(userByra || '').replace(/,/g, '').trim(),
+        orgnr: cust.orgnr,
+        date: toDate(ev.deadline) || (sched && sched.date) || '',
+        title: ev.summary || '',
+        startHm,
+        endHm,
+        notes: noteEl ? noteEl.value : ''
+      });
+    } catch (err) {
+      showSaveToast((err && err.message) || 'Kunde inte bygga anteckning', true);
+      return;
+    }
+    const btn = root.querySelector('[data-gcal-note]');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar…';
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/notes`, {
+        method: 'POST',
+        ...authOpts(),
+        headers: {
+          ...(authOpts().headers || {}),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(noteBody)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      showSaveToast('Mötesanteckning sparad på kunden');
+      if (noteEl) noteEl.value = '';
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sticky-note"></i> Spara mötesanteckning';
+      }
+    } catch (err) {
+      console.error('Kalender GCal anteckning:', err);
+      showSaveToast((err && err.message) || 'Kunde inte spara anteckning', true);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sticky-note"></i> Spara mötesanteckning';
+      }
+    }
+  }
+
+  function bindGoogleDetailActions(ev, sched) {
+    const root = el.detailBody;
+    if (!root) return;
+    const search = root.querySelector('#kal-gcal-customer');
+    const idInput = root.querySelector('#kal-gcal-customer-id');
+    if (search) {
+      const syncId = () => {
+        const name = String(search.value || '').trim();
+        const hit = gcalCustomers.find((c) => c.namn === name);
+        if (idInput) idInput.value = hit ? hit.id : '';
+      };
+      search.addEventListener('change', syncId);
+      search.addEventListener('blur', syncId);
+    }
+    root.querySelectorAll('#kal-gcal-start, #kal-gcal-end').forEach((inp) => {
+      inp.addEventListener('input', () => syncGcalHoursHint(root, sched));
+      inp.addEventListener('change', () => syncGcalHoursHint(root, sched));
+    });
+    const tidBtn = root.querySelector('[data-gcal-tid]');
+    if (tidBtn) tidBtn.addEventListener('click', () => submitGcalTid(ev, root));
+    const noteBtn = root.querySelector('[data-gcal-note]');
+    if (noteBtn) noteBtn.addEventListener('click', () => submitGcalNote(ev, root));
+    syncGcalHoursHint(root, sched);
+  }
+
+  function renderGoogleDetail(ev, group) {
+    const name = String(ev.summary || 'Google-händelse');
+    const sched = scheduleOf(ev);
+    const dateIso = toDate(ev.deadline) || (sched && sched.date) || '';
+    const startHm = sched ? KV.fmtTimeLabel(sched.startMin) : '09:00';
+    const endHm = sched ? KV.fmtTimeLabel(sched.endMin) : '10:00';
+    const blockLabel = sched
+      ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`
+      : (ev.allDay ? 'Heldag' : '—');
+    const siblings = Array.isArray(group) && group.length > 1 ? group : null;
+    const colorStyle = googleColorStyleAttr(ev);
+    const timed = !!(sched && !ev.allDay);
+    openDetailKey = String(ev.key || '');
+
+    if (el.detailTitle) el.detailTitle.textContent = name;
+    el.detailBody.innerHTML = `
+      <div class="kalender-detail-status kalender-detail-status--google"${colorStyle ? ` style="${esc(colorStyle)}"` : ''}>Google-kalender</div>
+      <dl class="kalender-detail-dl">
+        <div><dt>Titel</dt><dd>${esc(name)}</dd></div>
+        <div><dt>Datum</dt><dd>${esc(dateIso || '—')}</dd></div>
+        <div><dt>Planerad tid</dt><dd>${esc(blockLabel)}</dd></div>
+        ${ev.location ? `<div><dt>Plats</dt><dd>${esc(ev.location)}</dd></div>` : ''}
+        ${ev.description ? `<div><dt>Beskrivning</dt><dd class="kalender-detail-desc">${esc(ev.description).slice(0, 800)}</dd></div>` : ''}
+      </dl>
+      <div class="kalender-detail-scope kalender-gcal-followup">
+        <h4 class="kalender-detail-scope-title">Efter mötet</h4>
+        <p class="kalender-detail-blocks-hint">Koppla kund, justera faktisk tid och registrera tid eller spara mötesanteckning på kunden.</p>
+        <label class="kalender-gcal-label" for="kal-gcal-customer">Kund</label>
+        <input type="text" id="kal-gcal-customer" class="kunduppgifter-input" list="kal-gcal-customer-list"
+          placeholder="Sök kund…" autocomplete="off">
+        <input type="hidden" id="kal-gcal-customer-id" value="">
+        <datalist id="kal-gcal-customer-list"></datalist>
+        ${timed ? `
+        <div class="kalender-gcal-time-row">
+          <div>
+            <label class="kalender-gcal-label" for="kal-gcal-start">Start</label>
+            <input type="time" id="kal-gcal-start" class="kunduppgifter-input" value="${esc(startHm)}">
+          </div>
+          <div>
+            <label class="kalender-gcal-label" for="kal-gcal-end">Slut</label>
+            <input type="time" id="kal-gcal-end" class="kunduppgifter-input" value="${esc(endHm)}">
+          </div>
+          <div class="kalender-gcal-hours" data-gcal-hours>—</div>
+        </div>
+        <p class="kalender-detail-blocks-hint">Justera om mötet tog annan tid — används vid tidregistrering.</p>
+        ` : `<p class="kalender-detail-blocks-hint">Heldagshändelse — tidregistrering kräver start/slut; öppna i Google eller skapa tid manuellt under Tid.</p>`}
+        <label class="kalender-gcal-label" for="kal-gcal-note">Mötesanteckning</label>
+        <textarea id="kal-gcal-note" class="kunduppgifter-input kalender-gcal-note" rows="4"
+          placeholder="Vad ni gick igenom, beslut, nästa steg…"></textarea>
+        <div class="kalender-detail-actions kalender-detail-actions--scope">
+          ${timed ? `<button type="button" class="btn btn-primary btn-sm" data-gcal-tid>
+            <i class="fas fa-clock"></i> Registrera tid
+          </button>` : ''}
+          <button type="button" class="btn btn-ghost btn-sm" data-gcal-note>
+            <i class="fas fa-sticky-note"></i> Spara mötesanteckning
+          </button>
+          ${ev.htmlLink ? `<a class="btn btn-ghost btn-sm" href="${esc(ev.htmlLink)}" target="_blank" rel="noopener noreferrer"><i class="fab fa-google"></i> Öppna i Google</a>` : ''}
+        </div>
+      </div>
+      ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
+        ${siblings.map((s) => {
+          const label = isGoogleEvent(s) ? (s.summary || 'Google') : String(s.record?.fields?.Kundnamn || s.key);
+          const sibStyle = googleColorStyleAttr(s);
+          return `<button type="button" class="kalender-side-item${isGoogleEvent(s) ? ' kalender-side-item--google' : ''}" data-key="${esc(s.key)}"${sibStyle ? ` style="${esc(sibStyle)}"` : ''}><span class="kalender-side-name">${esc(label)}</span></button>`;
+        }).join('')}
+      </div>` : ''}`;
+    el.detail.hidden = false;
+    document.body.classList.add('kalender-detail-open');
+    el.detailBody.querySelectorAll('[data-key]').forEach((btn) => {
+      btn.addEventListener('click', () => openDetail(btn.getAttribute('data-key')));
+    });
+    bindGoogleDetailActions(ev, sched);
+    ensureGcalCustomers().then((list) => {
+      const dl = el.detailBody && el.detailBody.querySelector('#kal-gcal-customer-list');
+      if (!dl) return;
+      dl.innerHTML = list.map((c) =>
+        `<option value="${esc(c.namn)}"></option>`
+      ).join('');
+    });
+  }
+
   function openDetail(key, group) {
     const ev = eventByKey(key) || (group || []).find((x) => x.key === key || x.runKey === key);
     if (!ev || !el.detail) return;
@@ -1457,38 +1757,7 @@
     openDetailKey = String(ev.blockId ? ev.key : (ev.runKey || ev.key || key || ''));
 
     if (isGoogleEvent(ev)) {
-      const name = String(ev.summary || 'Google-händelse');
-      const sched = scheduleOf(ev);
-      const blockLabel = sched
-        ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`
-        : (ev.allDay ? 'Heldag' : '—');
-      const siblings = Array.isArray(group) && group.length > 1 ? group : null;
-      const colorStyle = googleColorStyleAttr(ev);
-      if (el.detailTitle) el.detailTitle.textContent = name;
-      el.detailBody.innerHTML = `
-        <div class="kalender-detail-status kalender-detail-status--google"${colorStyle ? ` style="${esc(colorStyle)}"` : ''}>Google-kalender</div>
-        <dl class="kalender-detail-dl">
-          <div><dt>Titel</dt><dd>${esc(name)}</dd></div>
-          <div><dt>Datum</dt><dd>${esc(toDate(ev.deadline) || '—')}</dd></div>
-          <div><dt>Tid</dt><dd>${esc(blockLabel)}</dd></div>
-          ${ev.location ? `<div><dt>Plats</dt><dd>${esc(ev.location)}</dd></div>` : ''}
-          ${ev.description ? `<div><dt>Beskrivning</dt><dd class="kalender-detail-desc">${esc(ev.description).slice(0, 800)}</dd></div>` : ''}
-        </dl>
-        <div class="kalender-detail-actions">
-          ${ev.htmlLink ? `<a class="btn btn-ghost btn-sm" href="${esc(ev.htmlLink)}" target="_blank" rel="noopener noreferrer"><i class="fab fa-google"></i> Öppna i Google</a>` : ''}
-        </div>
-        ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
-          ${siblings.map((s) => {
-            const label = isGoogleEvent(s) ? (s.summary || 'Google') : String(s.record?.fields?.Kundnamn || s.key);
-            const sibStyle = googleColorStyleAttr(s);
-            return `<button type="button" class="kalender-side-item${isGoogleEvent(s) ? ' kalender-side-item--google' : ''}" data-key="${esc(s.key)}"${sibStyle ? ` style="${esc(sibStyle)}"` : ''}><span class="kalender-side-name">${esc(label)}</span></button>`;
-          }).join('')}
-        </div>` : ''}`;
-      el.detail.hidden = false;
-      document.body.classList.add('kalender-detail-open');
-      el.detailBody.querySelectorAll('[data-key]').forEach((btn) => {
-        btn.addEventListener('click', () => openDetail(btn.getAttribute('data-key')));
-      });
+      renderGoogleDetail(ev, group);
       return;
     }
 
