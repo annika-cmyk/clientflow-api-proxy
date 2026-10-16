@@ -16,6 +16,11 @@
     console.error('Kalender: saknar kalender-events.js');
     return;
   }
+  const SB = window.KalenderScheduleBlocks;
+  if (!SB || typeof SB.parseBlocksFromFields !== 'function') {
+    console.error('Kalender: saknar kalender-schedule-blocks.js');
+    return;
+  }
 
   const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || 'http://localhost:3001';
   const authOpts = () => (window.AuthManager && AuthManager.getAuthFetchOptions
@@ -175,7 +180,40 @@
           KV.inVisibleRangeForEvent(deadline, scheduledStart, range)
       }
     });
-    return cf.concat(Array.isArray(googleEvents) ? googleEvents : []);
+    const expanded = typeof KE.expandScheduleInstances === 'function'
+      ? KE.expandScheduleInstances(cf)
+      : SB.expandScheduleInstances(cf);
+    return expanded.concat(Array.isArray(googleEvents) ? googleEvents : []);
+  }
+
+  function eventByKey(key) {
+    const k = String(key || '');
+    if (!k) return null;
+    if (byKey.has(k)) return byKey.get(k);
+    for (const ev of byKey.values()) {
+      if (String(ev.runKey || '') === k) return ev;
+    }
+    return null;
+  }
+
+  function blocksOf(ev) {
+    if (!ev || isGoogleEvent(ev)) return [];
+    if (Array.isArray(ev.scheduleBlocks) && ev.scheduleBlocks.length) {
+      return SB.sortBlocks(ev.scheduleBlocks);
+    }
+    if (ev.runRec) return SB.parseBlocksFromFields(ev.runRec.fields || {});
+    const single = scheduleOf(ev);
+    if (!single) return [];
+    return [{ id: ev.blockId || 'legacy', start: single.start, end: single.end }];
+  }
+
+  function totalScheduledHours(ev) {
+    const blocks = blocksOf(ev);
+    if (blocks.length) {
+      return Math.round(SB.totalHours(blocks, KV.durationHours) * 100) / 100;
+    }
+    const sched = scheduleOf(ev);
+    return sched && sched.hours > 0 ? sched.hours : 0;
   }
 
   function isGoogleEvent(ev) {
@@ -234,6 +272,10 @@
   }
 
   function placeDateOf(ev) {
+    // Schemalagda tidblock ligger alltid på sin riktiga dag (även i Öppna-läge),
+    // så de inte «flyttas» till deadline/idag när dagen ligger utanför synlig period.
+    const sched = scheduleOf(ev);
+    if (sched) return sched.date;
     if (eventMode === 'open') {
       return KV.placementDateOpen(
         ev.scheduledStart,
@@ -454,9 +496,10 @@
     const kundId = String(f['Kund ID'] || runF['Kund ID'] || '').trim();
     const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
     const uppdragId = String(ev.record?.id || runF['Uppdrag ID'] || '').trim();
-    const sched = scheduleOf(ev);
-    if (!sched || !(sched.hours > 0)) {
-      showSaveToast('Avsätt tid i kalendern först (dra i nederkant).', true);
+    const blockList = blocksOf(ev);
+    const schedFallback = scheduleOf(ev);
+    if (!blockList.length && (!schedFallback || !(schedFallback.hours > 0))) {
+      showSaveToast('Avsätt tid i kalendern först (dra från listan eller i nederkant).', true);
       return;
     }
     if (!runId) {
@@ -468,46 +511,58 @@
       return;
     }
 
-    let tidBody;
+    const helper = window.KalenderKlarTid;
+    const build = helper && helper.buildKalenderTidPayload
+      ? helper.buildKalenderTidPayload
+      : null;
+    const payloads = [];
     try {
-      const helper = window.KalenderKlarTid;
-      const build = helper && helper.buildKalenderTidPayload
-        ? helper.buildKalenderTidPayload
-        : null;
-      const args = {
-        customerId: kundId,
-        customerName: name,
-        uppdragId,
-        uppdragsnamn: displayName(ev.typ, f),
-        koringId: runId,
-        hours: sched.hours,
-        date: sched.date,
-        start: sched.start,
-        end: sched.end,
-        status: 'Klar'
-      };
-      if (build) {
-        tidBody = build(args);
-      } else {
-        tidBody = {
+      const sources = blockList.length
+        ? blockList.map((b) => {
+          const n = KV.normalizeSchedule(b.start, b.end);
+          return n || { hours: 0, date: String(b.start || '').slice(0, 10), start: b.start, end: b.end, startMin: 0, endMin: 0 };
+        })
+        : [schedFallback];
+      sources.forEach((sched) => {
+        if (!sched || !(sched.hours > 0)) return;
+        const args = {
           customerId: kundId,
           customerName: name,
           uppdragId,
           uppdragsnamn: displayName(ev.typ, f),
           koringId: runId,
-          date: sched.date,
           hours: sched.hours,
-          start: sched.start || '',
-          end: sched.end || '',
-          activity: 'Uppdragsarbete',
-          description: `Avsatt tid ${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (från kalender)`,
+          date: sched.date,
+          start: sched.start,
+          end: sched.end,
           status: 'Klar'
         };
-      }
+        payloads.push(build
+          ? build(args)
+          : {
+            customerId: kundId,
+            customerName: name,
+            uppdragId,
+            uppdragsnamn: displayName(ev.typ, f),
+            koringId: runId,
+            date: sched.date,
+            hours: sched.hours,
+            start: sched.start || '',
+            end: sched.end || '',
+            activity: 'Uppdragsarbete',
+            description: `Avsatt tid ${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (från kalender)`,
+            status: 'Klar'
+          });
+      });
     } catch (err) {
       showSaveToast((err && err.message) || 'Kunde inte bygga tidpost', true);
       return;
     }
+    if (!payloads.length) {
+      showSaveToast('Avsätt tid i kalendern först (dra från listan eller i nederkant).', true);
+      return;
+    }
+    const totalH = Math.round(payloads.reduce((s, p) => s + Number(p.hours || 0), 0) * 100) / 100;
 
     const btn = el.detailBody && el.detailBody.querySelector('[data-klar-tid]');
     const onlyBtn = el.detailBody && el.detailBody.querySelector('[data-klar-only]');
@@ -518,20 +573,22 @@
     if (onlyBtn) onlyBtn.disabled = true;
 
     try {
-      const tidRes = await fetch(`${baseUrl}/api/tidregistrering`, {
-        method: 'POST',
-        ...authOpts(),
-        headers: {
-          ...(authOpts().headers || {}),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(tidBody)
-      });
-      const tidData = await tidRes.json().catch(() => ({}));
-      if (!tidRes.ok) throw new Error(tidData.error || 'Kunde inte registrera tid');
+      for (const tidBody of payloads) {
+        const tidRes = await fetch(`${baseUrl}/api/tidregistrering`, {
+          method: 'POST',
+          ...authOpts(),
+          headers: {
+            ...(authOpts().headers || {}),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(tidBody)
+        });
+        const tidData = await tidRes.json().catch(() => ({}));
+        if (!tidRes.ok) throw new Error(tidData.error || 'Kunde inte registrera tid');
+      }
 
       await patchRunStatusKlar(ev, runId);
-      showSaveToast(`Klarmarkerad · ${sched.hours} t registrerad`);
+      showSaveToast(`Klarmarkerad · ${totalH} t registrerad`);
 
       const navigatedToMejl = afterKlarMejlLink(runId, uppdragId);
       if (navigatedToMejl) return;
@@ -542,16 +599,16 @@
       showSaveToast((err && err.message) || 'Kunde inte spara', true);
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${sched.hours} t)`;
+        btn.innerHTML = `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${totalH} t)`;
       }
       if (onlyBtn) onlyBtn.disabled = false;
-      syncKlarActionButtons(sched.hours);
+      syncKlarActionButtons(totalH);
     }
   }
 
   function refreshOpenDetail() {
     if (!openDetailKey || !el.detail || el.detail.hidden) return;
-    if (!byKey.has(String(openDetailKey))) return;
+    if (!eventByKey(openDetailKey)) return;
     openDetail(openDetailKey);
   }
 
@@ -571,27 +628,49 @@
     saveToastTimer = setTimeout(() => { toast.hidden = true; }, 2800);
   }
 
-  function applyScheduleLocal(ev, startIso, endIso) {
-    ev.scheduledStart = startIso || '';
-    ev.scheduledEnd = endIso || '';
+  function applyScheduleLocal(ev, blocks) {
+    const list = Array.isArray(blocks) ? SB.sortBlocks(blocks) : [];
+    const primary = list[0] || null;
+    ev.scheduleBlocks = list;
+    ev.scheduledStart = primary ? primary.start : '';
+    ev.scheduledEnd = primary ? primary.end : '';
+    const fieldPatch = SB.fieldsForBlocks(list);
     if (ev.runRec) {
       ev.runRec.fields = ev.runRec.fields || {};
-      ev.runRec.fields['Planerad start'] = startIso || '';
-      ev.runRec.fields['Planerad slut'] = endIso || '';
+      Object.assign(ev.runRec.fields, fieldPatch);
     }
     const rr = runRecords.find((r) => r.id === ev.runRec?.id);
     if (rr) {
       rr.fields = rr.fields || {};
-      rr.fields['Planerad start'] = startIso || '';
-      rr.fields['Planerad slut'] = endIso || '';
+      Object.assign(rr.fields, fieldPatch);
     }
   }
 
-  async function persistSchedule(ev, startIso, endIso) {
+  /**
+   * @param {object} ev
+   * @param {string|null} startIso
+   * @param {string|null} endIso
+   * @param {{ mode?: string, blockId?: string|null }} [opts]
+   */
+  async function persistSchedule(ev, startIso, endIso, opts) {
     const runId = String(ev.runRec?.id || '').trim();
     if (!runId) {
       showSaveToast('Saknar uppdragskörning – tidblock kan inte sparas.', true);
       return false;
+    }
+    const options = opts || {};
+    let mode = String(options.mode || '').trim().toLowerCase();
+    let blockId = options.blockId != null ? options.blockId : (ev.blockId || null);
+    if (!mode) {
+      if (blockId) mode = 'update';
+      else if (blocksOf(ev).length) mode = 'add';
+      else mode = 'set';
+    }
+    const body = { start: startIso, end: endIso, mode };
+    if (blockId) body.blockId = blockId;
+    if (mode === 'remove') {
+      delete body.start;
+      delete body.end;
     }
     try {
       const res = await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/schedule`, {
@@ -601,7 +680,7 @@
           ...(authOpts().headers || {}),
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ start: startIso, end: endIso })
+        body: JSON.stringify(body)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -611,8 +690,11 @@
         if (idx >= 0) runRecords[idx] = data.record;
         else runRecords.push(data.record);
       }
-      applyScheduleLocal(ev, startIso, endIso);
-      showSaveToast('Tidblock sparat');
+      const nextBlocks = Array.isArray(data.blocks)
+        ? data.blocks
+        : SB.parseBlocksFromFields((data.record && data.record.fields) || {});
+      applyScheduleLocal(ev, nextBlocks);
+      showSaveToast(mode === 'remove' ? 'Tidblock borttaget' : 'Tidblock sparat');
       return true;
     } catch (err) {
       console.error('Kalender schedule:', err);
@@ -670,6 +752,10 @@
     });
   }
 
+  function isCalendarDropMode(mode) {
+    return mode === 'month-move' || mode === 'side-add' || mode === 'timed-move' || mode === 'untimed-to-grid';
+  }
+
   function bindMonthDrag(dayMap) {
     gridEl.querySelectorAll('.kalender-chip[draggable="true"]').forEach((btn) => {
       btn.addEventListener('dragstart', (e) => {
@@ -677,7 +763,7 @@
         e.dataTransfer.setData('text/plain', key);
         e.dataTransfer.effectAllowed = 'move';
         btn.classList.add('is-dragging');
-        dragState = { key, mode: 'month-move' };
+        dragState = { key, mode: 'month-move', blockId: eventByKey(key)?.blockId || null };
       });
       btn.addEventListener('dragend', () => {
         btn.classList.remove('is-dragging');
@@ -687,9 +773,9 @@
     });
     gridEl.querySelectorAll('.kalender-cell[data-date]').forEach((cell) => {
       cell.addEventListener('dragover', (e) => {
-        if (!dragState || dragState.mode !== 'month-move') return;
+        if (!dragState || (dragState.mode !== 'month-move' && dragState.mode !== 'side-add')) return;
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
+        e.dataTransfer.dropEffect = dragState.mode === 'side-add' ? 'copy' : 'move';
         cell.classList.add('is-drop-target');
       });
       cell.addEventListener('dragleave', () => cell.classList.remove('is-drop-target'));
@@ -697,15 +783,18 @@
         e.preventDefault();
         cell.classList.remove('is-drop-target');
         const key = e.dataTransfer.getData('text/plain') || dragState?.key;
-        const ev = byKey.get(String(key || ''));
+        const ev = eventByKey(key);
         const date = cell.getAttribute('data-date');
         if (!ev || !date) return;
-        const existing = scheduleOf(ev);
+        const fromSide = dragState?.mode === 'side-add';
+        const existing = !fromSide ? scheduleOf(ev) : null;
         const startMin = existing ? existing.startMin : 9 * 60;
         const endMin = existing ? existing.endMin : startMin + KV.DEFAULT_BLOCK_MINUTES;
         const startIso = KV.toLocalDateTimeIso(date, startMin);
         const endIso = KV.toLocalDateTimeIso(date, Math.min(endMin, KV.dayEndMinutes()));
-        const ok = await persistSchedule(ev, startIso, endIso);
+        const ok = await persistSchedule(ev, startIso, endIso, fromSide
+          ? { mode: 'add' }
+          : { mode: ev.blockId ? 'update' : 'set', blockId: ev.blockId || null });
         if (ok) {
           render();
           refreshOpenDetail();
@@ -804,7 +893,7 @@
       });
       btn.addEventListener('dragstart', (e) => {
         const key = btn.getAttribute('data-key');
-        const ev = byKey.get(key);
+        const ev = eventByKey(key);
         const sched = ev && scheduleOf(ev);
         e.dataTransfer.setData('text/plain', key);
         e.dataTransfer.effectAllowed = 'move';
@@ -812,6 +901,7 @@
         dragState = {
           key,
           mode: 'timed-move',
+          blockId: ev?.blockId || null,
           duration: sched ? (sched.endMin - sched.startMin) : KV.DEFAULT_BLOCK_MINUTES
         };
       });
@@ -839,9 +929,9 @@
 
     columns.forEach((col) => {
       col.addEventListener('dragover', (e) => {
-        if (!dragState || (dragState.mode !== 'timed-move' && dragState.mode !== 'untimed-to-grid')) return;
+        if (!dragState || !isCalendarDropMode(dragState.mode) || dragState.mode === 'month-move') return;
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
+        e.dataTransfer.dropEffect = dragState.mode === 'side-add' ? 'copy' : 'move';
         col.classList.add('is-drop-target');
       });
       col.addEventListener('dragleave', () => col.classList.remove('is-drop-target'));
@@ -849,7 +939,7 @@
         e.preventDefault();
         col.classList.remove('is-drop-target');
         const key = e.dataTransfer.getData('text/plain') || dragState?.key;
-        const ev = byKey.get(String(key || ''));
+        const ev = eventByKey(key);
         if (!ev) return;
         const { y, height, date } = pointerYInCol(e.clientY, col);
         if (!date) return;
@@ -859,7 +949,13 @@
         const endIso = KV.toLocalDateTimeIso(date, moved.endMin);
         const elBtn = gridEl.querySelector(`[data-key="${String(key).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`);
         if (elBtn) elBtn.dataset.suppressClick = '1';
-        const ok = await persistSchedule(ev, startIso, endIso);
+        const fromSide = dragState?.mode === 'side-add';
+        const ok = await persistSchedule(ev, startIso, endIso, fromSide
+          ? { mode: 'add' }
+          : {
+            mode: dragState?.mode === 'untimed-to-grid' ? 'set' : (ev.blockId ? 'update' : 'set'),
+            blockId: fromSide ? null : (ev.blockId || dragState?.blockId || null)
+          });
         if (ok) {
           render();
           refreshOpenDetail();
@@ -920,7 +1016,10 @@
         }
         const startIso = KV.toLocalDateTimeIso(date, startMin);
         const endIso = KV.toLocalDateTimeIso(date, endMin);
-        await persistSchedule(ev, startIso, endIso);
+        await persistSchedule(ev, startIso, endIso, {
+          mode: ev.blockId ? 'update' : 'set',
+          blockId: ev.blockId || null
+        });
         render();
         refreshOpenDetail();
       };
@@ -1030,7 +1129,7 @@
 
     gridEl.querySelectorAll('.kalender-untimed[data-date]').forEach((strip) => {
       strip.addEventListener('dragover', (e) => {
-        if (!dragState) return;
+        if (!dragState || !isCalendarDropMode(dragState.mode)) return;
         e.preventDefault();
         strip.classList.add('is-drop-target');
       });
@@ -1039,12 +1138,15 @@
         e.preventDefault();
         strip.classList.remove('is-drop-target');
         const key = e.dataTransfer.getData('text/plain') || dragState?.key;
-        const ev = byKey.get(String(key || ''));
+        const ev = eventByKey(key);
         const date = strip.getAttribute('data-date');
         if (!ev || !date) return;
         const startIso = KV.toLocalDateTimeIso(date, 9 * 60);
         const endIso = KV.toLocalDateTimeIso(date, 9 * 60 + KV.DEFAULT_BLOCK_MINUTES);
-        const ok = await persistSchedule(ev, startIso, endIso);
+        const fromSide = dragState?.mode === 'side-add';
+        const ok = await persistSchedule(ev, startIso, endIso, fromSide
+          ? { mode: 'add' }
+          : { mode: ev.blockId ? 'update' : 'set', blockId: ev.blockId || null });
         if (ok) {
           render();
           refreshOpenDetail();
@@ -1101,7 +1203,10 @@
 
   function renderSide(list) {
     if (!el.sideList) return;
-    const items = sidePanelEvents(list);
+    const expanded = sidePanelEvents(list);
+    const items = typeof KE.uniqueRunEvents === 'function'
+      ? KE.uniqueRunEvents(expanded)
+      : SB.uniqueRunEvents(expanded);
     if (el.sideLabel) el.sideLabel.textContent = eventMode === 'open' ? 'Öppna' : 'Deadlines';
     if (el.sideCount) el.sideCount.textContent = items.length ? `(${items.length})` : '';
     const emptyWhen = KV.rangeEmptyLabel(view);
@@ -1120,10 +1225,21 @@
       const head = place !== last ? `<div class="kalender-side-date">${esc(fmtDate(place))}</div>` : '';
       last = place;
       const period = ev.periodLabel || ev.periodKey || '';
-      const sched = scheduleOf(ev);
-      const timeMeta = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : '';
+      const blocks = blocksOf(ev);
+      const totalH = totalScheduledHours(ev);
+      let timeMeta = '';
+      if (blocks.length > 1) {
+        timeMeta = `${blocks.length} tillfällen · ${totalH} t · `;
+      } else if (blocks.length === 1) {
+        const sched = KV.normalizeSchedule(blocks[0].start, blocks[0].end);
+        timeMeta = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : '';
+      }
+      const runKey = String(ev.runKey || ev.key || '');
+      const canDrag = !!ev.runRec?.id;
       return `${head}
-        <button type="button" class="kalender-side-item kalender-side-item--${cls}" data-key="${esc(ev.key)}">
+        <button type="button" class="kalender-side-item kalender-side-item--${cls}${canDrag ? ' is-draggable' : ''}"
+          data-key="${esc(runKey)}" ${canDrag ? 'draggable="true"' : ''}
+          title="${canDrag ? 'Dra till kalendern för att avsätta tid (kan göras flera gånger)' : ''}">
           <span class="kalender-side-main">
             <span class="kalender-side-name">${esc(name)}</span>
             <span class="kalender-side-meta">${esc(timeMeta)}${esc(displayName(ev.typ, f))}${period ? ` · ${esc(period)}` : ''}</span>
@@ -1132,14 +1248,37 @@
         </button>`;
     }).join('');
     el.sideList.querySelectorAll('[data-key]').forEach((btn) => {
-      btn.addEventListener('click', () => openDetail(btn.getAttribute('data-key')));
+      btn.addEventListener('click', () => {
+        if (btn.dataset.suppressClick === '1') {
+          btn.dataset.suppressClick = '';
+          return;
+        }
+        openDetail(btn.getAttribute('data-key'));
+      });
+      if (btn.getAttribute('draggable') === 'true') {
+        btn.addEventListener('dragstart', (e) => {
+          const key = btn.getAttribute('data-key');
+          e.dataTransfer.setData('text/plain', key);
+          e.dataTransfer.effectAllowed = 'copy';
+          btn.classList.add('is-dragging');
+          dragState = { key, mode: 'side-add', duration: KV.DEFAULT_BLOCK_MINUTES };
+        });
+        btn.addEventListener('dragend', () => {
+          btn.classList.remove('is-dragging');
+          if (dragState && dragState.mode === 'side-add') {
+            btn.dataset.suppressClick = '1';
+          }
+          dragState = null;
+          gridEl.querySelectorAll('.is-drop-target').forEach((c) => c.classList.remove('is-drop-target'));
+        });
+      }
     });
   }
 
   function openDetail(key, group) {
-    const ev = byKey.get(String(key || '')) || (group || []).find((x) => x.key === key);
+    const ev = eventByKey(key) || (group || []).find((x) => x.key === key || x.runKey === key);
     if (!ev || !el.detail) return;
-    openDetailKey = String(ev.key || key || '');
+    openDetailKey = String(ev.runKey || ev.key || key || '');
 
     if (isGoogleEvent(ev)) {
       const name = String(ev.summary || 'Google-händelse');
@@ -1185,14 +1324,35 @@
     const ansvarig = String(f['Ansvarig'] || f['Klientansvarig'] || '').trim();
     const period = ev.periodLabel || ev.periodKey || '—';
     const siblings = Array.isArray(group) && group.length > 1 ? group : null;
-    const sched = scheduleOf(ev);
+    const blockList = blocksOf(ev);
+    const totalH = totalScheduledHours(ev);
     const isKlar = cls === 'klar';
     const canKlar = !isKlar && !!ev.runRec?.id;
     const canKlarTid = canKlar && !!kundId;
-    const hasHours = !!(sched && sched.hours > 0);
-    const blockLabel = sched
-      ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (${sched.hours} t)`
-      : 'Ej avsatt — dra i vecko-/dagsvy';
+    const hasHours = totalH > 0;
+    let blockLabel = 'Ej avsatt — dra från listan till kalendern';
+    if (blockList.length === 1) {
+      const sched = KV.normalizeSchedule(blockList[0].start, blockList[0].end);
+      if (sched) {
+        blockLabel = `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (${sched.hours} t) · ${fmtDate(sched.date)}`;
+      }
+    } else if (blockList.length > 1) {
+      blockLabel = `${blockList.length} tillfällen · ${totalH} t totalt`;
+    }
+
+    const blocksHtml = blockList.length
+      ? `<ul class="kalender-detail-blocks">
+          ${blockList.map((b) => {
+            const sched = KV.normalizeSchedule(b.start, b.end);
+            if (!sched) return '';
+            return `<li class="kalender-detail-block-row">
+              <span>${esc(fmtDate(sched.date))} · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))} (${esc(String(sched.hours))} t)</span>
+              ${canKlar ? `<button type="button" class="btn btn-ghost btn-sm" data-remove-block="${esc(b.id)}" title="Ta bort tillfälle"><i class="fas fa-times"></i></button>` : ''}
+            </li>`;
+          }).join('')}
+        </ul>
+        <p class="kalender-detail-blocks-hint">Dra raden i listan till kalendern igen för att lägga till fler tillfällen.</p>`
+      : '';
 
     if (el.detailTitle) {
       if (kundId) {
@@ -1213,12 +1373,13 @@
         <div><dt>Avsatt tid</dt><dd data-avsatt-tid>${esc(blockLabel)}</dd></div>
         ${ansvarig ? `<div><dt>Ansvarig</dt><dd>${esc(ansvarig)}</dd></div>` : ''}
       </dl>
+      ${blocksHtml}
       <div class="kalender-detail-actions">
         ${canKlar ? `<button type="button" class="${klarOnlyCls}" data-klar-only>
           <i class="fas fa-check"></i> Klarmarkera
         </button>` : ''}
         ${canKlarTid ? `<button type="button" class="${klarTidCls}" data-klar-tid ${hasHours ? '' : 'disabled'}>
-          <i class="fas fa-check"></i> Klarmarkera & registrera tid${hasHours ? ` (${esc(String(sched.hours))} t)` : ''}
+          <i class="fas fa-check"></i> Klarmarkera & registrera tid${hasHours ? ` (${esc(String(totalH))} t)` : ''}
         </button>` : ''}
         ${isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Klarmarkerad</span>` : ''}
         <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
@@ -1252,6 +1413,20 @@
         klarAndRegisterTid(ev);
       });
     }
+    el.detailBody.querySelectorAll('[data-remove-block]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const blockId = btn.getAttribute('data-remove-block');
+        if (!blockId) return;
+        btn.disabled = true;
+        const ok = await persistSchedule(ev, null, null, { mode: 'remove', blockId });
+        if (ok) {
+          render();
+          refreshOpenDetail();
+        } else {
+          btn.disabled = false;
+        }
+      });
+    });
   }
 
   function closeDetail() {
