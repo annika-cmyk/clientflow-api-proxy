@@ -23144,6 +23144,23 @@ body.kalender-detail-open { overflow: hidden; }
 .mb-more-menu button:hover { background: #f1f5f9; }
 .mb-more-menu button.is-danger { color: #b42318; }
 .mb-share-result { margin-top: 0.75rem; }
+.mb-share-slots {
+  max-height: 220px; overflow: auto;
+  display: grid; gap: 0.35rem;
+  border: 1px solid #eef2f6; border-radius: 10px; padding: 0.5rem;
+  background: #fff;
+}
+.mb-share-slot {
+  display: flex; align-items: center; gap: 0.55rem;
+  font-size: 0.88rem; padding: 0.35rem 0.45rem; border-radius: 8px;
+  cursor: pointer;
+}
+.mb-share-slot:hover { background: #f8fafc; }
+.mb-share-slot input { accent-color: var(--accent, #13505c); }
+.mb-card-customize {
+  margin-top: 0.65rem;
+  width: 100%;
+}
 .mb-day-toggles {
   display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem;
 }

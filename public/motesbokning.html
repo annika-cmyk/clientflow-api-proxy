@@ -218,28 +218,54 @@
         </div>
     </div>
 
-    <!-- Dela med agenda -->
+    <!-- Anpassa inbjudan -->
     <div id="mb-share-modal" class="kalender-detail" hidden>
         <div class="kalender-detail-backdrop" data-mb-share-close></div>
-        <div class="kalender-detail-panel moten-modal-panel" role="dialog" aria-modal="true" aria-labelledby="mb-share-title">
+        <div class="kalender-detail-panel moten-modal-panel mb-modal-wide" role="dialog" aria-modal="true" aria-labelledby="mb-share-title">
             <div class="kalender-detail-header">
-                <h3 id="mb-share-title">Dela möteslänk med agenda</h3>
+                <h3 id="mb-share-title">Anpassa inbjudan</h3>
                 <button type="button" class="modal-close" data-mb-share-close aria-label="Stäng"><i class="fas fa-times"></i></button>
             </div>
             <div class="kalender-detail-body">
-                <p class="kalender-lead">Skriv en agenda som kunden kan komplettera när de bokar. Den följer med till kalenderinbjudan.</p>
+                <p class="kalender-lead">Skapa en unik länk för just det här mötet med egen agenda och/eller föreslagna tider. Kunden kan komplettera agendan när de bokar.</p>
                 <input type="hidden" id="mb-share-link-id" value="">
+                <p class="mb-share-link-name" id="mb-share-link-name" style="font-weight:700;margin:0 0 0.75rem;"></p>
                 <label class="moten-field">
                     <span>Kundnamn (valfritt)</span>
                     <input type="text" id="mb-share-customer" class="kunduppgifter-input" placeholder="Visas internt">
                 </label>
                 <label class="moten-field">
-                    <span>Agenda</span>
-                    <textarea id="mb-share-agenda" class="kunduppgifter-input" rows="5" placeholder="1. …&#10;2. …"></textarea>
+                    <span>Agenda för detta möte</span>
+                    <textarea id="mb-share-agenda" class="kunduppgifter-input" rows="4" placeholder="1. …&#10;2. …"></textarea>
                 </label>
+
+                <fieldset class="mb-fieldset">
+                    <legend>Föreslagna tider (valfritt)</legend>
+                    <p class="kalender-lead" style="margin:0 0 0.5rem;font-size:0.85rem;">
+                        Markera tider som förslag till kunden. Övriga lediga tider syns också, om du inte begränsar nedan.
+                    </p>
+                    <div class="moten-row">
+                        <label class="moten-field">
+                            <span>Längd</span>
+                            <select id="mb-share-duration" class="kunduppgifter-input"></select>
+                        </label>
+                        <div class="moten-field" style="align-self:end;">
+                            <button type="button" class="btn btn-ghost btn-sm" id="mb-share-load-slots">
+                                <i class="fas fa-sync"></i> Hämta lediga tider
+                            </button>
+                        </div>
+                    </div>
+                    <div id="mb-share-slots" class="mb-share-slots"></div>
+                    <p class="mb-empty" id="mb-share-slots-empty" hidden>Inga lediga tider i fönstret — prova annan längd eller senare.</p>
+                    <label class="mb-check" style="margin-top:0.5rem;">
+                        <input type="checkbox" id="mb-share-only-suggested">
+                        Bara visa de markerade tiderna för kunden
+                    </label>
+                </fieldset>
+
                 <div class="moten-form-actions">
                     <button type="button" class="btn btn-ghost btn-sm" data-mb-share-close>Avbryt</button>
-                    <button type="button" class="btn btn-primary btn-sm" id="mb-share-create"><i class="fas fa-link"></i> Skapa delningslänk</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="mb-share-create"><i class="fas fa-link"></i> Skapa inbjudningslänk</button>
                 </div>
                 <div id="mb-share-result" class="mb-share-result" hidden>
                     <label class="moten-field">
@@ -259,6 +285,6 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.7" defer></script>
-    <script src="js/motesbokning-admin.js?v=2" defer></script>
+    <script src="js/motesbokning-admin.js?v=3" defer></script>
 </body>
 </html>

@@ -376,15 +376,29 @@
       linkState.selectedSlot = null;
     }
 
-    el.times.innerHTML = slots
-      .map((s) => {
-        const t = new Date(s.start).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
-        const on = linkState.selectedSlot && linkState.selectedSlot.start === s.start;
-        return `<button type="button" class="boka-time${on ? ' is-selected' : ''}" data-start="${esc(s.start)}" data-end="${esc(s.end)}">
-          <span class="boka-pref-dot" aria-hidden="true"></span><span>${esc(t)}</span>
+    const ordered = slots.slice().sort((a, b) => {
+      const ap = a.preferred ? 0 : 1;
+      const bp = b.preferred ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return String(a.start).localeCompare(String(b.start));
+    });
+    const hasPreferred = ordered.some((s) => s.preferred);
+    el.times.innerHTML =
+      ordered
+        .map((s) => {
+          const t = new Date(s.start).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+          const on = linkState.selectedSlot && linkState.selectedSlot.start === s.start;
+          const pref = s.preferred
+            ? '<span class="boka-pref-dot" title="Föreslagen tid" aria-hidden="true"></span>'
+            : '<span class="boka-pref-dot boka-pref-dot--off" aria-hidden="true"></span>';
+          return `<button type="button" class="boka-time${on ? ' is-selected' : ''}${s.preferred ? ' is-preferred' : ''}" data-start="${esc(s.start)}" data-end="${esc(s.end)}">
+          ${pref}<span>${esc(t)}</span>
         </button>`;
-      })
-      .join('');
+        })
+        .join('') +
+      (hasPreferred
+        ? '<p class="boka-hint" style="margin-top:0.5rem;"><span class="boka-pref-dot" style="display:inline-block;vertical-align:middle;"></span> Föreslagen tid</p>'
+        : '');
     el.times.querySelectorAll('.boka-time').forEach((btn) => {
       btn.addEventListener('click', () => {
         selectSlot(btn.getAttribute('data-start'), btn.getAttribute('data-end'));
