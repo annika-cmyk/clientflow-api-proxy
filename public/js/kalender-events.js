@@ -70,6 +70,11 @@
           : []);
       const primaryStart = blocks[0]?.start || String(putOpts.scheduledStart || '').trim();
       const primaryEnd = blocks[0]?.end || String(putOpts.scheduledEnd || '').trim();
+      const estimatedHours = putOpts.estimatedHours != null
+        ? putOpts.estimatedHours
+        : (SB && putOpts.runRec
+          ? SB.parseEstimatedHours(putOpts.runRec.fields || {})
+          : null);
       const prev = map.get(key);
       if (!prev) {
         map.set(key, {
@@ -86,6 +91,7 @@
           scheduledStart: primaryStart,
           scheduledEnd: primaryEnd,
           scheduleBlocks: blocks,
+          estimatedHours,
           blockId: null,
           inRange: false
         });
@@ -95,6 +101,7 @@
         else if ((!prev.status || prev.status === 'Planerad') && status) prev.status = status;
         if (!prev.periodLabel && putOpts.periodLabel) prev.periodLabel = String(putOpts.periodLabel);
         if (!prev.startDate && putOpts.startDate) prev.startDate = toDate(putOpts.startDate);
+        if (prev.estimatedHours == null && estimatedHours != null) prev.estimatedHours = estimatedHours;
         if ((!prev.scheduleBlocks || !prev.scheduleBlocks.length) && blocks.length) {
           prev.scheduleBlocks = blocks;
           prev.scheduledStart = primaryStart;
@@ -154,6 +161,7 @@
         status: String(ff['Status'] || '').trim(),
         runRec: rr,
         scheduleBlocks,
+        estimatedHours: SB ? SB.parseEstimatedHours(ff) : null,
         scheduledStart: scheduleBlocks[0]?.start || ff['Planerad start'] || '',
         scheduledEnd: scheduleBlocks[0]?.end || ff['Planerad slut'] || ''
       });

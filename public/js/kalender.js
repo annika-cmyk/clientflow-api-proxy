@@ -216,6 +216,176 @@
     return sched && sched.hours > 0 ? sched.hours : 0;
   }
 
+  function estimatedHoursOf(ev) {
+    if (!ev || isGoogleEvent(ev)) return null;
+    if (ev.estimatedHours != null) return SB.parseEstimatedHours({ [SB.FIELD_ESTIMATE]: ev.estimatedHours });
+    if (ev.runRec) return SB.parseEstimatedHours(ev.runRec.fields || {});
+    return null;
+  }
+
+  function planningOf(ev) {
+    return SB.planningProgress(estimatedHoursOf(ev), totalScheduledHours(ev));
+  }
+
+  async function persistEstimate(ev, hours) {
+    const runId = String(ev.runRec?.id || '').trim();
+    if (!runId) {
+      showSaveToast('Saknar uppdragskörning.', true);
+      return false;
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/estimate`, {
+        method: 'PATCH',
+        ...authOpts(),
+        headers: {
+          ...(authOpts().headers || {}),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ hours })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.record) {
+        ev.runRec = data.record;
+        const idx = runRecords.findIndex((r) => r.id === data.record.id);
+        if (idx >= 0) runRecords[idx] = data.record;
+        else runRecords.push(data.record);
+      }
+      ev.estimatedHours = data.estimatedHours != null
+        ? data.estimatedHours
+        : SB.parseEstimatedHours((data.record && data.record.fields) || {});
+      showSaveToast(ev.estimatedHours != null
+        ? `Uppskattad tid: ${ev.estimatedHours} t`
+        : 'Uppskattad tid borttagen');
+      return true;
+    } catch (err) {
+      console.error('Kalender estimate:', err);
+      showSaveToast(err.message || 'Kunde inte spara uppskattning', true);
+      return false;
+    }
+  }
+
+  async function buildTidPayloadForSchedule(ev, sched) {
+    const f = ev.record?.fields || {};
+    const runF = ev.runRec?.fields || {};
+    const runId = String(ev.runRec?.id || '').trim();
+    const kundId = String(f['Kund ID'] || runF['Kund ID'] || '').trim();
+    const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
+    const uppdragId = String(ev.record?.id || runF['Uppdrag ID'] || '').trim();
+    if (!sched || !(sched.hours > 0)) throw new Error('Avsätt tid i kalendern först.');
+    if (!kundId) throw new Error('Saknar kundkoppling.');
+    const helper = window.KalenderKlarTid;
+    const build = helper && helper.buildKalenderTidPayload ? helper.buildKalenderTidPayload : null;
+    const args = {
+      customerId: kundId,
+      customerName: name,
+      uppdragId,
+      uppdragsnamn: displayName(ev.typ, f),
+      koringId: runId,
+      hours: sched.hours,
+      date: sched.date,
+      start: sched.start,
+      end: sched.end,
+      status: 'Klar'
+    };
+    if (build) return build(args);
+    return {
+      customerId: kundId,
+      customerName: name,
+      uppdragId,
+      uppdragsnamn: displayName(ev.typ, f),
+      koringId: runId,
+      date: sched.date,
+      hours: sched.hours,
+      start: sched.start || '',
+      end: sched.end || '',
+      activity: 'Uppdragsarbete',
+      description: `Avsatt tid ${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} (från kalender)`,
+      status: 'Klar'
+    };
+  }
+
+  async function postTidPayload(tidBody) {
+    const tidRes = await fetch(`${baseUrl}/api/tidregistrering`, {
+      method: 'POST',
+      ...authOpts(),
+      headers: {
+        ...(authOpts().headers || {}),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(tidBody)
+    });
+    const tidData = await tidRes.json().catch(() => ({}));
+    if (!tidRes.ok) throw new Error(tidData.error || 'Kunde inte registrera tid');
+    return tidData;
+  }
+
+  /** Delvis: regga tid för ett tillfälle, ta bort blocket, körningen förblir öppen. */
+  async function klarTillfalle(ev, opts) {
+    const options = opts || {};
+    const withTid = options.withTid !== false;
+    const blockId = String(options.blockId || ev.blockId || '').trim();
+    if (!blockId) {
+      showSaveToast('Välj ett tillfälle i kalendern först.', true);
+      return;
+    }
+    const block = blocksOf(ev).find((b) => b.id === blockId);
+    if (!block) {
+      showSaveToast('Tillfället hittades inte.', true);
+      return;
+    }
+    const sched = KV.normalizeSchedule(block.start, block.end);
+    if (!sched || !(sched.hours > 0)) {
+      showSaveToast('Tillfället saknar giltig tid.', true);
+      return;
+    }
+    const runId = String(ev.runRec?.id || '').trim();
+    if (!runId) {
+      showSaveToast('Saknar uppdragskörning.', true);
+      return;
+    }
+
+    try {
+      if (withTid) {
+        const tidBody = await buildTidPayloadForSchedule(ev, sched);
+        await postTidPayload(tidBody);
+      }
+      const ok = await persistSchedule(ev, null, null, { mode: 'remove', blockId });
+      if (!ok) return;
+      // Markera som pågående om den fortfarande är planerad
+      const st = statusOf(ev);
+      if (st === 'Planerad') {
+        try {
+          await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/status`, {
+            method: 'PATCH',
+            ...authOpts(),
+            headers: {
+              ...(authOpts().headers || {}),
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'Pågående' })
+          }).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.record) {
+              ev.runRec = data.record;
+              ev.status = 'Pågående';
+              const idx = runRecords.findIndex((r) => r.id === data.record.id);
+              if (idx >= 0) runRecords[idx] = data.record;
+            }
+          });
+        } catch (_) { /* best-effort */ }
+      }
+      showSaveToast(withTid
+        ? `Tillfälle klart · ${sched.hours} t registrerad`
+        : 'Tillfälle avbockat');
+      render();
+      refreshOpenDetail();
+    } catch (err) {
+      console.error('Kalender klar tillfälle:', err);
+      showSaveToast((err && err.message) || 'Kunde inte spara', true);
+    }
+  }
+
   function isGoogleEvent(ev) {
     return !!(ev && (ev.source === 'google' || String(ev.key || '').startsWith('gcal:')));
   }
@@ -1192,12 +1362,16 @@
     });
   }
 
-  /** Sidopanel (Deadlines/Öppna): ClientFlow-körningar som inte är klara — inte Google-händelser. */
+  /**
+   * Sidopanel (Deadlines/Öppna): ej klara ClientFlow-körningar som fortfarande är valbara.
+   * Körningar med uppskattad tid där all tid är utlagd döljs (syns kvar i kalenderrutnätet).
+   */
   function sidePanelEvents(list) {
     return (list || []).filter((ev) => {
       if (isGoogleEvent(ev)) return false;
       const st = statusOf(ev);
-      return st !== 'Klar' && st !== 'Avslutad';
+      if (st === 'Klar' || st === 'Avslutad') return false;
+      return SB.isSelectableInPool(estimatedHoursOf(ev), totalScheduledHours(ev));
     });
   }
 
@@ -1225,26 +1399,27 @@
       const head = place !== last ? `<div class="kalender-side-date">${esc(fmtDate(place))}</div>` : '';
       last = place;
       const period = ev.periodLabel || ev.periodKey || '';
-      const blocks = blocksOf(ev);
-      const totalH = totalScheduledHours(ev);
+      const plan = planningOf(ev);
       let timeMeta = '';
-      if (blocks.length > 1) {
-        timeMeta = `${blocks.length} tillfällen · ${totalH} t · `;
-      } else if (blocks.length === 1) {
-        const sched = KV.normalizeSchedule(blocks[0].start, blocks[0].end);
-        timeMeta = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : '';
+      if (plan.hasEstimate) {
+        timeMeta = `${plan.scheduled}/${plan.estimated} t · ${plan.remaining} t kvar · `;
+      } else if (plan.scheduled > 0) {
+        timeMeta = `${plan.scheduled} t avsatt · `;
       }
       const runKey = String(ev.runKey || ev.key || '');
       const canDrag = !!ev.runRec?.id;
+      const statusBit = plan.hasEstimate && plan.scheduled > 0
+        ? `${plan.scheduled}/${plan.estimated} t`
+        : statusLabel(st, ev.deadline);
       return `${head}
-        <button type="button" class="kalender-side-item kalender-side-item--${cls}${canDrag ? ' is-draggable' : ''}"
+        <button type="button" class="kalender-side-item kalender-side-item--${cls}${canDrag ? ' is-draggable' : ''}${plan.hasEstimate ? ' has-estimate' : ''}"
           data-key="${esc(runKey)}" ${canDrag ? 'draggable="true"' : ''}
           title="${canDrag ? 'Dra till kalendern för att avsätta tid (kan göras flera gånger)' : ''}">
           <span class="kalender-side-main">
             <span class="kalender-side-name">${esc(name)}</span>
-            <span class="kalender-side-meta">${esc(timeMeta)}${esc(displayName(ev.typ, f))}${period ? ` · ${esc(period)}` : ''}</span>
+            <span class="kalender-side-meta">${esc(timeMeta)}${esc(displayName(ev.typ, f))}${period ? ` · ${esc(period)}` : ''}${plan.hasEstimate ? '' : ' · snabb'}</span>
           </span>
-          <span class="kalender-side-status">${esc(statusLabel(st, ev.deadline))}</span>
+          <span class="kalender-side-status">${esc(statusBit)}</span>
         </button>`;
     }).join('');
     el.sideList.querySelectorAll('[data-key]').forEach((btn) => {
@@ -1278,7 +1453,8 @@
   function openDetail(key, group) {
     const ev = eventByKey(key) || (group || []).find((x) => x.key === key || x.runKey === key);
     if (!ev || !el.detail) return;
-    openDetailKey = String(ev.runKey || ev.key || key || '');
+    // Behåll #blockId så delvis-klarmarkering syns efter omritning
+    openDetailKey = String(ev.blockId ? ev.key : (ev.runKey || ev.key || key || ''));
 
     if (isGoogleEvent(ev)) {
       const name = String(ev.summary || 'Google-händelse');
@@ -1326,10 +1502,15 @@
     const siblings = Array.isArray(group) && group.length > 1 ? group : null;
     const blockList = blocksOf(ev);
     const totalH = totalScheduledHours(ev);
+    const plan = planningOf(ev);
+    const focusBlockId = String(ev.blockId || '').trim();
+    const focusBlock = focusBlockId ? blockList.find((b) => b.id === focusBlockId) : null;
+    const focusSched = focusBlock ? KV.normalizeSchedule(focusBlock.start, focusBlock.end) : null;
     const isKlar = cls === 'klar';
     const canKlar = !isKlar && !!ev.runRec?.id;
     const canKlarTid = canKlar && !!kundId;
     const hasHours = totalH > 0;
+    const hasFocusHours = !!(focusSched && focusSched.hours > 0);
     let blockLabel = 'Ej avsatt — dra från listan till kalendern';
     if (blockList.length === 1) {
       const sched = KV.normalizeSchedule(blockList[0].start, blockList[0].end);
@@ -1339,19 +1520,53 @@
     } else if (blockList.length > 1) {
       blockLabel = `${blockList.length} tillfällen · ${totalH} t totalt`;
     }
+    if (plan.hasEstimate) {
+      blockLabel += plan.fullyPlanned
+        ? ` · ${plan.estimated} t inplanerad`
+        : ` · ${plan.scheduled}/${plan.estimated} t (${plan.remaining} t kvar)`;
+    }
 
     const blocksHtml = blockList.length
       ? `<ul class="kalender-detail-blocks">
           ${blockList.map((b) => {
             const sched = KV.normalizeSchedule(b.start, b.end);
             if (!sched) return '';
-            return `<li class="kalender-detail-block-row">
-              <span>${esc(fmtDate(sched.date))} · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))} (${esc(String(sched.hours))} t)</span>
+            const isFocus = focusBlockId && b.id === focusBlockId;
+            return `<li class="kalender-detail-block-row${isFocus ? ' is-focus' : ''}">
+              <span>${esc(fmtDate(sched.date))} · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))} (${esc(String(sched.hours))} t)${isFocus ? ' · valt' : ''}</span>
               ${canKlar ? `<button type="button" class="btn btn-ghost btn-sm" data-remove-block="${esc(b.id)}" title="Ta bort tillfälle"><i class="fas fa-times"></i></button>` : ''}
             </li>`;
           }).join('')}
         </ul>
-        <p class="kalender-detail-blocks-hint">Dra raden i listan till kalendern igen för att lägga till fler tillfällen.</p>`
+        <p class="kalender-detail-blocks-hint">Dra från listan igen för fler tillfällen. Med uppskattad tid försvinner raden från listan när allt är utlagt.</p>`
+      : '';
+
+    const estimateVal = plan.hasEstimate ? String(plan.estimated) : '';
+    const estimateHtml = canKlar || plan.hasEstimate
+      ? `<div class="kalender-detail-estimate">
+          <label for="kal-estimate-hours">Uppskattad tid (t)</label>
+          <div class="kalender-detail-estimate-row">
+            <input type="number" id="kal-estimate-hours" class="kunduppgifter-input" min="0" step="0.25" inputmode="decimal"
+              value="${esc(estimateVal)}" placeholder="t.ex. 10" ${canKlar ? '' : 'disabled'}>
+            ${canKlar ? `<button type="button" class="btn btn-ghost btn-sm" data-save-estimate>Spara</button>` : ''}
+          </div>
+          <p class="kalender-detail-blocks-hint">Tomt = snabbuppgift (syns alltid i listan tills den är klar). Med tid döljs den från listan när all tid är utlagd.</p>
+        </div>`
+      : '';
+
+    const tillfalleHtml = (canKlar && focusSched)
+      ? `<div class="kalender-detail-scope">
+          <h4 class="kalender-detail-scope-title">Detta tillfälle</h4>
+          <p class="kalender-detail-blocks-hint">${esc(fmtDate(focusSched.date))} · ${esc(KV.fmtTimeLabel(focusSched.startMin))}–${esc(KV.fmtTimeLabel(focusSched.endMin))} (${esc(String(focusSched.hours))} t)</p>
+          <div class="kalender-detail-actions kalender-detail-actions--scope">
+            <button type="button" class="btn btn-ghost btn-sm" data-klar-tillfalle>
+              <i class="fas fa-check"></i> Klarmarkera tillfälle
+            </button>
+            ${canKlarTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tillfalle-tid ${hasFocusHours ? '' : 'disabled'}>
+              <i class="fas fa-check"></i> Klarmarkera tillfälle & tid (${esc(String(focusSched.hours))} t)
+            </button>` : ''}
+          </div>
+        </div>`
       : '';
 
     if (el.detailTitle) {
@@ -1364,7 +1579,7 @@
     const klarOnlyCls = hasHours ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm';
     const klarTidCls = hasHours ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
     el.detailBody.innerHTML = `
-      <div class="kalender-detail-status kalender-detail-status--${cls}">${esc(statusLabel(st, ev.deadline))}</div>
+      <div class="kalender-detail-status kalender-detail-status--${cls}">${esc(statusLabel(st, ev.deadline))}${plan.fullyPlanned ? ' · Inplanerad' : ''}</div>
       <dl class="kalender-detail-dl">
         <div><dt>Uppdrag</dt><dd>${esc(displayName(ev.typ, f))}</dd></div>
         <div><dt>Period</dt><dd>${esc(period)}</dd></div>
@@ -1373,16 +1588,21 @@
         <div><dt>Avsatt tid</dt><dd data-avsatt-tid>${esc(blockLabel)}</dd></div>
         ${ansvarig ? `<div><dt>Ansvarig</dt><dd>${esc(ansvarig)}</dd></div>` : ''}
       </dl>
+      ${estimateHtml}
       ${blocksHtml}
-      <div class="kalender-detail-actions">
-        ${canKlar ? `<button type="button" class="${klarOnlyCls}" data-klar-only>
-          <i class="fas fa-check"></i> Klarmarkera
-        </button>` : ''}
-        ${canKlarTid ? `<button type="button" class="${klarTidCls}" data-klar-tid ${hasHours ? '' : 'disabled'}>
-          <i class="fas fa-check"></i> Klarmarkera & registrera tid${hasHours ? ` (${esc(String(totalH))} t)` : ''}
-        </button>` : ''}
-        ${isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Klarmarkerad</span>` : ''}
-        <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
+      ${tillfalleHtml}
+      <div class="kalender-detail-scope">
+        <h4 class="kalender-detail-scope-title">${focusSched ? 'Hela körningen' : 'Åtgärder'}</h4>
+        <div class="kalender-detail-actions">
+          ${canKlar ? `<button type="button" class="${klarOnlyCls}" data-klar-only>
+            <i class="fas fa-check"></i> Klarmarkera hela
+          </button>` : ''}
+          ${canKlarTid ? `<button type="button" class="${klarTidCls}" data-klar-tid ${hasHours ? '' : 'disabled'}>
+            <i class="fas fa-check"></i> Klarmarkera hela & tid${hasHours ? ` (${esc(String(totalH))} t)` : ''}
+          </button>` : ''}
+          ${isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Klarmarkerad</span>` : ''}
+          <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
+        </div>
       </div>
       ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
         ${siblings.map((r) => {
@@ -1411,6 +1631,38 @@
     if (klarBtn) {
       klarBtn.addEventListener('click', () => {
         klarAndRegisterTid(ev);
+      });
+    }
+    const klarTillfalleBtn = el.detailBody.querySelector('[data-klar-tillfalle]');
+    if (klarTillfalleBtn) {
+      klarTillfalleBtn.addEventListener('click', () => {
+        klarTillfalle(ev, { blockId: focusBlockId, withTid: false });
+      });
+    }
+    const klarTillfalleTidBtn = el.detailBody.querySelector('[data-klar-tillfalle-tid]');
+    if (klarTillfalleTidBtn) {
+      klarTillfalleTidBtn.addEventListener('click', () => {
+        klarTillfalle(ev, { blockId: focusBlockId, withTid: true });
+      });
+    }
+    const saveEstBtn = el.detailBody.querySelector('[data-save-estimate]');
+    if (saveEstBtn) {
+      saveEstBtn.addEventListener('click', async () => {
+        const input = el.detailBody.querySelector('#kal-estimate-hours');
+        const raw = input ? String(input.value || '').trim() : '';
+        const hours = raw === '' ? null : Number(raw.replace(',', '.'));
+        if (raw !== '' && !Number.isFinite(hours)) {
+          showSaveToast('Ogiltig uppskattad tid', true);
+          return;
+        }
+        saveEstBtn.disabled = true;
+        const ok = await persistEstimate(ev, hours);
+        if (ok) {
+          render();
+          refreshOpenDetail();
+        } else {
+          saveEstBtn.disabled = false;
+        }
       });
     }
     el.detailBody.querySelectorAll('[data-remove-block]').forEach((btn) => {

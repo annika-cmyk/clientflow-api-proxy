@@ -21049,6 +21049,7 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Planerad start', type: 'dateTime', description: 'Avsatt starttid i kalendern (tidblock)', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
   { name: 'Planerad slut', type: 'dateTime', description: 'Avsatt sluttid i kalendern (tidblock)', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
   { name: 'Planerade block (JSON)', type: 'multilineText', description: 'JSON-array med flera tidblock [{id,start,end}] så samma körning kan schemaläggas vid flera tillfällen' },
+  { name: 'Uppskattad tid (t)', type: 'number', description: 'Uppskattad tidsåtgång i timmar. När all tid är utlagd i kalendern döljs körningen från valbara i listan.', options: { precision: 2 } },
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Planerad' }, { name: 'Pågående' }, { name: 'Klar' }, { name: 'Sen' }] } },
   { name: 'Ansvarig', type: 'singleLineText', description: 'Tilldelad handläggare för just denna körning (kan skilja sig från uppdragets ansvarig)' },
   { name: 'Skapad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
@@ -21214,7 +21215,7 @@ async function airtablePatchRecordWithFieldFallback(url, fields, headers, maxRet
 }
 
 async function ensureUppdragRunsScheduleFields(airtableToken, baseId) {
-  const wanted = ['Planerad start', 'Planerad slut', 'Planerade block (JSON)'];
+  const wanted = ['Planerad start', 'Planerad slut', 'Planerade block (JSON)', 'Uppskattad tid (t)'];
   try {
     const t = await getUppdragRunsTableMeta(airtableToken, baseId);
     if (!t?.id) return { ok: false, reason: 'table_missing' };
@@ -21480,7 +21481,7 @@ async function listUppdragRunsForByra({ airtableToken, baseId, byraId, maxPages 
     'Anteckning', 'Uppdaterad', 'Skapad'
   ];
   const fieldLists = [
-    [...baseFieldList, 'Planerad start', 'Planerad slut', 'Planerade block (JSON)'],
+    [...baseFieldList, 'Planerad start', 'Planerad slut', 'Planerade block (JSON)', 'Uppskattad tid (t)'],
     baseFieldList
   ];
   for (const fieldList of fieldLists) {
@@ -22548,6 +22549,79 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
     });
   } catch (error) {
     console.error('❌ PATCH /api/uppdrag/runs/:runId/schedule:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    return res.status(status).json({ error: msg });
+  }
+});
+
+// PATCH /api/uppdrag/runs/:runId/estimate – uppskattad tidsåtgång (timmar)
+// Body: { hours: number|null } — null/tom rensar (snabbuppgift utan planeringsmål)
+app.patch('/api/uppdrag/runs/:runId/estimate', authenticateToken, async (req, res) => {
+  try {
+    const { runId } = req.params || {};
+    const id = String(runId || '').trim();
+    if (!id) return res.status(400).json({ error: 'runId saknas' });
+
+    const body = req.body || {};
+    if (!Object.prototype.hasOwnProperty.call(body, 'hours')) {
+      return res.status(400).json({ error: 'Ange hours (nummer) eller null för att rensa.' });
+    }
+
+    let hoursVal = null;
+    if (body.hours != null && body.hours !== '') {
+      const n = Number(body.hours);
+      if (!Number.isFinite(n) || n < 0) {
+        return res.status(400).json({ error: 'Ogiltig uppskattad tid' });
+      }
+      hoursVal = n === 0 ? null : Math.round(n * 100) / 100;
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+    const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+    if (!runsTableId) {
+      return res.status(404).json({ error: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" saknas.` });
+    }
+
+    const userData = await getUser(req.user.email);
+    const byraIdClean = userData?.byraId ? String(userData.byraId).replace(/,/g, '').trim() : '';
+    if (!byraIdClean) return res.status(403).json({ error: 'Saknar byråkoppling (user.byraId)' });
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}/${encodeURIComponent(id)}`;
+    const headers = { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
+    const existing = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    const f = existing.data?.fields || {};
+    const recordByra = (f['Byrå ID'] != null) ? String(f['Byrå ID']).replace(/,/g, '').trim() : '';
+    if (!recordByra || recordByra !== byraIdClean) {
+      return res.status(403).json({ error: 'Du saknar behörighet att uppdatera denna uppdragskörning.' });
+    }
+
+    try { await ensureUppdragRunsScheduleFields(airtableAccessToken, airtableBaseId); } catch (_) {}
+
+    const fields = {
+      Uppdaterad: new Date().toISOString(),
+      [KalenderScheduleBlocks.FIELD_ESTIMATE]: hoursVal
+    };
+
+    let patched = await airtablePatchRecordWithFieldFallback(url, fields, headers);
+    if ((patched.dropped || []).includes(KalenderScheduleBlocks.FIELD_ESTIMATE)) {
+      try { await ensureUppdragRunsScheduleFields(airtableAccessToken, airtableBaseId); } catch (_) {}
+      patched = await airtablePatchRecordWithFieldFallback(url, fields, headers);
+    }
+    if ((patched.dropped || []).includes(KalenderScheduleBlocks.FIELD_ESTIMATE)) {
+      return res.status(503).json({
+        error: 'Fältet Uppskattad tid (t) saknas i Airtable. Kör setup för uppdragskörningar och försök igen.',
+        dropped: patched.dropped
+      });
+    }
+
+    return res.json({
+      record: patched.record,
+      estimatedHours: KalenderScheduleBlocks.parseEstimatedHours(patched.record?.fields || {})
+    });
+  } catch (error) {
+    console.error('❌ PATCH /api/uppdrag/runs/:runId/estimate:', error.response?.data || error.message);
     const status = error.response?.status || 500;
     const msg = error.response?.data?.error?.message || error.message;
     return res.status(status).json({ error: msg });

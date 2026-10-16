@@ -22230,6 +22230,44 @@ a.byra-profil-chip:hover {
     color: var(--text);
     opacity: 0.85;
 }
+.kalender-detail-block-row.is-focus {
+    outline: 1px solid color-mix(in srgb, var(--accent, #13505c) 35%, transparent);
+    background: color-mix(in srgb, var(--accent, #13505c) 12%, white);
+}
+.kalender-detail-estimate {
+    margin: 0 0 0.85rem;
+}
+.kalender-detail-estimate label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--text);
+}
+.kalender-detail-estimate-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.35rem;
+}
+.kalender-detail-estimate-row input {
+    max-width: 7rem;
+}
+.kalender-detail-scope {
+    margin: 0 0 0.85rem;
+}
+.kalender-detail-scope-title {
+    margin: 0 0 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--title-text, #0f172a);
+}
+.kalender-detail-actions--scope {
+    margin-bottom: 0.25rem;
+}
+.kalender-side-item.has-estimate .kalender-side-status {
+    font-variant-numeric: tabular-nums;
+}
 .kalender-side-item--klar { border-left-color: var(--success, #1f7a4d); }
 .kalender-side-item--pagande { border-left-color: var(--warning, #b07414); }
 .kalender-side-item--planerad { border-left-color: var(--accent, #13505c); }
