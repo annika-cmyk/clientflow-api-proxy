@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Mötesbokning</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20261016mb">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <div class="uppdragboard-top">
+                            <div class="uppdragboard-title">
+                                <h1>Mötesbokning</h1>
+                            </div>
+                            <div class="uppdragboard-actions">
+                                <a href="kalender.html" class="btn btn-ghost btn-sm"><i class="fas fa-calendar-alt"></i> Kalender</a>
+                                <button type="button" class="btn btn-primary btn-sm" id="mb-new-link"><i class="fas fa-plus"></i> Ny länk</button>
+                            </div>
+                        </div>
+                        <p class="kalender-lead" id="mb-host-url-row">
+                            <span class="mb-host-label">Din bokningssida</span>
+                            <code id="mb-host-slug" class="mb-host-slug">—</code>
+                            <button type="button" class="btn btn-ghost btn-sm" id="mb-copy-host" title="Kopiera"><i class="fas fa-copy"></i></button>
+                            <a class="btn btn-ghost btn-sm" id="mb-open-host" href="#" target="_blank" rel="noopener" title="Öppna"><i class="fas fa-external-link-alt"></i></a>
+                        </p>
+                    </div>
+                </header>
+
+                <nav class="mb-tabs" role="tablist" aria-label="Mötesbokning">
+                    <button type="button" class="mb-tab is-active" data-tab="lankar" role="tab" aria-selected="true">
+                        Möteslänkar <span class="mb-tab-badge" id="mb-badge-lankar">0</span>
+                    </button>
+                    <button type="button" class="mb-tab" data-tab="inbjudningar" role="tab" aria-selected="false">
+                        Inbjudningar <span class="mb-tab-badge" id="mb-badge-invites">0</span>
+                    </button>
+                    <button type="button" class="mb-tab" data-tab="dolda" role="tab" aria-selected="false">
+                        Dolda <span class="mb-tab-badge" id="mb-badge-hidden">0</span>
+                    </button>
+                </nav>
+
+                <div id="mb-loading" class="statistik-section" style="margin-top:1rem;">
+                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar möteslänkar...</p>
+                </div>
+                <div id="mb-no-auth" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa mötesbokning.</p>
+                </div>
+                <div id="mb-setup" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc">Airtable-tabellen för möteslänkar saknas ännu.</p>
+                    <button type="button" class="btn btn-primary btn-sm" id="mb-setup-btn"><i class="fas fa-database"></i> Skapa tabell</button>
+                    <p class="statistik-section-desc" id="mb-setup-msg" style="margin-top:0.75rem;"></p>
+                </div>
+
+                <div id="mb-content" style="display:none; margin-top:1rem;">
+                    <div id="mb-panel-lankar" class="mb-panel">
+                        <div class="mb-link-grid" id="mb-link-grid"></div>
+                        <p class="mb-empty" id="mb-empty-lankar" hidden>Inga möteslänkar ännu. Skapa din första med <strong>Ny länk</strong>.</p>
+                    </div>
+                    <div id="mb-panel-inbjudningar" class="mb-panel" hidden>
+                        <p class="kalender-lead" style="margin-bottom:0.75rem;">Engångsinbjudningar med fasta tidsluckor (äldre flöde).</p>
+                        <div class="moten-list" id="mb-invite-list"></div>
+                        <p class="mb-empty" id="mb-empty-invites" hidden>Inga inbjudningar.</p>
+                        <p style="margin-top:1rem;">
+                            <a href="moten.html" class="btn btn-ghost btn-sm"><i class="fas fa-link"></i> Öppna inbjudningsverktyget</a>
+                        </p>
+                    </div>
+                    <div id="mb-panel-dolda" class="mb-panel" hidden>
+                        <div class="mb-link-grid" id="mb-hidden-grid"></div>
+                        <p class="mb-empty" id="mb-empty-hidden" hidden>Inga dolda länkar.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Skapa / redigera möteslänk -->
+    <div id="mb-modal" class="kalender-detail" hidden>
+        <div class="kalender-detail-backdrop" data-mb-close></div>
+        <div class="kalender-detail-panel moten-modal-panel mb-modal-wide" role="dialog" aria-modal="true" aria-labelledby="mb-modal-title">
+            <div class="kalender-detail-header">
+                <h3 id="mb-modal-title">Ny möteslänk</h3>
+                <button type="button" class="modal-close" data-mb-close aria-label="Stäng"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="kalender-detail-body">
+                <form id="mb-form" class="moten-form">
+                    <input type="hidden" id="mb-edit-id" value="">
+                    <label class="moten-field">
+                        <span>Titel</span>
+                        <input type="text" id="mb-title" class="kunduppgifter-input" value="Möte" required>
+                    </label>
+                    <label class="moten-field">
+                        <span>Slug (URL-del)</span>
+                        <input type="text" id="mb-slug" class="kunduppgifter-input" placeholder="t.ex. snabbmote">
+                    </label>
+                    <label class="moten-field">
+                        <span>Beskrivning</span>
+                        <textarea id="mb-description" class="kunduppgifter-input" rows="2" placeholder="Välkommen att boka in ditt möte här..."></textarea>
+                    </label>
+
+                    <div class="moten-row">
+                        <label class="moten-field">
+                            <span>Prioritet</span>
+                            <select id="mb-priority" class="kunduppgifter-input">
+                                <option value="1">1 – Låg</option>
+                                <option value="2" selected>2 – Normal</option>
+                                <option value="3">3 – Hög</option>
+                                <option value="4">4 – Högsta</option>
+                            </select>
+                        </label>
+                        <label class="moten-field">
+                            <span>Synlig</span>
+                            <select id="mb-visible" class="kunduppgifter-input">
+                                <option value="1" selected>Ja</option>
+                                <option value="0">Nej (dold)</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <fieldset class="mb-fieldset">
+                        <legend>Längder (minuter)</legend>
+                        <div class="mb-chip-row" id="mb-durations">
+                            <label class="mb-chip"><input type="checkbox" value="15"> 15m</label>
+                            <label class="mb-chip"><input type="checkbox" value="30" checked> 30m</label>
+                            <label class="mb-chip"><input type="checkbox" value="45"> 45m</label>
+                            <label class="mb-chip"><input type="checkbox" value="60" checked> 1h</label>
+                            <label class="mb-chip"><input type="checkbox" value="90"> 1,5h</label>
+                            <label class="mb-chip"><input type="checkbox" value="120"> 2h</label>
+                            <label class="mb-chip"><input type="checkbox" value="180"> 3h</label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="mb-fieldset">
+                        <legend>Plats / mötesform</legend>
+                        <label class="mb-check"><input type="checkbox" id="mb-loc-meet" checked> Google Meet</label>
+                        <label class="mb-check"><input type="checkbox" id="mb-loc-phone"> Telefon
+                            <input type="text" id="mb-phone" class="kunduppgifter-input" placeholder="070-…" style="margin-top:0.35rem;">
+                        </label>
+                        <label class="mb-check"><input type="checkbox" id="mb-loc-place"> På plats
+                            <input type="text" id="mb-place" class="kunduppgifter-input" placeholder="Adress" style="margin-top:0.35rem;">
+                        </label>
+                    </fieldset>
+
+                    <fieldset class="mb-fieldset">
+                        <legend>Tillgänglighet</legend>
+                        <div class="moten-row">
+                            <label class="moten-field">
+                                <span>Arbetsstart</span>
+                                <input type="time" id="mb-day-start" class="kunduppgifter-input" value="08:00">
+                            </label>
+                            <label class="moten-field">
+                                <span>Arbetsslut</span>
+                                <input type="time" id="mb-day-end" class="kunduppgifter-input" value="17:00">
+                            </label>
+                        </div>
+                        <div class="mb-chip-row" id="mb-weekdays">
+                            <label class="mb-chip"><input type="checkbox" value="0" checked> Mån</label>
+                            <label class="mb-chip"><input type="checkbox" value="1" checked> Tis</label>
+                            <label class="mb-chip"><input type="checkbox" value="2" checked> Ons</label>
+                            <label class="mb-chip"><input type="checkbox" value="3" checked> Tor</label>
+                            <label class="mb-chip"><input type="checkbox" value="4" checked> Fre</label>
+                            <label class="mb-chip"><input type="checkbox" value="5"> Lör</label>
+                            <label class="mb-chip"><input type="checkbox" value="6"> Sön</label>
+                        </div>
+                        <div class="moten-row">
+                            <label class="moten-field">
+                                <span>Buffer före (min)</span>
+                                <input type="number" id="mb-buf-before" class="kunduppgifter-input" min="0" max="120" value="0">
+                            </label>
+                            <label class="moten-field">
+                                <span>Buffer efter (min)</span>
+                                <input type="number" id="mb-buf-after" class="kunduppgifter-input" min="0" max="120" value="0">
+                            </label>
+                        </div>
+                        <div class="moten-row">
+                            <label class="moten-field">
+                                <span>Min varsel (timmar)</span>
+                                <input type="number" id="mb-notice" class="kunduppgifter-input" min="0" max="168" step="0.5" value="2">
+                            </label>
+                            <label class="moten-field">
+                                <span>Bokningsfönster (dagar)</span>
+                                <input type="number" id="mb-window" class="kunduppgifter-input" min="1" max="120" value="28">
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <label class="moten-field">
+                        <span>Standardagenda (förifylls i bokningen)</span>
+                        <textarea id="mb-agenda" class="kunduppgifter-input" rows="3" placeholder="Punkter som syns i kalenderinbjudan..."></textarea>
+                    </label>
+
+                    <div class="moten-row">
+                        <label class="moten-field">
+                            <span>Ikon</span>
+                            <select id="mb-icon" class="kunduppgifter-input">
+                                <option value="bolt">Blixt</option>
+                                <option value="lightbulb">Lampa</option>
+                                <option value="sun">Sol</option>
+                                <option value="comments">Samtal</option>
+                                <option value="briefcase">Portfölj</option>
+                            </select>
+                        </label>
+                        <label class="moten-field">
+                            <span>Färg</span>
+                            <input type="color" id="mb-color" class="kunduppgifter-input" value="#13505c">
+                        </label>
+                    </div>
+
+                    <div class="moten-form-actions">
+                        <button type="button" class="btn btn-ghost btn-sm" data-mb-close>Avbryt</button>
+                        <button type="submit" class="btn btn-primary btn-sm" id="mb-save"><i class="fas fa-save"></i> Spara</button>
+                    </div>
+                    <p class="moten-form-error" id="mb-form-error" hidden></p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dela med agenda -->
+    <div id="mb-share-modal" class="kalender-detail" hidden>
+        <div class="kalender-detail-backdrop" data-mb-share-close></div>
+        <div class="kalender-detail-panel moten-modal-panel" role="dialog" aria-modal="true" aria-labelledby="mb-share-title">
+            <div class="kalender-detail-header">
+                <h3 id="mb-share-title">Dela möteslänk med agenda</h3>
+                <button type="button" class="modal-close" data-mb-share-close aria-label="Stäng"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="kalender-detail-body">
+                <p class="kalender-lead">Skriv en agenda som kunden kan komplettera när de bokar. Den följer med till kalenderinbjudan.</p>
+                <input type="hidden" id="mb-share-link-id" value="">
+                <label class="moten-field">
+                    <span>Kundnamn (valfritt)</span>
+                    <input type="text" id="mb-share-customer" class="kunduppgifter-input" placeholder="Visas internt">
+                </label>
+                <label class="moten-field">
+                    <span>Agenda</span>
+                    <textarea id="mb-share-agenda" class="kunduppgifter-input" rows="5" placeholder="1. …&#10;2. …"></textarea>
+                </label>
+                <div class="moten-form-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" data-mb-share-close>Avbryt</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="mb-share-create"><i class="fas fa-link"></i> Skapa delningslänk</button>
+                </div>
+                <div id="mb-share-result" class="mb-share-result" hidden>
+                    <label class="moten-field">
+                        <span>Länk att skicka</span>
+                        <div class="moten-link-row">
+                            <input type="text" id="mb-share-url" class="kunduppgifter-input" readonly>
+                            <button type="button" class="btn btn-ghost btn-sm" id="mb-share-copy"><i class="fas fa-copy"></i></button>
+                        </div>
+                    </label>
+                </div>
+                <p class="moten-form-error" id="mb-share-error" hidden></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/navigation.js" defer></script>
+    <script src="js/components.js?v=2.7" defer></script>
+    <script src="js/motesbokning-admin.js?v=1" defer></script>
+</body>
+</html>

@@ -23023,6 +23023,113 @@ body.kalender-detail-open { overflow: hidden; }
   margin-top: 0.35rem;
 }
 .moten-form-error { color: var(--error, #b42318); font-size: 0.9rem; margin: 0; }
+
+/* Mötesbokning / möteslänkar */
+.mb-tabs {
+  display: flex; flex-wrap: wrap; gap: 0.35rem;
+  margin-top: 1rem; border-bottom: 1px solid var(--border, #e2e8f0);
+  padding-bottom: 0;
+}
+.mb-tab {
+  border: none; background: transparent; cursor: pointer; font: inherit;
+  padding: 0.65rem 0.9rem; color: #64748b; font-weight: 600;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.mb-tab.is-active { color: var(--accent, #13505c); border-bottom-color: var(--accent, #13505c); }
+.mb-tab-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.25rem; height: 1.25rem; padding: 0 0.35rem;
+  border-radius: 999px; background: #eef2f6; color: #475569;
+  font-size: 0.72rem; margin-left: 0.25rem;
+}
+.mb-host-label { margin-right: 0.5rem; color: #64748b; }
+.mb-host-slug {
+  font-size: 0.9rem; background: #f1f5f9; padding: 0.2rem 0.5rem;
+  border-radius: 6px; color: #1a73e8;
+}
+.mb-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.mb-link-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 14px;
+  padding: 1.1rem 1.15rem 1rem;
+  box-shadow: 0 2px 10px rgba(15, 40, 50, 0.05);
+  min-height: 200px;
+  display: flex; flex-direction: column; gap: 0.45rem;
+}
+.mb-link-card-actions {
+  position: absolute; top: 0.65rem; right: 0.55rem;
+  display: flex; gap: 0.15rem;
+}
+.mb-icon-btn {
+  border: none; background: transparent; cursor: pointer;
+  color: #93c5fd; width: 1.75rem; height: 1.75rem; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.mb-icon-btn:hover { background: #f1f5f9; color: #1a73e8; }
+.mb-link-avatar { margin-top: 0.25rem; }
+.mb-link-icon {
+  width: 2.4rem; height: 2.4rem; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 1rem;
+}
+.mb-link-title { margin: 0.35rem 0 0; font-size: 1.05rem; }
+.mb-link-desc {
+  margin: 0; color: #64748b; font-size: 0.88rem; line-height: 1.4;
+  flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.mb-link-meta {
+  margin-top: auto; padding-top: 0.5rem;
+  font-size: 0.82rem; color: #475569; display: grid; gap: 0.25rem;
+}
+.mb-link-meta i { width: 1rem; color: #94a3b8; }
+.mb-prio { display: inline-flex; gap: 2px; align-items: flex-end; height: 0.9rem; }
+.mb-prio-bar {
+  width: 3px; background: #cbd5e1; border-radius: 1px;
+  display: inline-block;
+}
+.mb-prio-bar:nth-child(1) { height: 30%; }
+.mb-prio-bar:nth-child(2) { height: 50%; }
+.mb-prio-bar:nth-child(3) { height: 70%; }
+.mb-prio-bar:nth-child(4) { height: 100%; }
+.mb-prio-bar.is-on { background: #60a5fa; }
+.mb-empty { color: #94a3b8; font-size: 0.95rem; }
+.mb-fieldset {
+  border: 1px solid var(--border, #e2e8f0); border-radius: 10px;
+  padding: 0.75rem 0.9rem; margin: 0;
+}
+.mb-fieldset legend { font-weight: 600; font-size: 0.88rem; padding: 0 0.35rem; }
+.mb-chip-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.mb-chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  border: 1px solid #e2e8f0; border-radius: 999px;
+  padding: 0.3rem 0.7rem; font-size: 0.85rem; cursor: pointer; background: #fff;
+}
+.mb-chip:has(input:checked) {
+  border-color: var(--accent, #13505c);
+  background: color-mix(in srgb, var(--accent, #13505c) 10%, white);
+}
+.mb-check { display: grid; gap: 0.25rem; margin-bottom: 0.5rem; font-size: 0.9rem; }
+.mb-modal-wide { width: min(640px, calc(100vw - 2rem)); max-height: 90vh; overflow: auto; }
+.mb-more-menu {
+  position: absolute; top: 2.4rem; right: 0.5rem; z-index: 5;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.1); min-width: 140px; padding: 0.35rem;
+  display: grid;
+}
+.mb-more-menu button {
+  border: none; background: transparent; text-align: left;
+  padding: 0.5rem 0.7rem; cursor: pointer; font: inherit; border-radius: 6px;
+}
+.mb-more-menu button:hover { background: #f1f5f9; }
+.mb-more-menu button.is-danger { color: #b42318; }
+.mb-share-result { margin-top: 0.75rem; }
+
 @media (max-width: 700px) {
   .moten-card { flex-direction: column; }
   .moten-row { grid-template-columns: 1fr; }

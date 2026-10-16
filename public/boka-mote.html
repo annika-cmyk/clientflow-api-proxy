@@ -8,79 +8,167 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260915mot">
+    <link rel="stylesheet" href="styles.css?v=20261016mb">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
       html.cf-warm body.boka-mote-page {
         min-height: 100vh;
         margin: 0;
-        padding: 2.5rem 1.25rem 4rem;
-        background: linear-gradient(160deg, var(--app-bg) 0%, var(--panel-2, #ebe4d8) 100%);
-        font-family: var(--body-font), sans-serif;
-        color: var(--title-text);
+        padding: 1.5rem 1rem 3rem;
+        background: linear-gradient(160deg, #f3f5f7 0%, #e8eef0 100%);
+        font-family: var(--body-font), "Schibsted Grotesk", sans-serif;
+        color: var(--title-text, #1a1a1a);
       }
-      .boka-wrap { max-width: 560px; margin: 0 auto; }
-      .boka-brand { text-align: center; margin-bottom: 1.5rem; }
-      .boka-brand img { max-width: 150px; height: auto; }
-      .boka-card {
-        background: var(--card-bg, #fff);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 1.5rem 1.6rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,.06);
+      .boka-wrap { max-width: 980px; margin: 0 auto; }
+      .boka-wrap--narrow { max-width: 560px; }
+      .boka-brand { text-align: center; margin-bottom: 1rem; }
+      .boka-brand img { max-width: 140px; height: auto; }
+      .boka-host {
+        text-align: center;
+        margin-bottom: 1.25rem;
       }
-      .boka-card h1 {
+      .boka-host-avatar {
+        width: 64px; height: 64px; border-radius: 50%;
+        background: #13505c; color: #fff;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 1.4rem; font-weight: 700; margin-bottom: 0.5rem;
+      }
+      .boka-host-kicker {
+        font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: #64748b; margin: 0;
+      }
+      .boka-host h1 {
         font-family: var(--title-font), Georgia, serif;
-        font-size: 1.45rem;
-        margin: 0 0 .5rem;
-        font-weight: 500;
+        font-size: 1.55rem; margin: 0.15rem 0; font-weight: 600;
       }
-      .boka-lead { color: var(--text); margin: 0 0 1.1rem; line-height: 1.5; }
-      .boka-meta { font-size: .9rem; color: var(--text); margin: 0 0 1rem; }
+      .boka-host-with { color: #64748b; margin: 0; font-size: 0.95rem; }
+      .boka-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 0;
+        box-shadow: 0 8px 28px rgba(15, 40, 50, 0.07);
+        overflow: hidden;
+      }
+      .boka-grid {
+        display: grid;
+        grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1fr) minmax(180px, 0.9fr);
+        min-height: 420px;
+      }
+      @media (max-width: 860px) {
+        .boka-grid { grid-template-columns: 1fr; }
+      }
+      .boka-col {
+        padding: 1.25rem 1.35rem;
+        border-right: 1px solid #eef2f6;
+        max-height: 520px;
+        overflow: auto;
+      }
+      .boka-col:last-child { border-right: none; }
+      .boka-col h2 {
+        font-size: 0.95rem; margin: 0 0 0.85rem; font-weight: 700;
+      }
+      .boka-lead { color: #475569; margin: 0 0 1rem; line-height: 1.5; font-size: 0.92rem; }
+      .boka-loc-list { display: grid; gap: 0.45rem; margin-bottom: 1.1rem; }
+      .boka-loc {
+        display: flex; align-items: center; gap: 0.65rem;
+        border: 1px solid #e2e8f0; border-radius: 10px;
+        padding: 0.65rem 0.8rem; cursor: pointer; background: #fff;
+      }
+      .boka-loc.is-selected { border-color: #1a73e8; background: #eef5ff; }
+      .boka-loc input { accent-color: #1a73e8; }
+      .boka-dur {
+        display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem;
+      }
+      .boka-dur button {
+        border: 1px solid #e2e8f0; background: #fff; border-radius: 999px;
+        padding: 0.4rem 0.85rem; cursor: pointer; font: inherit; font-size: 0.88rem;
+      }
+      .boka-dur button.is-selected {
+        background: #1a73e8; color: #fff; border-color: #1a73e8;
+      }
+      .boka-cal-nav {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 0.65rem; font-weight: 600; font-size: 0.92rem;
+      }
+      .boka-cal-nav button {
+        border: none; background: transparent; cursor: pointer;
+        width: 2rem; height: 2rem; border-radius: 8px; color: #334155;
+      }
+      .boka-cal-nav button:hover { background: #f1f5f9; }
+      .boka-cal-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.25rem;
+        text-align: center; font-size: 0.8rem;
+      }
+      .boka-cal-wd { color: #94a3b8; padding: 0.25rem 0; font-weight: 600; }
+      .boka-cal-day {
+        border: none; background: transparent; border-radius: 50%;
+        aspect-ratio: 1; cursor: pointer; font: inherit; color: #cbd5e1;
+      }
+      .boka-cal-day.is-available {
+        background: #e8f0fe; color: #1a73e8; font-weight: 600;
+      }
+      .boka-cal-day.is-selected {
+        background: #1a73e8; color: #fff;
+      }
+      .boka-cal-day.is-today:not(.is-selected) {
+        box-shadow: inset 0 0 0 1px #94a3b8;
+      }
+      .boka-times { display: grid; gap: 0.4rem; }
+      .boka-time {
+        border: 1px solid #e2e8f0; background: #fff; border-radius: 10px;
+        padding: 0.65rem 0.75rem; cursor: pointer; font: inherit; text-align: left;
+        display: flex; align-items: center; gap: 0.5rem;
+      }
+      .boka-time.is-selected { border-color: #1a73e8; background: #eef5ff; }
+      .boka-pref-dot {
+        width: 0.45rem; height: 0.45rem; border-radius: 50%; background: #22c55e;
+      }
+      .boka-footer {
+        display: flex; justify-content: flex-end; gap: 0.6rem;
+        padding: 0.85rem 1.25rem; border-top: 1px solid #eef2f6; background: #fafbfc;
+      }
+      .boka-confirm-layout {
+        display: grid; grid-template-columns: 220px 1fr; min-height: 360px;
+      }
+      @media (max-width: 700px) {
+        .boka-confirm-layout { grid-template-columns: 1fr; }
+      }
+      .boka-summary {
+        padding: 1.25rem; border-right: 1px solid #eef2f6; background: #fafbfc;
+      }
+      .boka-summary p {
+        margin: 0 0 0.75rem; font-size: 0.9rem; color: #334155;
+        display: flex; gap: 0.5rem; align-items: flex-start;
+      }
+      .boka-form-pane { padding: 1.25rem 1.4rem; }
+      .boka-field { display: grid; gap: 0.35rem; margin-bottom: 0.85rem; }
+      .boka-field span { font-size: 0.85rem; font-weight: 600; }
+      .boka-field input, .boka-field textarea {
+        width: 100%; box-sizing: border-box;
+        border: 1px solid #e2e8f0; border-radius: 8px;
+        padding: 0.65rem 0.75rem; font: inherit; background: #fff;
+      }
+      .boka-hint { font-size: 0.78rem; color: #94a3b8; margin: 0.2rem 0 0; }
+      .boka-error { color: #b42318; font-size: 0.9rem; margin-top: 0.5rem; }
+      .boka-state { text-align: center; padding: 2rem 1.5rem; color: #64748b; }
+      .boka-state h2 { font-family: var(--title-font); font-weight: 500; color: #1a1a1a; }
+      .boka-ok { color: #1f7a4d; }
+      .hidden { display: none !important; }
+      /* Legacy invite token flow */
+      .boka-legacy { padding: 1.5rem 1.6rem; }
       .boka-slots { display: grid; gap: .5rem; margin: 1rem 0 1.25rem; }
       .boka-slot {
         display: flex; align-items: center; gap: .75rem;
         width: 100%; text-align: left;
-        border: 1px solid var(--border);
-        background: #fff;
-        border-radius: 10px;
-        padding: .8rem 1rem;
-        cursor: pointer;
-        font: inherit;
+        border: 1px solid #e2e8f0; background: #fff;
+        border-radius: 10px; padding: .8rem 1rem; cursor: pointer; font: inherit;
       }
-      .boka-slot:hover { border-color: var(--accent); }
-      .boka-slot.is-selected {
-        border-color: var(--accent);
-        background: var(--accent-light, #e7f0f2);
-      }
-      .boka-slot-radio {
-        width: 1rem; height: 1rem; border-radius: 50%;
-        border: 2px solid var(--border); flex: 0 0 auto;
-      }
-      .boka-slot.is-selected .boka-slot-radio {
-        border-color: var(--accent);
-        box-shadow: inset 0 0 0 3px var(--accent);
-      }
-      .boka-field { display: grid; gap: .35rem; margin-bottom: .85rem; }
-      .boka-field span { font-size: .85rem; font-weight: 600; }
-      .boka-field input, .boka-field textarea {
-        width: 100%; box-sizing: border-box;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: .65rem .75rem;
-        font: inherit;
-        background: #fff;
-      }
-      .boka-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
-      .boka-error { color: var(--error, #b42318); font-size: .9rem; margin-top: .75rem; }
-      .boka-state { text-align: center; padding: 1rem 0; color: var(--text); }
-      .boka-state h2 { font-family: var(--title-font); font-weight: 500; color: var(--title-text); }
-      .boka-ok { color: var(--success, #1f7a4d); }
-      .hidden { display: none !important; }
+      .boka-slot.is-selected { border-color: #1a73e8; background: #eef5ff; }
     </style>
 </head>
 <body class="boka-mote-page">
-    <div class="boka-wrap">
+    <div class="boka-wrap" id="boka-root">
         <div class="boka-brand">
             <img src="images/Clientflow logga.png" alt="ClientFlow" onerror="this.style.display='none'">
         </div>
@@ -104,37 +192,104 @@
             <p>Det går inte längre att boka via den här länken.</p>
         </div>
 
+        <!-- Legacy invite flow -->
         <div id="boka-form-wrap" class="boka-card hidden">
-            <h1 id="boka-title">Boka möte</h1>
-            <p class="boka-lead" id="boka-message"></p>
-            <p class="boka-meta" id="boka-meta"></p>
+            <div class="boka-legacy">
+                <h1 id="boka-title">Boka möte</h1>
+                <p class="boka-lead" id="boka-message"></p>
+                <p class="boka-meta" id="boka-meta" style="font-size:0.9rem;color:#64748b;"></p>
+                <form id="boka-form">
+                    <p style="font-weight:600;margin:0 0 .4rem;">Välj tid</p>
+                    <div class="boka-slots" id="boka-slots" role="radiogroup" aria-label="Tidsluckor"></div>
+                    <label class="boka-field">
+                        <span>Ditt namn</span>
+                        <input type="text" id="boka-name" required autocomplete="name">
+                    </label>
+                    <label class="boka-field">
+                        <span>E-post (valfritt)</span>
+                        <input type="email" id="boka-email" autocomplete="email">
+                    </label>
+                    <label class="boka-field">
+                        <span>Meddelande (valfritt)</span>
+                        <textarea id="boka-note" rows="2"></textarea>
+                    </label>
+                    <div class="boka-footer" style="border:0;padding:0;background:transparent;justify-content:flex-start;">
+                        <button type="submit" class="btn btn-primary" id="boka-submit">Boka tid</button>
+                    </div>
+                    <p class="boka-error hidden" id="boka-form-error"></p>
+                </form>
+            </div>
+        </div>
 
-            <form id="boka-form">
-                <p style="font-weight:600;margin:0 0 .4rem;">Välj tid</p>
-                <div class="boka-slots" id="boka-slots" role="radiogroup" aria-label="Tidsluckor"></div>
+        <!-- Link / share scheduling flow -->
+        <div id="boka-link-wrap" class="hidden">
+            <div class="boka-host">
+                <div class="boka-host-avatar" id="boka-avatar">M</div>
+                <p class="boka-host-kicker">Mötesbokning</p>
+                <h1 id="boka-link-title">Möte</h1>
+                <p class="boka-host-with" id="boka-link-host"></p>
+            </div>
 
-                <label class="boka-field">
-                    <span>Ditt namn</span>
-                    <input type="text" id="boka-name" required autocomplete="name">
-                </label>
-                <label class="boka-field">
-                    <span>E-post (valfritt)</span>
-                    <input type="email" id="boka-email" autocomplete="email">
-                </label>
-                <label class="boka-field">
-                    <span>Meddelande (valfritt)</span>
-                    <textarea id="boka-note" rows="2"></textarea>
-                </label>
-
-                <div class="boka-actions">
-                    <button type="submit" class="btn btn-primary" id="boka-submit">Boka tid</button>
+            <div class="boka-card" id="boka-step-pick">
+                <div class="boka-grid">
+                    <div class="boka-col">
+                        <p class="boka-lead" id="boka-link-desc"></p>
+                        <h2>Videokonferens eller plats</h2>
+                        <div class="boka-loc-list" id="boka-locs"></div>
+                        <h2>Längd</h2>
+                        <div class="boka-dur" id="boka-durs"></div>
+                    </div>
+                    <div class="boka-col">
+                        <h2>Välj dag</h2>
+                        <div class="boka-cal-nav">
+                            <button type="button" id="boka-cal-prev" aria-label="Föregående månad"><i class="fas fa-chevron-left"></i></button>
+                            <span id="boka-cal-label">—</span>
+                            <button type="button" id="boka-cal-next" aria-label="Nästa månad"><i class="fas fa-chevron-right"></i></button>
+                        </div>
+                        <div class="boka-cal-grid" id="boka-cal"></div>
+                    </div>
+                    <div class="boka-col">
+                        <h2>Välj tid</h2>
+                        <div class="boka-times" id="boka-times"></div>
+                        <p class="boka-hint" id="boka-times-empty">Välj en ledig dag först.</p>
+                    </div>
                 </div>
-                <p class="boka-error hidden" id="boka-form-error"></p>
-            </form>
+                <div class="boka-footer">
+                    <button type="button" class="btn btn-primary" id="boka-next" disabled>Nästa</button>
+                </div>
+            </div>
+
+            <div class="boka-card hidden" id="boka-step-confirm">
+                <div class="boka-confirm-layout">
+                    <div class="boka-summary" id="boka-summary"></div>
+                    <div class="boka-form-pane">
+                        <form id="boka-link-form">
+                            <label class="boka-field">
+                                <span>Namn</span>
+                                <input type="text" id="boka-link-name" required autocomplete="name">
+                            </label>
+                            <label class="boka-field">
+                                <span>E-post</span>
+                                <input type="email" id="boka-link-email" autocomplete="email">
+                            </label>
+                            <label class="boka-field">
+                                <span id="boka-agenda-label">Meddelande / agenda</span>
+                                <textarea id="boka-link-agenda" rows="5"></textarea>
+                                <p class="boka-hint">Detta ingår i kalenderinbjudan.</p>
+                            </label>
+                            <p class="boka-error hidden" id="boka-link-error"></p>
+                        </form>
+                    </div>
+                </div>
+                <div class="boka-footer">
+                    <button type="button" class="btn btn-ghost" id="boka-back"><i class="fas fa-arrow-left"></i> Tillbaka</button>
+                    <button type="button" class="btn btn-primary" id="boka-confirm">Bekräfta</button>
+                </div>
+            </div>
         </div>
     </div>
 
     <script src="js/config.js" defer></script>
-    <script src="js/boka-mote.js?v=1" defer></script>
+    <script src="js/boka-mote.js?v=2" defer></script>
 </body>
 </html>
