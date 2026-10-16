@@ -125,8 +125,21 @@
         width: 0.45rem; height: 0.45rem; border-radius: 50%; background: #22c55e;
       }
       .boka-footer {
-        display: flex; justify-content: flex-end; gap: 0.6rem;
+        display: flex; justify-content: flex-end; align-items: center; gap: 0.6rem; flex-wrap: wrap;
         padding: 0.85rem 1.25rem; border-top: 1px solid #eef2f6; background: #fafbfc;
+      }
+      #boka-next[aria-disabled="true"] {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      #boka-next.is-ready {
+        opacity: 1;
+        cursor: pointer;
+      }
+      .boka-time.is-selected {
+        border-color: #1a73e8;
+        background: #eef5ff;
+        box-shadow: inset 0 0 0 1px #1a73e8;
       }
       .boka-confirm-layout {
         display: grid; grid-template-columns: 220px 1fr; min-height: 360px;
@@ -255,7 +268,8 @@
                     </div>
                 </div>
                 <div class="boka-footer">
-                    <button type="button" class="btn btn-primary" id="boka-next" disabled>Nästa</button>
+                    <p class="boka-error hidden" id="boka-next-hint" style="flex:1;margin:0;text-align:left;"></p>
+                    <button type="button" class="btn btn-primary" id="boka-next" aria-disabled="true">Nästa</button>
                 </div>
             </div>
 
@@ -290,6 +304,6 @@
     </div>
 
     <script src="js/config.js" defer></script>
-    <script src="js/boka-mote.js?v=2" defer></script>
+    <script src="js/boka-mote.js?v=3" defer></script>
 </body>
 </html>
