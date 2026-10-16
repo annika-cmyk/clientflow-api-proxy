@@ -52,6 +52,8 @@ const { createMinibokAml } = require('./lib/minibok-aml');
 const { createGmailIntegration } = require('./lib/gmail');
 const { createMejlExtras } = require('./lib/mejl');
 const { createMotesbokning } = require('./lib/motesbokning');
+const { createMoteslankar } = require('./lib/moteslankar');
+const { createMoteslankarBookingDeps } = require('./lib/moteslankar-booking');
 const { createTidregistrering } = require('./lib/tidregistrering');
 const { extractMejlLink } = require('./lib/mejl-link');
 const {
@@ -3027,20 +3029,38 @@ const mejlExtras = createMejlExtras({
   getAirtableUser
 });
 
+async function pushMeetingInviteToGoogle(invite) {
+  try {
+    const creatorEmail = String(invite?.createdBy || '').trim();
+    if (!creatorEmail) return;
+    const creator = await getAirtableUser(creatorEmail);
+    if (!creator) return;
+    await gmailIntegration.pushMeetingForUser(creator, invite);
+  } catch (err) {
+    console.warn('google-calendar meeting hook:', err.message);
+  }
+}
+
 const motesbokning = createMotesbokning({
   authenticateToken,
   getAirtableUser,
-  onMeetingBooked: async (invite) => {
-    try {
-      const creatorEmail = String(invite?.createdBy || '').trim();
-      if (!creatorEmail) return;
-      const creator = await getAirtableUser(creatorEmail);
-      if (!creator) return;
-      await gmailIntegration.pushMeetingForUser(creator, invite);
-    } catch (err) {
-      console.warn('google-calendar meeting hook:', err.message);
-    }
-  }
+  onMeetingBooked: pushMeetingInviteToGoogle
+});
+
+const moteslankarBooking = createMoteslankarBookingDeps({
+  getAirtableUser,
+  gmailIntegration,
+  onMeetingBooked: pushMeetingInviteToGoogle
+});
+
+const moteslankar = createMoteslankar({
+  authenticateToken,
+  getAirtableUser,
+  listBusyForHost: moteslankarBooking.listBusyForHost,
+  listBookedBusyForHost: moteslankarBooking.listBookedBusyForHost,
+  createBookingFromLink: moteslankarBooking.createBookingFromLink,
+  findShareByToken: moteslankarBooking.findShareByToken,
+  createShareRecord: moteslankarBooking.createShareRecord
 });
 
 const tidregistrering = createTidregistrering({
@@ -28145,6 +28165,8 @@ minibokAml.registerRoutes(app);
 // Gmail ↔ Clientflow (inkorg under KUNDER + skicka som användaren)
 gmailIntegration.registerRoutes(app);
 mejlExtras.registerRoutes(app);
+// Möteslänkar före generiska /public/:token så "link"/"share" inte fångas som token
+moteslankar.registerRoutes(app);
 motesbokning.registerRoutes(app);
 tidregistrering.registerRoutes(app);
 
