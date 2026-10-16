@@ -20167,6 +20167,186 @@ body.byra-resa-page .risk-header h1 {
   line-height: 1.45;
 }
 
+/* Kundkort: KYC-popup vid kundnamn */
+.kundkort-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin: 0.15rem 0 0.2rem;
+}
+.kundkort-name-row .kundkort-company-name {
+  margin: 0;
+}
+.kundresa-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  padding: 0.4rem 0.75rem 0.4rem 0.5rem;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.kundresa-trigger:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+.kundresa-trigger .tjanst-mall-progress {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+.kundresa-trigger-label {
+  white-space: nowrap;
+}
+.kundresa-modal {
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 1100;
+}
+.kundresa-modal[hidden] {
+  display: none !important;
+}
+.kundresa-modal.is-open {
+  display: flex !important;
+}
+.kundresa-modal-content {
+  max-width: min(820px, 96vw);
+  width: min(820px, 96vw);
+  max-height: min(88dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 0;
+}
+.kundresa-modal-content .modal-header {
+  flex-shrink: 0;
+  padding: 1rem 1.15rem 0.85rem;
+  border-bottom: 1px solid var(--line, #e8eaee);
+}
+.kundresa-modal-titleblock {
+  min-width: 0;
+  flex: 1;
+}
+.kundresa-modal-titleblock h3 {
+  margin: 0.1rem 0 0;
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+.kundresa-modal-progress {
+  margin: 0.25rem 0 0;
+  font-size: 0.88rem;
+  color: #64748b;
+}
+.kundresa-shell-host--modal {
+  margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.kundresa-popup-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.kundresa-popup-tabs {
+  width: 240px;
+  flex: 0 0 240px;
+  padding: 1.25rem 1rem 1.25rem 1.25rem;
+}
+.kundresa-tab-num {
+  font-weight: 700;
+  margin-right: 0.15rem;
+}
+.kundresa-tab-status {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: #64748b;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.tjanst-tab.is-active .kundresa-tab-status { color: #1d4ed8; }
+.tjanst-tab.is-done .kundresa-tab-status { color: #15803d; }
+.tjanst-tab.is-attention .kundresa-tab-status { color: #b91c1c; }
+.tjanst-tab.is-gated {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.kundresa-popup-body {
+  padding: 1.15rem 1.25rem 1.35rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.kundresa-popup-stepinfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+.kundresa-popup-stepmeta {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+}
+.kundresa-popup-steptitle {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: #0f172a;
+}
+.kundresa-popup-stepdesc {
+  margin: 0 0 0.35rem;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  max-width: 28rem;
+}
+body.kundresa-modal-open {
+  overflow: hidden;
+}
+@media (max-width: 720px) {
+  .kundresa-popup-layout {
+    flex-direction: column;
+  }
+  .kundresa-popup-tabs {
+    width: 100%;
+    flex: 0 0 auto;
+    border-right: none;
+    border-bottom: 1px solid var(--line, #e8eaee);
+    padding: 1rem;
+    max-height: 40vh;
+  }
+  .kundresa-popup-tabs .tjanst-tabs-steps {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.65rem 1rem;
+  }
+  .kundresa-popup-tabs .tjanst-tabs-steps::before {
+    display: none;
+  }
+  .kundresa-popup-tabs .tjanst-tab {
+    width: auto;
+    max-width: 100%;
+  }
+}
+
 /* Kundkort: onboarding-läge vs kundöversikt */
 .kundkort-mode-switch {
   display: inline-flex;

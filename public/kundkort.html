@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20261009kundformular-chips">
+    <link rel="stylesheet" href="styles.css?v=20261016kycpopup">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="kundkort-page">
@@ -24,7 +24,13 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>KUNDKORT</h1>
-                        <h2 id="customer-name" class="kundkort-company-name">Laddar kundinformation...</h2>
+                        <div class="kundkort-name-row">
+                            <h2 id="customer-name" class="kundkort-company-name">Laddar kundinformation...</h2>
+                            <button type="button" id="kundresa-open-btn" class="kundresa-trigger" aria-haspopup="dialog" aria-controls="kundresa-modal" hidden>
+                                <span id="kundresa-trigger-progress" class="tjanst-mall-progress is-empty" role="img" aria-label="KYC och riskbedömning"></span>
+                                <span class="kundresa-trigger-label">KYC och riskbedömning</span>
+                            </button>
+                        </div>
                         <p id="customer-org-number" class="kundkort-orgnr"></p>
                         <!-- Placeholder så dold-banner/actions inte skapar CLS när de injiceras -->
                         <div id="kund-dold-banner" class="kund-dold-banner" hidden></div>
@@ -45,8 +51,7 @@
                                 <span>Kundöversikt</span>
                             </button>
                         </div>
-                        <p class="kundkort-mode-lead" id="kundkort-mode-lead">Jobba igenom informationsinsamling, screening, formulär, riskprofil och godkännande. Insamlad info och löpande arbete finns under Kundöversikt.</p>
-                        <div id="kundresa-shell" class="kundresa-shell-host" hidden></div>
+                        <p class="kundkort-mode-lead" id="kundkort-mode-lead">Jobba igenom informationsinsamling, screening, formulär, riskprofil och godkännande. Öppna stegen via «KYC och riskbedömning» vid kundnamnet. Insamlad info och löpande arbete finns under Kundöversikt.</p>
                         <div id="kundresa-work-subnav" class="kundresa-work-subnav" hidden>
                             <button type="button" class="kundresa-work-subnav-btn is-active" data-work-pane="kundformular">Kundformulär</button>
                             <button type="button" class="kundresa-work-subnav-btn" data-work-pane="kycformular">Identifiering (KYC)</button>
@@ -218,6 +223,25 @@
         </main>
     </div>
 
+    <!-- KYC och riskbedömning — Din resa-popup -->
+    <div id="kundresa-modal" class="modal kundresa-modal" hidden aria-hidden="true">
+        <div class="modal-content kundresa-modal-content" role="dialog" aria-modal="true" aria-labelledby="kundresa-modal-title">
+            <div class="modal-header">
+                <div class="tjanst-modal-head">
+                    <div class="kundresa-modal-titleblock">
+                        <p class="tjanst-modal-kicker">Kundresa · 3 kap PTL</p>
+                        <h3 id="kundresa-modal-title">KYC och riskbedömning</h3>
+                        <p class="kundresa-modal-progress" id="kundresa-modal-progress" aria-live="polite"></p>
+                    </div>
+                    <button type="button" class="modal-close" id="kundresa-modal-close" aria-label="Stäng">
+                        <i class="fas fa-times" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="kundresa-shell" class="kundresa-shell-host kundresa-shell-host--modal"></div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="site-footer">
         <div class="container">
@@ -263,7 +287,7 @@
     <script src="js/html-plain-text.js?v=1" defer></script>
     <script src="js/identitet-kontroll.js?v=5" defer></script>
     <script src="js/kundformular-ui.js?v=9" defer></script>
-    <script src="js/kundresa-ui.js?v=5" defer></script>
-    <script src="js/kundkort.js?v=16.69" defer></script>
+    <script src="js/kundresa-ui.js?v=6" defer></script>
+    <script src="js/kundkort.js?v=16.70" defer></script>
 </body>
 </html>

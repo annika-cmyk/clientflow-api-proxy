@@ -1,31 +1,12 @@
 /**
- * Kundresa-UI — stegkort på kundkortet (samma kortmönster som Byråns AML-profil).
+ * Kundresa-UI — popup «Din resa» (samma steglista som tjänsteanalysen).
  * VH-steget utelämnas för enskild firma / fysisk person.
- * När VH visas: byråns bekräftelse mot register (inte samma sak som kundformulär-steget).
  */
 (function (global) {
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
-  function statusClass(status) {
-    if (status === 'done') return 'is-done';
-    if (status === 'next') return 'is-next';
-    if (status === 'attention') return 'is-attention';
-    if (status === 'gated') return 'is-gated';
-    if (status === 'soon') return 'is-soon';
-    return 'is-pending';
-  }
-
-  function trailIcon(status) {
-    if (status === 'done') return 'fa-check-circle';
-    if (status === 'next') return 'fa-arrow-right';
-    if (status === 'attention') return 'fa-exclamation-circle';
-    if (status === 'gated') return 'fa-lock';
-    if (status === 'soon') return 'fa-clock';
-    return 'fa-circle';
   }
 
   function alignmentClass(status) {
@@ -47,6 +28,39 @@
     if (status === 'kund_only') return 'Väntar byrå';
     if (status === 'pending') return 'Att göra';
     return 'Status';
+  }
+
+  function tabStateClass(step, activeStepId) {
+    const classes = [];
+    if (Number(step.id) === Number(activeStepId)) classes.push('is-active');
+    if (step.status === 'done' || step.done) classes.push('is-done');
+    if (step.status === 'attention') classes.push('is-attention');
+    if (step.status === 'gated' || step.gated) classes.push('is-gated');
+    if (step.status === 'next') classes.push('is-next');
+    return classes.join(' ');
+  }
+
+  function progressMeta(summary) {
+    const s = summary || {};
+    const total = Number(s.total) || (Array.isArray(s.steps) ? s.steps.length : 0);
+    const done = Number(s.completed) || 0;
+    const complete = total > 0 && done >= total;
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    let stateClass = 'is-empty';
+    if (complete || pct >= 100) stateClass = 'is-complete';
+    else if (done > 0) stateClass = 'is-partial';
+    return { done, total, complete, pct, stateClass };
+  }
+
+  function renderProgressIcon(summary) {
+    const p = progressMeta(summary);
+    const label = p.complete
+      ? 'Alla steg i KYC och riskbedömning är klara'
+      : (p.done > 0
+        ? `${p.done} av ${p.total} steg klara`
+        : 'Inget steg klart ännu');
+    const style = p.stateClass === 'is-partial' ? ` style="--progress:${p.pct}"` : '';
+    return `<span class="tjanst-mall-progress ${p.stateClass}" role="img" aria-label="${esc(label)}"${style}></span>`;
   }
 
   function renderRegisterList(register) {
@@ -77,94 +91,99 @@
     const activeStepId = s.activeStepId != null
       ? s.activeStepId
       : (s.nextStepId || (steps.find((st) => st.status === 'attention') || {}).id || null);
+    const activeStep = steps.find((st) => Number(st.id) === Number(activeStepId)) || steps.find((st) => st.status === 'next') || steps[0] || null;
     const showAlign = align.relevant !== false && align.status && align.status !== 'n/a'
       && (align.status !== 'pending' || !byraVal);
     const showVhPanel = gate.relevant !== false
-      && (Number(activeStepId) === 2 || gate.blocked || byraVal);
+      && (Number(activeStepId) === 2 || (activeStep && activeStep.key === 'vh_ombud') || gate.blocked);
 
     container.innerHTML = `
-      <section class="kundresa-shell" aria-label="Onboarding och KYC">
-        <div class="kundresa-shell-head">
-          <div>
-            <h3 class="kundresa-shell-title">Onboarding &amp; KYC</h3>
-            <p class="kundresa-shell-lead">${esc(s.progressLabel || '')} · Informationsinsamling och riskbedömning (3 kap PTL). Kundöversikten under flikarna visar insamlad info och löpande arbete.</p>
-          </div>
-        </div>
-        ${gate.blocked ? `<div class="kundresa-gate-banner" role="alert">
-          <strong>VH blockerar.</strong> ${esc(gate.message || 'Bekräfta verklig huvudman innan ni går vidare.')}
-        </div>` : ''}
-        <ol class="kundresa-steps kundresa-steps--cards">
-          ${steps.map((step) => {
-            const isFocus = Number(step.id) === Number(activeStepId);
-            const displayNum = step.number != null ? step.number : step.id;
-            const st = statusClass(step.status);
-            return `
-            <li class="kundresa-step byra-resa-step-card ${st}${step.comingSoonBankId ? ' is-soon' : ''}${isFocus ? ' is-active-panel' : ''}"
-                data-kundresa-step="${esc(String(step.id))}">
-              <button type="button" class="kundresa-step-btn kundresa-step-btn--card"
+      <div class="kundresa-popup-layout tjanst-modal-layout">
+        <nav class="tjanst-tabs kundresa-popup-tabs" role="tablist" aria-label="KYC och riskbedömning">
+          <p class="tjanst-tabs-kicker">Din resa</p>
+          <div class="tjanst-tabs-steps">
+            ${steps.map((step) => {
+              const displayNum = step.number != null ? step.number : step.id;
+              const disabled = step.gated ? 'disabled' : '';
+              return `
+              <button type="button" class="tjanst-tab ${tabStateClass(step, activeStepId)}"
+                role="tab"
+                aria-selected="${Number(step.id) === Number(activeStepId) ? 'true' : 'false'}"
                 data-kundresa-goto="${esc(step.tab || '')}"
                 data-kundresa-focus="${esc(step.focus || '')}"
                 data-kundresa-step-id="${esc(String(step.id))}"
                 data-kundresa-key="${esc(step.key || '')}"
-                ${step.gated ? 'disabled' : ''}
+                ${disabled}
                 title="${esc(step.gated ? 'Blockerad tills VH är bekräftad' : step.linkLabel || step.title)}">
-                <span class="byra-resa-step-card-top">
-                  <span class="byra-resa-step-card-heading">
-                    <span class="byra-resa-step-icon" aria-hidden="true"><i class="fas ${esc(step.icon || 'fa-circle')}"></i></span>
-                    <span class="byra-resa-step-status-label">${esc(String(displayNum))} · ${esc(step.label || '')}</span>
-                  </span>
-                  <span class="byra-resa-step-trail" aria-hidden="true"><i class="fas ${trailIcon(step.status)}"></i></span>
+                <span class="tjanst-tab-dot" data-resa-blob="${esc(String(step.id))}" aria-hidden="true"></span>
+                <span class="tjanst-tab-label">
+                  <span class="kundresa-tab-num">${esc(String(displayNum))}.</span>
+                  ${esc(step.title)}
+                  <span class="kundresa-tab-status">${esc(step.label || '')}</span>
                 </span>
-                <span class="byra-resa-step-title">${esc(step.title)}</span>
-                <span class="byra-resa-step-desc">${esc(step.desc || '')}</span>
-                <span class="byra-resa-step-link">${esc(step.linkLabel || 'Öppna steg')}</span>
-              </button>
-            </li>`;
-          }).join('')}
-        </ol>
-
-        ${gate.relevant !== false ? `<div class="kundresa-vh-box"${showVhPanel ? '' : ' hidden'} id="kundresa-vh-panel" data-kundresa-vh-panel>
-          <div class="kundresa-vh-box-head">
-            <h4>Verifiera verklig huvudman</h4>
-            <p class="kundresa-hint">Byråns kontroll mot registret. Kundens intygande sker i formuläret och ska stämma med samma lista.</p>
+              </button>`;
+            }).join('')}
           </div>
+        </nav>
+        <div class="tjanst-modal-body kundresa-popup-body">
+          ${gate.blocked ? `<div class="kundresa-gate-banner" role="alert">
+            <strong>VH blockerar.</strong> ${esc(gate.message || 'Bekräfta verklig huvudman innan ni går vidare.')}
+          </div>` : ''}
+          ${activeStep ? `<div class="kundresa-popup-stepinfo">
+            <p class="kundresa-popup-stepmeta">${esc(String(activeStep.number != null ? activeStep.number : activeStep.id))} · ${esc(activeStep.label || '')}</p>
+            <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
+            <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
+            ${activeStep.key !== 'vh_ombud' && !activeStep.gated ? `
+              <button type="button" class="btn btn-primary btn-sm" data-kundresa-open-work
+                data-kundresa-goto="${esc(activeStep.tab || '')}"
+                data-kundresa-focus="${esc(activeStep.focus || '')}"
+                data-kundresa-step-id="${esc(String(activeStep.id))}"
+                data-kundresa-key="${esc(activeStep.key || '')}">
+                <i class="fas fa-arrow-right"></i> ${esc(activeStep.linkLabel || 'Öppna steg')}
+              </button>` : ''}
+          </div>` : ''}
 
-          <div class="kundresa-vh-layout">
-            <div class="kundresa-vh-block">
-              <p class="kundresa-vh-label">Registrerad VH</p>
-              ${renderRegisterList(register)}
+          ${gate.relevant !== false ? `<div class="kundresa-vh-box"${showVhPanel ? '' : ' hidden'} id="kundresa-vh-panel" data-kundresa-vh-panel>
+            <div class="kundresa-vh-box-head">
+              <h4>Verifiera verklig huvudman</h4>
+              <p class="kundresa-hint">Byråns kontroll mot registret. Kundens intygande sker i formuläret och ska stämma med samma lista.</p>
             </div>
-
-            <div class="kundresa-vh-form">
-              ${showAlign ? `<div class="kundresa-vh-align ${alignmentClass(align.status)}" role="status">
-                <strong>${esc(alignTitle(align.status))}</strong>
-                <span>${esc(align.message || '')}</span>
-                ${align.kund ? `<span class="kundresa-vh-align-meta">Kund: ${esc(labelVh(align.kund))}</span>` : ''}
-              </div>` : ''}
-              <label class="kundresa-vh-field">
-                <span>Stämmer listan mot Bolagsverket?</span>
-                <select class="form-control" data-kundresa-vh>
-                  <option value="">— Välj —</option>
-                  <option value="Ja"${byraVal === 'Ja' ? ' selected' : ''}>Ja</option>
-                  <option value="Osaker"${byraVal === 'Osaker' ? ' selected' : ''}>Osäker</option>
-                  <option value="Nej"${byraVal === 'Nej' ? ' selected' : ''}>Nej</option>
-                </select>
-              </label>
-              <label class="kundresa-vh-field kundresa-vh-note-field"${showNote ? '' : ' hidden'} data-kundresa-vh-note-wrap>
-                <span>Anteckning${byraVal === 'Osaker' || byraVal === 'Nej' ? '' : ' (valfritt)'}</span>
-                <input type="text" class="form-control" data-kundresa-vh-note
-                  placeholder="Utredningsstatus, källa…"
-                  value="${esc(s.byraVhNote || '')}">
-              </label>
-              <div class="kundresa-vh-actions">
-                <button type="button" class="btn btn-primary btn-sm" data-kundresa-vh-save>
-                  <i class="fas fa-save"></i> Spara
-                </button>
+            <div class="kundresa-vh-layout">
+              <div class="kundresa-vh-block">
+                <p class="kundresa-vh-label">Registrerad VH</p>
+                ${renderRegisterList(register)}
+              </div>
+              <div class="kundresa-vh-form">
+                ${showAlign ? `<div class="kundresa-vh-align ${alignmentClass(align.status)}" role="status">
+                  <strong>${esc(alignTitle(align.status))}</strong>
+                  <span>${esc(align.message || '')}</span>
+                  ${align.kund ? `<span class="kundresa-vh-align-meta">Kund: ${esc(labelVh(align.kund))}</span>` : ''}
+                </div>` : ''}
+                <label class="kundresa-vh-field">
+                  <span>Stämmer listan mot Bolagsverket?</span>
+                  <select class="form-control" data-kundresa-vh>
+                    <option value="">— Välj —</option>
+                    <option value="Ja"${byraVal === 'Ja' ? ' selected' : ''}>Ja</option>
+                    <option value="Osaker"${byraVal === 'Osaker' ? ' selected' : ''}>Osäker</option>
+                    <option value="Nej"${byraVal === 'Nej' ? ' selected' : ''}>Nej</option>
+                  </select>
+                </label>
+                <label class="kundresa-vh-field kundresa-vh-note-field"${showNote ? '' : ' hidden'} data-kundresa-vh-note-wrap>
+                  <span>Anteckning${byraVal === 'Osaker' || byraVal === 'Nej' ? '' : ' (valfritt)'}</span>
+                  <input type="text" class="form-control" data-kundresa-vh-note
+                    placeholder="Utredningsstatus, källa…"
+                    value="${esc(s.byraVhNote || '')}">
+                </label>
+                <div class="kundresa-vh-actions">
+                  <button type="button" class="btn btn-primary btn-sm" data-kundresa-vh-save>
+                    <i class="fas fa-save"></i> Spara
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </div>` : ''}
-      </section>
+          </div>` : ''}
+        </div>
+      </div>
     `;
 
     const noteWrap = container.querySelector('[data-kundresa-vh-note-wrap]');
@@ -177,26 +196,26 @@
       });
     }
 
-    container.querySelectorAll('[data-kundresa-goto]').forEach((btn) => {
+    function emitStep(btn, closeAfter) {
+      if (!btn || btn.disabled) return;
+      const tab = btn.getAttribute('data-kundresa-goto') || '';
+      const focus = btn.getAttribute('data-kundresa-focus') || '';
+      const stepId = Number(btn.getAttribute('data-kundresa-step-id') || 0);
+      const key = btn.getAttribute('data-kundresa-key') || '';
+      if (onStep) onStep({ tab, focus, stepId, key, closeAfter: !!closeAfter }, btn);
+    }
+
+    container.querySelectorAll('.tjanst-tab[data-kundresa-step-id]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        if (btn.disabled) return;
-        const tab = btn.getAttribute('data-kundresa-goto') || '';
-        const focus = btn.getAttribute('data-kundresa-focus') || '';
-        const stepId = Number(btn.getAttribute('data-kundresa-step-id') || 0);
         const key = btn.getAttribute('data-kundresa-key') || '';
-        if (focus === 'vh' || stepId === 2 || key === 'vh_ombud') {
-          const panel = container.querySelector('[data-kundresa-vh-panel]');
-          if (panel) panel.hidden = false;
-          if (panel && panel.scrollIntoView) {
-            panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }
-          panel?.classList.add('is-flash');
-          setTimeout(() => panel?.classList.remove('is-flash'), 900);
-          if (onStep) onStep({ tab: '', focus: 'vh', stepId: 2, key: 'vh_ombud' }, btn);
-          return;
-        }
-        if (onStep) onStep({ tab, focus, stepId, key }, btn);
+        const focus = btn.getAttribute('data-kundresa-focus') || '';
+        const isVh = focus === 'vh' || key === 'vh_ombud';
+        emitStep(btn, !isVh);
       });
+    });
+
+    container.querySelectorAll('[data-kundresa-open-work]').forEach((btn) => {
+      btn.addEventListener('click', () => emitStep(btn, true));
     });
 
     const saveBtn = container.querySelector('[data-kundresa-vh-save]');
@@ -212,5 +231,5 @@
     }
   }
 
-  global.KundresaUi = { render };
+  global.KundresaUi = { render, renderProgressIcon, progressMeta };
 })(typeof window !== 'undefined' ? window : global);

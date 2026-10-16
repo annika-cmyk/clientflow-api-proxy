@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v16.69', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v16.70', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -149,6 +149,7 @@ class CustomerCardManager {
         this.setupTabNavigation();
         this.setupKundkortModeSwitch();
         this.setupWorkSubnav();
+        this.setupKundresaModal();
         this.setupRollerEventDelegation();
         this._ensureTabStatusElements();
         this._updateKlarTabIndicators({});
@@ -374,6 +375,93 @@ class CustomerCardManager {
         });
     }
 
+    setupKundresaModal() {
+        const openBtn = document.getElementById('kundresa-open-btn');
+        const modal = document.getElementById('kundresa-modal');
+        const closeBtn = document.getElementById('kundresa-modal-close');
+        if (openBtn && openBtn.dataset.bound !== '1') {
+            openBtn.dataset.bound = '1';
+            openBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.openKundresaModal();
+            });
+        }
+        if (closeBtn && closeBtn.dataset.bound !== '1') {
+            closeBtn.dataset.bound = '1';
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.closeKundresaModal();
+            });
+        }
+        if (modal && modal.dataset.bound !== '1') {
+            modal.dataset.bound = '1';
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) this.closeKundresaModal();
+            });
+        }
+        if (!this._kundresaEscBound) {
+            this._kundresaEscBound = true;
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && this._kundresaModalOpen) this.closeKundresaModal();
+            });
+        }
+    }
+
+    openKundresaModal() {
+        const modal = document.getElementById('kundresa-modal');
+        if (!modal) return;
+        this._kundresaModalOpen = true;
+        modal.hidden = false;
+        modal.setAttribute('aria-hidden', 'false');
+        modal.classList.add('is-open');
+        document.body.classList.add('kundresa-modal-open');
+        this._renderKundresa();
+        const closeBtn = document.getElementById('kundresa-modal-close');
+        if (closeBtn && typeof closeBtn.focus === 'function') closeBtn.focus();
+    }
+
+    closeKundresaModal() {
+        const modal = document.getElementById('kundresa-modal');
+        if (!modal) return;
+        this._kundresaModalOpen = false;
+        modal.hidden = true;
+        modal.setAttribute('aria-hidden', 'true');
+        modal.classList.remove('is-open');
+        document.body.classList.remove('kundresa-modal-open');
+    }
+
+    _updateKundresaTrigger() {
+        const btn = document.getElementById('kundresa-open-btn');
+        const progressHost = document.getElementById('kundresa-trigger-progress');
+        const progressLabel = document.getElementById('kundresa-modal-progress');
+        const summary = this._kundresa;
+        if (!btn) return;
+        if (!summary || !window.KundresaUi) {
+            btn.hidden = true;
+            return;
+        }
+        btn.hidden = false;
+        const meta = typeof KundresaUi.progressMeta === 'function'
+            ? KundresaUi.progressMeta(summary)
+            : { done: 0, total: 0, complete: false, pct: 0, stateClass: 'is-empty' };
+        if (progressHost) {
+            progressHost.className = `tjanst-mall-progress ${meta.stateClass || 'is-empty'}`;
+            if (meta.stateClass === 'is-partial') progressHost.style.setProperty('--progress', String(meta.pct || 0));
+            else progressHost.style.removeProperty('--progress');
+            progressHost.setAttribute('aria-label', meta.complete
+                ? 'Alla steg i KYC och riskbedömning är klara'
+                : (meta.done > 0
+                    ? `${meta.done} av ${meta.total} steg klara`
+                    : 'Inget steg klart ännu'));
+        }
+        if (progressLabel) {
+            progressLabel.textContent = summary.progressLabel || '';
+        }
+        btn.title = meta.complete
+            ? 'KYC och riskbedömning — alla steg klara'
+            : `KYC och riskbedömning — ${meta.done} av ${meta.total} steg`;
+    }
+
     _navGroupForTab(tab) {
         const oversikt = new Set(['uppdragsavtal', 'uppdrag', 'anteckningar', 'avvikelser', 'dokumentation', 'samarbete']);
         return oversikt.has(String(tab || '')) ? 'oversikt' : 'arbete';
@@ -393,19 +481,13 @@ class CustomerCardManager {
 
         const arbeteNav = document.querySelector('[data-kundkort-nav="arbete"]');
         const oversiktNav = document.querySelector('[data-kundkort-nav="oversikt"]');
-        const resa = document.getElementById('kundresa-shell');
         const lead = document.getElementById('kundkort-mode-lead');
         if (arbeteNav) arbeteNav.hidden = next !== 'onboarding';
         if (oversiktNav) oversiktNav.hidden = next !== 'oversikt';
-        if (resa) {
-            // Visa stegkorten bara i onboarding-läge (när vi har data)
-            if (next === 'onboarding' && this._kundresa) resa.hidden = false;
-            else if (next === 'oversikt') resa.hidden = true;
-        }
         if (lead) {
             lead.textContent = next === 'onboarding'
-                ? 'Jobba igenom informationsinsamling, screening, formulär, riskprofil och godkännande. Insamlad info och löpande arbete finns under Kundöversikt.'
-                : 'Här ser ni insamlad information och löpande kundarbete (avtal, uppdrag, anteckningar, dokumentation och samarbete). Onboarding & KYC ligger under det andra läget.';
+                ? 'Jobba igenom informationsinsamling, screening, formulär, riskprofil och godkännande. Öppna stegen via «KYC och riskbedömning» vid kundnamnet. Insamlad info och löpande arbete finns under Kundöversikt.'
+                : 'Här ser ni insamlad information och löpande kundarbete (avtal, uppdrag, anteckningar, dokumentation och samarbete). Onboarding & KYC öppnas via knappen vid kundnamnet.';
         }
 
         if (opts.skipTabSwitch) return;
@@ -10881,10 +10963,9 @@ class CustomerCardManager {
     // ─── KYC-FORMULÄR ─────────────────────────────────────────────────────────
 
     async loadKundresa() {
-        const host = document.getElementById('kundresa-shell');
-        if (!host || !this.customerId) return;
+        if (!this.customerId) return;
         if (!window.KundresaUi || typeof KundresaUi.render !== 'function') {
-            host.hidden = true;
+            this._updateKundresaTrigger();
             return;
         }
         try {
@@ -10894,15 +10975,17 @@ class CustomerCardManager {
                 ...getAuthOptsKundkort()
             });
             if (!res.ok) {
-                host.hidden = true;
+                this._kundresa = null;
+                this._updateKundresaTrigger();
                 return;
             }
             const data = await res.json();
             this._kundresa = data.kundresa || null;
-            this._renderKundresa();
+            this._updateKundresaTrigger();
+            if (this._kundresaModalOpen) this._renderKundresa();
         } catch (e) {
             console.warn('loadKundresa:', e);
-            host.hidden = true;
+            this._updateKundresaTrigger();
         }
     }
 
@@ -10910,11 +10993,11 @@ class CustomerCardManager {
         const host = document.getElementById('kundresa-shell');
         if (!host || !window.KundresaUi) return;
         const summary = this._kundresa;
+        this._updateKundresaTrigger();
         if (!summary) {
-            host.hidden = true;
+            host.innerHTML = '<p class="lead-empty">Kunde inte ladda KYC-resan.</p>';
             return;
         }
-        host.hidden = false;
         // Bifoga byrå-VH från kundformulär-summary om vi redan har den
         const kf = this._kundformularSummary || {};
         const enriched = {
@@ -10932,7 +11015,6 @@ class CustomerCardManager {
             onStep: (target) => this._gotoKundresaStep(target),
             onVhSave: (payload, btn) => this._onKundresaVhSave(payload, btn)
         });
-        if (this._kundkortMode === 'oversikt') host.hidden = true;
     }
 
     _gotoKundresaStep(target) {
@@ -10941,18 +11023,24 @@ class CustomerCardManager {
         const focus = step.focus || '';
         const stepId = step.stepId != null ? step.stepId : step.id;
         const key = step.key || '';
+        const closeAfter = step.closeAfter !== false
+            && focus !== 'vh'
+            && key !== 'vh_ombud'
+            && !!tab;
         this._activeKundresaStepId = stepId != null ? Number(stepId) : this._activeKundresaStepId;
         this._activeKundresaFocus = focus || key || '';
         this.setKundkortMode('onboarding', { skipTabSwitch: true });
         if (focus === 'vh' || key === 'vh_ombud' || !tab) {
-            this._renderKundresa();
+            if (!this._kundresaModalOpen) this.openKundresaModal();
+            else this._renderKundresa();
             return;
         }
         this.switchToTab(tab);
         this.loadTabContent(tab);
         this._syncWorkSubnav(tab);
         setTimeout(() => this._focusKundresaSurface(focus, tab), 280);
-        this._renderKundresa();
+        if (closeAfter) this.closeKundresaModal();
+        else if (this._kundresaModalOpen) this._renderKundresa();
     }
 
     _focusKundresaSurface(focus, tab) {
