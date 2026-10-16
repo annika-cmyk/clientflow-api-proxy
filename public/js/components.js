@@ -18,7 +18,7 @@ class ComponentLoader {
                 return true;
             }
 
-            const response = await fetch(`Components/${componentName}.html`);
+            const response = await fetch(`Components/${componentName}.html?v=addon1`);
             if (!response.ok) {
                 throw new Error(`Failed to load component: ${componentName}`);
             }
@@ -334,7 +334,18 @@ class ComponentLoader {
     // Update active page without reloading the entire sidebar
     updateActivePage(element) {
         const currentPage = this.getCurrentPage();
-        const activeLink = element.querySelector(`[data-page="${currentPage}"]`);
+        let activeLink = null;
+        try {
+            const vy = new URLSearchParams(window.location.search).get('vy') || '';
+            if (currentPage === 'tid' && vy === 'fakturaunderlag') {
+                activeLink = element.querySelector('[data-page="tid"][data-tid-vy="fakturaunderlag"]');
+            } else if (currentPage === 'tid') {
+                activeLink = element.querySelector('[data-page="tid"]:not([data-tid-vy])');
+            }
+        } catch (_) { /* ignore */ }
+        if (!activeLink) {
+            activeLink = element.querySelector(`[data-page="${currentPage}"]`);
+        }
         
         if (activeLink) {
             // Remove any existing active classes

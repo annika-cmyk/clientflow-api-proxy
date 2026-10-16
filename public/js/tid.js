@@ -676,11 +676,22 @@
       el.to.value = b.to;
     }
     try {
+      const pre = new URLSearchParams(location.search);
+      if (pre.get('vy') === 'fakturaunderlag' && el.statusFilter && !el.statusFilter.dataset.vyApplied) {
+        el.statusFilter.value = 'Klar';
+        el.statusFilter.dataset.vyApplied = '1';
+        const h1 = document.querySelector('.uppdragboard-title h1');
+        if (h1) h1.textContent = 'Fakturering';
+        const lead = document.querySelector('.kalender-lead');
+        if (lead) {
+          lead.textContent = 'Tidposter med status Klar är fakturaunderlag. Markera som Fakturerad när de är fakturerade.';
+        }
+        document.title = 'ClientFlow • Fakturering';
+      }
       await Promise.all([loadCustomers(), loadEntries()]);
       show(el.loading, false);
       show(el.setup, false);
       show(el.content, true);
-      const pre = new URLSearchParams(location.search);
       if (pre.get('new') === '1') openModal(null);
     } catch (err) {
       show(el.loading, false);
