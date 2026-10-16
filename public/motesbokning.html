@@ -151,26 +151,20 @@
 
                     <fieldset class="mb-fieldset">
                         <legend>Tillgänglighet</legend>
-                        <div class="moten-row">
-                            <label class="moten-field">
-                                <span>Arbetsstart</span>
-                                <input type="time" id="mb-day-start" class="kunduppgifter-input" value="08:00">
-                            </label>
-                            <label class="moten-field">
-                                <span>Arbetsslut</span>
-                                <input type="time" id="mb-day-end" class="kunduppgifter-input" value="17:00">
-                            </label>
+                        <p class="kalender-lead" style="margin:0 0 0.65rem;font-size:0.85rem;">
+                            Välj dagar och tider per dag. Lägg till flera intervall (t.ex. 09–12 och 13–17) för lunchpaus.
+                        </p>
+                        <div class="mb-day-toggles" id="mb-day-toggles" role="group" aria-label="Veckodagar">
+                            <button type="button" class="mb-day-toggle is-on" data-day="0">Mån</button>
+                            <button type="button" class="mb-day-toggle is-on" data-day="1">Tis</button>
+                            <button type="button" class="mb-day-toggle is-on" data-day="2">Ons</button>
+                            <button type="button" class="mb-day-toggle is-on" data-day="3">Tor</button>
+                            <button type="button" class="mb-day-toggle is-on" data-day="4">Fre</button>
+                            <button type="button" class="mb-day-toggle" data-day="5">Lör</button>
+                            <button type="button" class="mb-day-toggle" data-day="6">Sön</button>
                         </div>
-                        <div class="mb-chip-row" id="mb-weekdays">
-                            <label class="mb-chip"><input type="checkbox" value="0" checked> Mån</label>
-                            <label class="mb-chip"><input type="checkbox" value="1" checked> Tis</label>
-                            <label class="mb-chip"><input type="checkbox" value="2" checked> Ons</label>
-                            <label class="mb-chip"><input type="checkbox" value="3" checked> Tor</label>
-                            <label class="mb-chip"><input type="checkbox" value="4" checked> Fre</label>
-                            <label class="mb-chip"><input type="checkbox" value="5"> Lör</label>
-                            <label class="mb-chip"><input type="checkbox" value="6"> Sön</label>
-                        </div>
-                        <div class="moten-row">
+                        <div class="mb-schedule-rows" id="mb-schedule-rows"></div>
+                        <div class="moten-row" style="margin-top:0.75rem;">
                             <label class="moten-field">
                                 <span>Buffer före (min)</span>
                                 <input type="number" id="mb-buf-before" class="kunduppgifter-input" min="0" max="120" value="0">
@@ -265,6 +259,6 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.7" defer></script>
-    <script src="js/motesbokning-admin.js?v=1" defer></script>
+    <script src="js/motesbokning-admin.js?v=2" defer></script>
 </body>
 </html>

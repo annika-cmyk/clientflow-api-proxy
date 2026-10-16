@@ -23144,6 +23144,51 @@ body.kalender-detail-open { overflow: hidden; }
 .mb-more-menu button:hover { background: #f1f5f9; }
 .mb-more-menu button.is-danger { color: #b42318; }
 .mb-share-result { margin-top: 0.75rem; }
+.mb-day-toggles {
+  display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem;
+}
+.mb-day-toggle {
+  width: 2.5rem; height: 2.5rem; border-radius: 50%;
+  border: 1px solid #e2e8f0; background: #fff; color: #334155;
+  font: inherit; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+}
+.mb-day-toggle.is-on {
+  background: var(--accent, #13505c); color: #fff; border-color: var(--accent, #13505c);
+}
+.mb-schedule-rows { display: grid; gap: 0.55rem; }
+.mb-schedule-day {
+  display: grid; gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #eef2f6; border-radius: 10px; background: #fafbfc;
+}
+.mb-schedule-day-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  font-weight: 700; font-size: 0.88rem;
+}
+.mb-schedule-intervals { display: grid; gap: 0.35rem; }
+.mb-schedule-iv {
+  display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+}
+.mb-schedule-iv input[type="time"] {
+  width: auto; min-width: 6.5rem; flex: 0 0 auto;
+}
+.mb-schedule-iv .mb-iv-to { color: #94a3b8; font-size: 0.85rem; }
+.mb-schedule-iv .mb-iv-remove {
+  border: none; background: transparent; color: #94a3b8; cursor: pointer;
+  width: 1.75rem; height: 1.75rem; border-radius: 6px;
+}
+.mb-schedule-iv .mb-iv-remove:hover { background: #fee2e2; color: #b42318; }
+.mb-schedule-add {
+  border: none; background: color-mix(in srgb, var(--accent, #13505c) 12%, white);
+  color: var(--accent, #13505c); width: 1.85rem; height: 1.85rem;
+  border-radius: 50%; cursor: pointer; font-weight: 700;
+}
+.mb-schedule-copy {
+  border: none; background: transparent; color: #64748b; cursor: pointer;
+  font: inherit; font-size: 0.78rem; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.25rem;
+}
+.mb-schedule-copy:hover { color: var(--accent, #13505c); }
 
 @media (max-width: 700px) {
   .moten-card { flex-direction: column; }

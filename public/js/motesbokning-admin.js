@@ -54,6 +54,17 @@
   let currentTab = 'lankar';
   let userEmail = '';
 
+  const DAY_LABELS = ['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag', 'Söndag'];
+  const DEFAULT_INTERVAL = { start: '09:00', end: '16:30' };
+  /** @type {Record<string, Array<{start:string,end:string}>>} */
+  let scheduleState = defaultSchedule();
+
+  function defaultSchedule() {
+    const out = {};
+    for (let d = 0; d <= 4; d++) out[String(d)] = [{ ...DEFAULT_INTERVAL }];
+    return out;
+  }
+
   function authOpts() {
     return window.AuthManager && AuthManager.getAuthFetchOptions
       ? AuthManager.getAuthFetchOptions()
@@ -271,6 +282,7 @@
       weekdays: link.weekdays,
       dayStart: link.dayStart,
       dayEnd: link.dayEnd,
+      schedule: link.schedule || null,
       defaultAgenda: link.defaultAgenda,
       icon: link.icon,
       color: link.color,
@@ -291,6 +303,153 @@
     });
   }
 
+  function scheduleFromLink(link) {
+    if (link?.schedule && typeof link.schedule === 'object' && Object.keys(link.schedule).length) {
+      const out = {};
+      for (let d = 0; d <= 6; d++) {
+        const key = String(d);
+        const list = link.schedule[key];
+        if (!Array.isArray(list) || !list.length) continue;
+        out[key] = list.map((iv) => ({
+          start: String(iv.start || '09:00').slice(0, 5),
+          end: String(iv.end || '17:00').slice(0, 5)
+        }));
+      }
+      if (Object.keys(out).length) return out;
+    }
+    const days = Array.isArray(link?.weekdays) && link.weekdays.length ? link.weekdays : [0, 1, 2, 3, 4];
+    const start = String(link?.dayStart || '09:00').slice(0, 5);
+    const end = String(link?.dayEnd || '16:30').slice(0, 5);
+    const out = {};
+    days.forEach((d) => {
+      out[String(d)] = [{ start, end }];
+    });
+    return out;
+  }
+
+  function syncDayToggles() {
+    document.querySelectorAll('#mb-day-toggles .mb-day-toggle').forEach((btn) => {
+      const d = btn.getAttribute('data-day');
+      btn.classList.toggle('is-on', !!(scheduleState[d] && scheduleState[d].length));
+    });
+  }
+
+  function renderScheduleRows() {
+    const root = document.getElementById('mb-schedule-rows');
+    if (!root) return;
+    const activeDays = Object.keys(scheduleState)
+      .map(Number)
+      .filter((d) => scheduleState[String(d)]?.length)
+      .sort((a, b) => a - b);
+    if (!activeDays.length) {
+      root.innerHTML = '<p class="mb-empty">Välj minst en dag ovan.</p>';
+      syncDayToggles();
+      return;
+    }
+    root.innerHTML = activeDays
+      .map((d, idx) => {
+        const key = String(d);
+        const intervals = scheduleState[key] || [];
+        const ivHtml = intervals
+          .map(
+            (iv, i) => `
+          <div class="mb-schedule-iv" data-day="${key}" data-iv="${i}">
+            <input type="time" class="kunduppgifter-input" data-role="start" value="${esc(iv.start)}">
+            <span class="mb-iv-to">till</span>
+            <input type="time" class="kunduppgifter-input" data-role="end" value="${esc(iv.end)}">
+            ${
+              intervals.length > 1
+                ? `<button type="button" class="mb-iv-remove" data-act="remove-iv" data-day="${key}" data-iv="${i}" title="Ta bort"><i class="fas fa-times"></i></button>`
+                : ''
+            }
+            ${
+              i === intervals.length - 1
+                ? `<button type="button" class="mb-schedule-add" data-act="add-iv" data-day="${key}" title="Lägg till intervall (t.ex. efter lunch)">+</button>`
+                : ''
+            }
+          </div>`
+          )
+          .join('');
+        return `
+        <div class="mb-schedule-day" data-day="${key}">
+          <div class="mb-schedule-day-head">
+            <span>${esc(DAY_LABELS[d] || key)}</span>
+            ${
+              idx === 0
+                ? `<button type="button" class="mb-schedule-copy" data-act="copy-all" data-day="${key}">
+              <i class="fas fa-copy"></i> Kopiera till alla
+            </button>`
+                : ''
+            }
+          </div>
+          <div class="mb-schedule-intervals">${ivHtml}</div>
+        </div>`;
+      })
+      .join('');
+    syncDayToggles();
+
+    root.querySelectorAll('input[type="time"]').forEach((inp) => {
+      inp.addEventListener('change', () => {
+        const row = inp.closest('.mb-schedule-iv');
+        if (!row) return;
+        const day = row.getAttribute('data-day');
+        const iv = Number(row.getAttribute('data-iv'));
+        if (!scheduleState[day] || !scheduleState[day][iv]) return;
+        const role = inp.getAttribute('data-role');
+        scheduleState[day][iv][role] = inp.value || (role === 'start' ? '09:00' : '17:00');
+      });
+    });
+    root.querySelectorAll('[data-act]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const act = btn.getAttribute('data-act');
+        const day = btn.getAttribute('data-day');
+        if (act === 'add-iv') {
+          if (!scheduleState[day]) scheduleState[day] = [];
+          const last = scheduleState[day][scheduleState[day].length - 1];
+          scheduleState[day].push({
+            start: last?.end || '13:00',
+            end: '17:00'
+          });
+          renderScheduleRows();
+        }
+        if (act === 'remove-iv') {
+          const iv = Number(btn.getAttribute('data-iv'));
+          if (scheduleState[day] && scheduleState[day].length > 1) {
+            scheduleState[day].splice(iv, 1);
+            renderScheduleRows();
+          }
+        }
+        if (act === 'copy-all') {
+          const src = (scheduleState[day] || []).map((iv) => ({ ...iv }));
+          if (!src.length) return;
+          Object.keys(scheduleState).forEach((k) => {
+            if (scheduleState[k]?.length) scheduleState[k] = src.map((iv) => ({ ...iv }));
+          });
+          renderScheduleRows();
+        }
+      });
+    });
+  }
+
+  function bindDayToggles() {
+    document.querySelectorAll('#mb-day-toggles .mb-day-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const day = btn.getAttribute('data-day');
+        if (scheduleState[day]?.length) {
+          delete scheduleState[day];
+        } else {
+          // Kopiera från första aktiva dagen om möjligt
+          const firstKey = Object.keys(scheduleState).sort()[0];
+          const template = firstKey
+            ? scheduleState[firstKey].map((iv) => ({ ...iv }))
+            : [{ ...DEFAULT_INTERVAL }];
+          scheduleState[day] = template;
+        }
+        renderScheduleRows();
+      });
+    });
+  }
+
   function readForm() {
     const locations = [];
     if (document.getElementById('mb-loc-meet')?.checked) {
@@ -304,6 +463,20 @@
       const place = document.getElementById('mb-place')?.value || '';
       locations.push({ id: 'place', type: 'place', label: 'På plats', value: place });
     }
+    // Synka times från DOM innan spar
+    document.querySelectorAll('#mb-schedule-rows .mb-schedule-iv').forEach((row) => {
+      const day = row.getAttribute('data-day');
+      const iv = Number(row.getAttribute('data-iv'));
+      if (!scheduleState[day] || !scheduleState[day][iv]) return;
+      const start = row.querySelector('[data-role="start"]')?.value || '09:00';
+      const end = row.querySelector('[data-role="end"]')?.value || '17:00';
+      scheduleState[day][iv] = { start, end };
+    });
+    const weekdays = Object.keys(scheduleState)
+      .map(Number)
+      .filter((d) => scheduleState[String(d)]?.length)
+      .sort((a, b) => a - b);
+    const first = weekdays.length ? scheduleState[String(weekdays[0])][0] : DEFAULT_INTERVAL;
     return {
       title: document.getElementById('mb-title')?.value || 'Möte',
       slug: document.getElementById('mb-slug')?.value || '',
@@ -312,9 +485,10 @@
       visible: document.getElementById('mb-visible')?.value !== '0',
       durations: checkedValues('mb-durations'),
       locations,
-      dayStart: document.getElementById('mb-day-start')?.value || '08:00',
-      dayEnd: document.getElementById('mb-day-end')?.value || '17:00',
-      weekdays: checkedValues('mb-weekdays'),
+      schedule: scheduleState,
+      weekdays,
+      dayStart: first.start,
+      dayEnd: first.end,
       bufferBeforeMin: Number(document.getElementById('mb-buf-before')?.value || 0),
       bufferAfterMin: Number(document.getElementById('mb-buf-after')?.value || 0),
       noticeHours: Number(document.getElementById('mb-notice')?.value || 2),
@@ -334,15 +508,14 @@
     document.getElementById('mb-priority').value = String(link?.priority || 2);
     document.getElementById('mb-visible').value = link && link.visible === false ? '0' : '1';
     setChecked('mb-durations', link?.durations || [30, 60]);
-    setChecked('mb-weekdays', link?.weekdays || [0, 1, 2, 3, 4]);
     const locs = link?.locations || [{ type: 'meet' }];
     document.getElementById('mb-loc-meet').checked = locs.some((l) => l.type === 'meet');
     document.getElementById('mb-loc-phone').checked = locs.some((l) => l.type === 'phone');
     document.getElementById('mb-loc-place').checked = locs.some((l) => l.type === 'place');
     document.getElementById('mb-phone').value = (locs.find((l) => l.type === 'phone') || {}).value || '';
     document.getElementById('mb-place').value = (locs.find((l) => l.type === 'place') || {}).value || '';
-    document.getElementById('mb-day-start').value = (link?.dayStart || '08:00').slice(0, 5);
-    document.getElementById('mb-day-end').value = (link?.dayEnd || '17:00').slice(0, 5);
+    scheduleState = scheduleFromLink(link);
+    renderScheduleRows();
     document.getElementById('mb-buf-before').value = link?.bufferBeforeMin || 0;
     document.getElementById('mb-buf-after').value = link?.bufferAfterMin || 0;
     document.getElementById('mb-notice').value = link?.noticeHours ?? 2;
@@ -431,6 +604,7 @@
     document.querySelectorAll('.mb-tab').forEach((btn) => {
       btn.addEventListener('click', () => setTab(btn.getAttribute('data-tab')));
     });
+    bindDayToggles();
     el.newBtn?.addEventListener('click', () => openEdit(null));
     document.querySelectorAll('[data-mb-close]').forEach((n) => n.addEventListener('click', closeModal));
     document.querySelectorAll('[data-mb-share-close]').forEach((n) => n.addEventListener('click', closeShare));
@@ -449,6 +623,13 @@
       if (!body.locations.length) {
         if (el.formError) {
           el.formError.textContent = 'Välj minst en plats/mötesform.';
+          el.formError.hidden = false;
+        }
+        return;
+      }
+      if (!body.weekdays.length) {
+        if (el.formError) {
+          el.formError.textContent = 'Välj minst en tillgänglig dag.';
           el.formError.hidden = false;
         }
         return;
