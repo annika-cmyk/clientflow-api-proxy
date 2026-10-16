@@ -40,14 +40,23 @@
     copyHost: document.getElementById('mb-copy-host'),
     shareModal: document.getElementById('mb-share-modal'),
     shareLinkId: document.getElementById('mb-share-link-id'),
+    shareLinkName: document.getElementById('mb-share-link-name'),
     shareCustomer: document.getElementById('mb-share-customer'),
     shareAgenda: document.getElementById('mb-share-agenda'),
+    shareDuration: document.getElementById('mb-share-duration'),
+    shareLoadSlots: document.getElementById('mb-share-load-slots'),
+    shareSlots: document.getElementById('mb-share-slots'),
+    shareSlotsEmpty: document.getElementById('mb-share-slots-empty'),
+    shareOnlySuggested: document.getElementById('mb-share-only-suggested'),
     shareCreate: document.getElementById('mb-share-create'),
     shareResult: document.getElementById('mb-share-result'),
     shareUrl: document.getElementById('mb-share-url'),
     shareCopy: document.getElementById('mb-share-copy'),
     shareError: document.getElementById('mb-share-error')
   };
+
+  let shareLinkRef = null;
+  let shareAvailSlots = [];
 
   let links = [];
   let invites = [];
@@ -154,7 +163,8 @@
         <div class="mb-link-card-actions">
           <button type="button" class="mb-icon-btn" data-act="edit" title="Redigera"><i class="fas fa-pen"></i></button>
           <button type="button" class="mb-icon-btn" data-act="copy" title="Kopiera länk"><i class="fas fa-copy"></i></button>
-          <button type="button" class="mb-icon-btn" data-act="share" title="Dela med agenda">${priorityBars(link.priority)}</button>
+          <button type="button" class="mb-icon-btn" data-act="share" title="Anpassa inbjudan"><i class="fas fa-envelope-open-text"></i></button>
+          <span class="mb-icon-btn" title="Prioritet ${esc(link.priorityLabel || link.priority)}">${priorityBars(link.priority)}</span>
           <button type="button" class="mb-icon-btn" data-act="more" title="Mer"><i class="fas fa-ellipsis-v"></i></button>
         </div>
         <div class="mb-link-avatar">
@@ -166,6 +176,9 @@
           <div><i class="far fa-clock"></i> ${esc(fmtDurations(link.durations))}</div>
           <div><i class="fas fa-video"></i> ${esc(locLabel(link.locations))}</div>
         </div>
+        <button type="button" class="btn btn-ghost btn-sm mb-card-customize" data-act="share">
+          <i class="fas fa-pen-fancy"></i> Anpassa inbjudan
+        </button>
         <input type="hidden" class="mb-card-url" value="${url}">
       </article>`;
   }
@@ -535,17 +548,104 @@
     if (el.modal) el.modal.hidden = true;
   }
 
+  function fmtSlotLabel(start, end) {
+    try {
+      const s = new Date(start);
+      const e = new Date(end);
+      const day = s.toLocaleDateString('sv-SE', { weekday: 'short', day: 'numeric', month: 'short' });
+      const t1 = s.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+      const t2 = e.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+      return `${day} ${t1}–${t2}`;
+    } catch (_) {
+      return String(start);
+    }
+  }
+
+  function renderShareSlots(slots) {
+    shareAvailSlots = Array.isArray(slots) ? slots : [];
+    if (!el.shareSlots) return;
+    if (!shareAvailSlots.length) {
+      el.shareSlots.innerHTML = '';
+      if (el.shareSlotsEmpty) el.shareSlotsEmpty.hidden = false;
+      return;
+    }
+    if (el.shareSlotsEmpty) el.shareSlotsEmpty.hidden = true;
+    el.shareSlots.innerHTML = shareAvailSlots
+      .slice(0, 60)
+      .map(
+        (s, i) => `
+      <label class="mb-share-slot">
+        <input type="checkbox" data-share-slot="${i}" value="${esc(s.start)}|${esc(s.end)}">
+        <span>${esc(fmtSlotLabel(s.start, s.end))}</span>
+      </label>`
+      )
+      .join('');
+  }
+
+  function readSuggestedSlots() {
+    if (!el.shareSlots) return [];
+    return Array.from(el.shareSlots.querySelectorAll('input[type=checkbox]:checked'))
+      .map((inp) => {
+        const [start, end] = String(inp.value || '').split('|');
+        if (!start || !end) return null;
+        return { start, end };
+      })
+      .filter(Boolean);
+  }
+
+  async function loadShareAvailability() {
+    if (!shareLinkRef?.id) return;
+    if (el.shareError) el.shareError.hidden = true;
+    const duration = Number(el.shareDuration?.value || shareLinkRef.durations?.[0] || 30);
+    if (el.shareLoadSlots) {
+      el.shareLoadSlots.disabled = true;
+      el.shareLoadSlots.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Hämtar...';
+    }
+    try {
+      const data = await api(
+        `/api/motesbokning/links/${encodeURIComponent(shareLinkRef.id)}/availability?duration=${encodeURIComponent(duration)}`
+      );
+      renderShareSlots(data.slots || []);
+    } catch (err) {
+      renderShareSlots([]);
+      if (el.shareError) {
+        el.shareError.textContent = err.message || 'Kunde inte hämta tider';
+        el.shareError.hidden = false;
+      }
+    } finally {
+      if (el.shareLoadSlots) {
+        el.shareLoadSlots.disabled = false;
+        el.shareLoadSlots.innerHTML = '<i class="fas fa-sync"></i> Hämta lediga tider';
+      }
+    }
+  }
+
   function openShare(link) {
+    shareLinkRef = link;
     el.shareLinkId.value = link.id;
+    if (el.shareLinkName) el.shareLinkName.textContent = link.title || 'Möte';
     el.shareCustomer.value = '';
     el.shareAgenda.value = link.defaultAgenda || '';
+    if (el.shareOnlySuggested) el.shareOnlySuggested.checked = false;
+    if (el.shareDuration) {
+      const durs = Array.isArray(link.durations) && link.durations.length ? link.durations : [30, 60];
+      el.shareDuration.innerHTML = durs
+        .map((d) => {
+          const label = d >= 60 && d % 60 === 0 ? `${d / 60}h` : `${d}m`;
+          return `<option value="${d}">${label}</option>`;
+        })
+        .join('');
+    }
+    renderShareSlots([]);
     if (el.shareResult) el.shareResult.hidden = true;
     if (el.shareError) el.shareError.hidden = true;
     if (el.shareModal) el.shareModal.hidden = false;
+    loadShareAvailability();
   }
 
   function closeShare() {
     if (el.shareModal) el.shareModal.hidden = true;
+    shareLinkRef = null;
   }
 
   async function copyText(text) {
@@ -663,16 +763,22 @@
       }
     });
 
+    el.shareLoadSlots?.addEventListener('click', () => loadShareAvailability());
+    el.shareDuration?.addEventListener('change', () => loadShareAvailability());
+
     el.shareCreate?.addEventListener('click', async () => {
       if (el.shareError) el.shareError.hidden = true;
       try {
+        const suggestedSlots = readSuggestedSlots();
         const data = await api(
           '/api/motesbokning/links/' + encodeURIComponent(el.shareLinkId.value) + '/share',
           {
             method: 'POST',
             body: {
               agenda: el.shareAgenda?.value || '',
-              customerName: el.shareCustomer?.value || ''
+              customerName: el.shareCustomer?.value || '',
+              suggestedSlots,
+              onlySuggested: !!(el.shareOnlySuggested && el.shareOnlySuggested.checked)
             }
           }
         );
@@ -680,7 +786,7 @@
         if (el.shareResult) el.shareResult.hidden = false;
       } catch (err) {
         if (el.shareError) {
-          el.shareError.textContent = err.message || 'Kunde inte skapa delning';
+          el.shareError.textContent = err.message || 'Kunde inte skapa inbjudan';
           el.shareError.hidden = false;
         }
       }
