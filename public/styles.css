@@ -20207,14 +20207,16 @@ body.byra-resa-page .risk-header h1 {
   white-space: nowrap;
 }
 .kundresa-modal {
-  display: none;
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  z-index: 1100;
 }
-.kundresa-modal.is-open,
-.kundresa-modal:not([hidden]) {
-  display: flex;
+.kundresa-modal[hidden] {
+  display: none !important;
+}
+.kundresa-modal.is-open {
+  display: flex !important;
 }
 .kundresa-modal-content {
   max-width: min(820px, 96vw);
