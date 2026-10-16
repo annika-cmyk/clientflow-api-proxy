@@ -1683,6 +1683,14 @@
     const timed = !!(sched && !ev.allDay);
     openDetailKey = String(ev.key || '');
 
+    const GA = window.KalenderGcalActions;
+    const cleanedDesc = GA && typeof GA.cleanGcalDescription === 'function'
+      ? GA.cleanGcalDescription(ev.description || '')
+      : String(ev.description || '').trim();
+    const meetingUrl = (GA && typeof GA.extractMeetingUrl === 'function'
+      ? GA.extractMeetingUrl(ev)
+      : '') || String(ev.meetingUrl || ev.hangoutLink || '').trim();
+
     if (el.detailTitle) el.detailTitle.textContent = name;
     el.detailBody.innerHTML = `
       <div class="kalender-detail-status kalender-detail-status--google"${colorStyle ? ` style="${esc(colorStyle)}"` : ''}>Google-kalender</div>
@@ -1691,7 +1699,8 @@
         <div><dt>Datum</dt><dd>${esc(dateIso || '—')}</dd></div>
         <div><dt>Planerad tid</dt><dd>${esc(blockLabel)}</dd></div>
         ${ev.location ? `<div><dt>Plats</dt><dd>${esc(ev.location)}</dd></div>` : ''}
-        ${ev.description ? `<div><dt>Beskrivning</dt><dd class="kalender-detail-desc">${esc(ev.description).slice(0, 800)}</dd></div>` : ''}
+        ${meetingUrl ? `<div><dt>Möteslänk</dt><dd><a class="kalender-meet-link" href="${esc(meetingUrl)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-video"></i> ${esc(meetingUrl)}</a></dd></div>` : ''}
+        ${cleanedDesc ? `<div><dt>Beskrivning</dt><dd class="kalender-detail-desc">${esc(cleanedDesc).slice(0, 800)}</dd></div>` : ''}
       </dl>
       <div class="kalender-detail-scope kalender-gcal-followup">
         <h4 class="kalender-detail-scope-title">Efter mötet</h4>
