@@ -22268,6 +22268,36 @@ a.byra-profil-chip:hover {
 .kalender-side-item.has-estimate .kalender-side-status {
     font-variant-numeric: tabular-nums;
 }
+.kalender-gcal-followup {
+    margin-top: 0.35rem;
+}
+.kalender-gcal-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin: 0.55rem 0 0.2rem;
+    color: var(--text);
+}
+.kalender-gcal-time-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 0.5rem;
+    align-items: end;
+    margin-top: 0.25rem;
+}
+.kalender-gcal-hours {
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    padding-bottom: 0.55rem;
+    color: var(--title-text, #0f172a);
+    white-space: nowrap;
+}
+.kalender-gcal-note {
+    width: 100%;
+    min-height: 5.5rem;
+    resize: vertical;
+}
 .kalender-side-item--klar { border-left-color: var(--success, #1f7a4d); }
 .kalender-side-item--pagande { border-left-color: var(--warning, #b07414); }
 .kalender-side-item--planerad { border-left-color: var(--accent, #13505c); }
