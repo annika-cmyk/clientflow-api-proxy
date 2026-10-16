@@ -14,6 +14,47 @@
   const FIELD_BLOCKS = 'Planerade block (JSON)';
   const FIELD_START = 'Planerad start';
   const FIELD_END = 'Planerad slut';
+  const FIELD_ESTIMATE = 'Uppskattad tid (t)';
+
+  /**
+   * Uppskattad tidsåtgång i timmar (null = snabbuppgift utan planeringsmål).
+   */
+  function parseEstimatedHours(fields) {
+    const raw = fields && fields[FIELD_ESTIMATE];
+    if (raw == null || raw === '') return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return Math.round(n * 100) / 100;
+  }
+
+  /**
+   * Planeringsstatus: dölj som valbar när all uppskattad tid är utlagd i kalendern.
+   * Utan uppskattning = alltid valbar (enklare/snabba uppgifter).
+   */
+  function planningProgress(estimatedHours, scheduledHours) {
+    const estimated = estimatedHours == null ? null : Number(estimatedHours);
+    const scheduled = Math.max(0, Math.round((Number(scheduledHours) || 0) * 100) / 100);
+    const hasEstimate = estimated != null && Number.isFinite(estimated) && estimated > 0;
+    const est = hasEstimate ? Math.round(estimated * 100) / 100 : null;
+    const remaining = hasEstimate
+      ? Math.round(Math.max(0, est - scheduled) * 100) / 100
+      : null;
+    const fullyPlanned = hasEstimate && scheduled + 1e-9 >= est;
+    return {
+      estimated: est,
+      scheduled,
+      remaining,
+      hasEstimate,
+      fullyPlanned,
+      label: hasEstimate
+        ? (fullyPlanned ? `${scheduled}/${est} t inplanerad` : `${scheduled}/${est} t · ${remaining} t kvar`)
+        : (scheduled > 0 ? `${scheduled} t avsatt` : '')
+    };
+  }
+
+  function isSelectableInPool(estimatedHours, scheduledHours) {
+    return !planningProgress(estimatedHours, scheduledHours).fullyPlanned;
+  }
 
   function trimIso(v) {
     const s = String(v || '').trim();
@@ -245,7 +286,8 @@
           blockId: null,
           scheduledStart: ev.scheduledStart || '',
           scheduledEnd: ev.scheduledEnd || '',
-          scheduleBlocks: Array.isArray(ev.scheduleBlocks) ? ev.scheduleBlocks : []
+          scheduleBlocks: Array.isArray(ev.scheduleBlocks) ? ev.scheduleBlocks : [],
+          estimatedHours: ev.estimatedHours != null ? ev.estimatedHours : null
         });
         return;
       }
@@ -258,6 +300,9 @@
       }
       if (Array.isArray(ev.scheduleBlocks) && ev.scheduleBlocks.length > (prev.scheduleBlocks || []).length) {
         prev.scheduleBlocks = ev.scheduleBlocks;
+      }
+      if (prev.estimatedHours == null && ev.estimatedHours != null) {
+        prev.estimatedHours = ev.estimatedHours;
       }
     });
     return Array.from(map.values());
@@ -282,6 +327,7 @@
     FIELD_BLOCKS,
     FIELD_START,
     FIELD_END,
+    FIELD_ESTIMATE,
     trimIso,
     newBlockId,
     sortBlocks,
@@ -293,6 +339,9 @@
     fieldsForBlocks,
     expandScheduleInstances,
     uniqueRunEvents,
-    totalHours
+    totalHours,
+    parseEstimatedHours,
+    planningProgress,
+    isSelectableInPool
   };
 });
