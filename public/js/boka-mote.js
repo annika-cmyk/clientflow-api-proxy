@@ -324,6 +324,30 @@
     });
   }
 
+  function selectSlot(start, end) {
+    if (!start || !end) return;
+    linkState.selectedSlot = { start, end };
+    clearPickHint();
+    renderTimes();
+    updateNext();
+  }
+
+  function clearPickHint() {
+    const hint = document.getElementById('boka-next-hint');
+    if (hint) {
+      hint.textContent = '';
+      hint.classList.add('hidden');
+    }
+  }
+
+  function showPickHint(msg) {
+    const hint = document.getElementById('boka-next-hint');
+    if (hint) {
+      hint.textContent = msg || 'Välj en tid först.';
+      hint.classList.remove('hidden');
+    }
+  }
+
   function renderTimes() {
     const slots = (linkState.slotsByDay && linkState.slotsByDay[linkState.selectedDay]) || [];
     if (!linkState.selectedDay || !slots.length) {
@@ -334,9 +358,24 @@
           ? 'Inga lediga tider den dagen.'
           : 'Välj en ledig dag först.';
       }
+      updateNext();
       return;
     }
     if (el.timesEmpty) el.timesEmpty.hidden = true;
+
+    // En enda lucka → välj automatiskt så Nästa fungerar direkt
+    if (slots.length === 1) {
+      const only = slots[0];
+      if (!linkState.selectedSlot || linkState.selectedSlot.start !== only.start) {
+        linkState.selectedSlot = { start: only.start, end: only.end };
+      }
+    } else if (
+      linkState.selectedSlot &&
+      !slots.some((s) => s.start === linkState.selectedSlot.start)
+    ) {
+      linkState.selectedSlot = null;
+    }
+
     el.times.innerHTML = slots
       .map((s) => {
         const t = new Date(s.start).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
@@ -348,18 +387,19 @@
       .join('');
     el.times.querySelectorAll('.boka-time').forEach((btn) => {
       btn.addEventListener('click', () => {
-        linkState.selectedSlot = {
-          start: btn.getAttribute('data-start'),
-          end: btn.getAttribute('data-end')
-        };
-        renderTimes();
-        updateNext();
+        selectSlot(btn.getAttribute('data-start'), btn.getAttribute('data-end'));
       });
     });
+    updateNext();
   }
 
   function updateNext() {
-    if (el.next) el.next.disabled = !(linkState.selectedSlot && linkState.selectedSlot.start);
+    if (!el.next) return;
+    const ready = !!(linkState.selectedSlot && linkState.selectedSlot.start);
+    el.next.disabled = false;
+    el.next.classList.toggle('is-ready', ready);
+    el.next.setAttribute('aria-disabled', ready ? 'false' : 'true');
+    el.next.title = ready ? 'Fortsätt till bekräftelse' : 'Välj en tid först';
   }
 
   async function refreshSlots() {
@@ -401,7 +441,23 @@
   }
 
   function goConfirm() {
-    if (!linkState.selectedSlot) return;
+    // Om tid saknas men det finns luckor: välj den enda, annars visa tipset
+    if (!linkState.selectedSlot || !linkState.selectedSlot.start) {
+      const slots = (linkState.slotsByDay && linkState.slotsByDay[linkState.selectedDay]) || [];
+      if (slots.length === 1) {
+        linkState.selectedSlot = { start: slots[0].start, end: slots[0].end };
+      } else if (!linkState.selectedDay) {
+        showPickHint('Välj en dag och tid först.');
+        return;
+      } else if (!slots.length) {
+        showPickHint('Inga lediga tider den dagen.');
+        return;
+      } else {
+        showPickHint('Välj en tid i listan till höger.');
+        return;
+      }
+    }
+    clearPickHint();
     const loc =
       (linkState.link.locations || []).find((l) => l.id === linkState.locationId) ||
       (linkState.link.locations || [])[0];
