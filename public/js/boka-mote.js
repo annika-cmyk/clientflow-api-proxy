@@ -48,6 +48,7 @@
     summary: document.getElementById('boka-summary'),
     linkName: document.getElementById('boka-link-name'),
     linkEmail: document.getElementById('boka-link-email'),
+    linkPhone: document.getElementById('boka-link-phone'),
     linkAgenda: document.getElementById('boka-link-agenda'),
     agendaLabel: document.getElementById('boka-agenda-label'),
     linkError: document.getElementById('boka-link-error'),
@@ -267,6 +268,21 @@
     return data;
   }
 
+  function locDetailText(loc) {
+    const type = String(loc?.type || '').toLowerCase();
+    const value = String(loc?.value || '').trim();
+    if (!value) return '';
+    if (type === 'place') return value;
+    if (type === 'phone') return value;
+    return '';
+  }
+
+  function hostPhoneFromLink() {
+    const locs = linkState.link?.locations || [];
+    const phone = locs.find((l) => String(l.type || '').toLowerCase() === 'phone');
+    return String(phone?.value || '').trim();
+  }
+
   function renderLocs(locations) {
     const locs = locations || [];
     if (!locs.length) {
@@ -275,13 +291,15 @@
     }
     if (!linkState.locationId) linkState.locationId = locs[0].id;
     el.locs.innerHTML = locs
-      .map(
-        (loc) => `
+      .map((loc) => {
+        const detail = locDetailText(loc);
+        return `
       <label class="boka-loc${loc.id === linkState.locationId ? ' is-selected' : ''}">
         <input type="radio" name="boka-loc" value="${esc(loc.id)}" ${loc.id === linkState.locationId ? 'checked' : ''}>
-        <span>${esc(loc.label || loc.value || loc.type)}</span>
-      </label>`
-      )
+        <span class="boka-loc-label">${esc(loc.label || loc.type || 'Plats')}</span>
+        ${detail ? `<span class="boka-loc-detail">${esc(detail)}</span>` : ''}
+      </label>`;
+      })
       .join('');
     el.locs.querySelectorAll('input').forEach((inp) => {
       inp.addEventListener('change', () => {
@@ -514,10 +532,21 @@
     const t1 = new Date(start).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
     const t2 = new Date(end).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
     if (el.summary) {
+      const type = String(loc?.type || '').toLowerCase();
+      const icon = type === 'place' ? 'fa-map-marker-alt' : type === 'phone' ? 'fa-phone' : 'fa-video';
+      const placeLine = type === 'place'
+        ? (loc?.value || loc?.label || 'På plats')
+        : type === 'phone'
+          ? (loc?.value ? `Telefon ${loc.value}` : (loc?.label || 'Telefon'))
+          : (loc?.label || 'Google Meet');
+      const hostPhone = hostPhoneFromLink();
+      const phoneBits = [];
+      if (hostPhone) phoneBits.push(`Värd: ${hostPhone}`);
       el.summary.innerHTML = `
         <p><i class="far fa-calendar"></i> ${esc(dateStr)}</p>
         <p><i class="far fa-clock"></i> ${esc(t1)} – ${esc(t2)}</p>
-        <p><i class="fas fa-video"></i> ${esc(loc?.label || loc?.value || 'Möte')}</p>`;
+        <p><i class="fas ${icon}"></i> ${esc(placeLine)}</p>
+        ${phoneBits.length ? `<p><i class="fas fa-phone"></i> ${esc(phoneBits.join(' · '))}</p>` : ''}`;
     }
     if (el.linkAgenda) el.linkAgenda.value = linkState.hostAgenda || '';
     if (el.agendaLabel) {
@@ -531,9 +560,17 @@
   async function confirmBook() {
     if (el.linkError) el.linkError.classList.add('hidden');
     const name = el.linkName?.value || '';
+    const phone = String(el.linkPhone?.value || '').trim();
     if (!name.trim()) {
       if (el.linkError) {
         el.linkError.textContent = 'Namn krävs.';
+        el.linkError.classList.remove('hidden');
+      }
+      return;
+    }
+    if (!phone) {
+      if (el.linkError) {
+        el.linkError.textContent = 'Telefonnummer krävs.';
         el.linkError.classList.remove('hidden');
       }
       return;
@@ -552,6 +589,7 @@
           body: JSON.stringify({
             name,
             email: el.linkEmail?.value || '',
+            phone,
             start: linkState.selectedSlot.start,
             end: linkState.selectedSlot.end,
             locationId: linkState.locationId,
@@ -606,7 +644,10 @@
           : 'Ingen tid bokad';
       }
       if (el.manageWhere) {
-        el.manageWhere.textContent = data.location || data.meetingType || '';
+        const bits = [data.location || data.meetingType || ''];
+        if (data.hostPhone) bits.push(`Värd: ${data.hostPhone}`);
+        if (data.bookerPhone) bits.push(`Bokare: ${data.bookerPhone}`);
+        el.manageWhere.textContent = bits.filter(Boolean).join(' · ');
       }
       if (el.manageAgenda) el.manageAgenda.value = data.note || '';
       const can = !!data.canEdit;
