@@ -734,6 +734,7 @@
     const params = new URLSearchParams();
     params.set('folder', folder === 'open' ? 'inbox' : folder);
     params.set('mode', mode || 'sync');
+    params.set('limit', '100');
     if (customerId) params.set('customerId', customerId);
     const res = await fetch(`${baseUrl}/api/gmail/inbox?${params}`, authOpts());
     const data = await res.json().catch(() => ({}));
@@ -1988,7 +1989,8 @@
     loadInbox({ full: !!(ev && ev.shiftKey), preserveDetail: true });
   });
   if (els.refreshBtn) {
-    els.refreshBtn.title = 'Uppdatera (inkrementellt). Håll Shift för full synkning.';
+    els.refreshBtn.title =
+      'Uppdatera från Gmail (fyller i saknade KUNDER-mejl). Håll Shift för full omsynkning.';
   }
   els.filter.addEventListener('change', () => loadInbox());
   els.composeToggle.addEventListener('click', () => {

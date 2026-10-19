@@ -110,6 +110,8 @@ Spara till **Dokumentation** skriver till KUNDDATA (`Dokumentation`/`Attachments
 
 Gmail-synken hämtar **bara mejl ≤ 30 dagar** (`newer_than:30d`). Äldre mejl hämtas inte.
 
+Full sync paginerar Gmail `messages.list` (nextPageToken) och delar upp många KUNDER-etiketter i flera sökfrågor. Vanlig **Uppdatera** kör inkrementell history-sync **plus** en reconcile som listar KUNDER igen och hämtar id:n som saknas i cachen (max ~150 mejl i list-cachen).
+
 - **List-cache:** fältet `Gmail Sync Cache` på Application Users (historyId + metadata).
 - **Body-cache:** Airtable-tabellen **Gmail Mejlcache** (en rad per användare + Gmail Message ID, inkl. body). Öppnade mejl läses härifrån när de finns, utan ny Gmail-hämtning. Synken skriver bara nya/ändrade bodies.
 
