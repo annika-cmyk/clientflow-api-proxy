@@ -133,7 +133,11 @@
     const res = await fetch(baseUrl + path, o);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = new Error(data.error || `HTTP ${res.status}`);
+      const msg = data.error || data.message
+        || (res.status === 422
+          ? 'Kunde inte spara (Airtable avvisade fälten). Prova igen eller kör setup för möteslänkar.'
+          : `Kunde inte spara (fel ${res.status})`);
+      const err = new Error(msg);
       err.status = res.status;
       err.data = data;
       throw err;
