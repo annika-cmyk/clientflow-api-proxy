@@ -3041,16 +3041,111 @@ async function pushMeetingInviteToGoogle(invite) {
   }
 }
 
+const motesbokningMail = require('./lib/motesbokning-mail');
+
+async function sendMeetingBookingMails(invite, kind) {
+  try {
+    if (!invite || invite.status !== 'Bokad') return { sent: 0 };
+    const token = String(invite.token || '').trim();
+    if (!token) return { sent: 0 };
+    const hostEmail = String(invite.createdBy || '').trim();
+    const bookerEmail = String(invite.bookerEmail || '').trim();
+    let hostName = hostEmail.split('@')[0] || 'värden';
+    if (hostEmail) {
+      try {
+        const hostUser = await getAirtableUser(hostEmail);
+        if (hostUser?.name) hostName = String(hostUser.name).trim() || hostName;
+      } catch (_) { /* ignore */ }
+    }
+    const manageLink = motesbokningMail.manageUrl(
+      process.env.PUBLIC_BASE_URL || 'https://www.app.clientflow.se',
+      token
+    );
+    const result = await motesbokningMail.sendMeetingMails({
+      kind,
+      recipients: [bookerEmail, hostEmail],
+      hostName,
+      bookerName: invite.bookerName || 'gästen',
+      title: invite.title,
+      start: invite.bookedStart,
+      end: invite.bookedEnd,
+      location: invite.location,
+      meetingType: invite.meetingType,
+      agenda: invite.note,
+      manageLink
+    });
+    if (result.sent > 0) {
+      try {
+        const stampField = kind === 'reminder' ? 'Påminnelse skickad' : 'Bekräftelse skickad';
+        const atToken = process.env.AIRTABLE_ACCESS_TOKEN;
+        const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+        if (atToken && invite.id) {
+          const tableId = await require('./lib/motesbokning').getTableId(atToken, baseId);
+          if (tableId) {
+            await require('./lib/motesbokning').updateInvite({
+              token: atToken,
+              baseId,
+              tableId,
+              id: invite.id,
+              fields: { [stampField]: new Date().toISOString() }
+            });
+          }
+        }
+      } catch (stampErr) {
+        console.warn('mötesbokning mail stamp:', stampErr.message);
+      }
+    }
+    if (result.errors?.length) {
+      console.warn('mötesbokning mail errors:', result.errors.join('; '));
+    }
+    return result;
+  } catch (err) {
+    console.warn('sendMeetingBookingMails:', err.message);
+    return { sent: 0, errors: [err.message] };
+  }
+}
+
+async function onMeetingBookedWithMail(invite) {
+  await pushMeetingInviteToGoogle(invite);
+  // Bekräftelse vid ny bokning (inte avbokning)
+  if (invite && invite.status === 'Bokad' && !invite.confirmationSentAt) {
+    await sendMeetingBookingMails(invite, 'confirmation');
+  }
+}
+
+async function processMotesbokningReminders() {
+  try {
+    const atToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!atToken) return;
+    const mb = require('./lib/motesbokning');
+    const tableId = await mb.getTableId(atToken, baseId);
+    if (!tableId) return;
+    const invites = await mb.listBookedInvites({ token: atToken, baseId, tableId, maxRecords: 300 });
+    let sent = 0;
+    for (const invite of invites) {
+      if (!invite.reminderEnabled) continue;
+      if (invite.reminderSentAt) continue;
+      if (!motesbokningMail.shouldSendHourReminder(invite.bookedStart)) continue;
+      const result = await sendMeetingBookingMails(invite, 'reminder');
+      if (result.sent > 0) sent += 1;
+    }
+    if (sent > 0) console.log(`📬 Mötesbokning-påminnelser: ${sent} skickade`);
+  } catch (err) {
+    console.warn('processMotesbokningReminders:', err.message);
+  }
+}
+
 const motesbokning = createMotesbokning({
   authenticateToken,
   getAirtableUser,
-  onMeetingBooked: pushMeetingInviteToGoogle
+  onMeetingBooked: onMeetingBookedWithMail
 });
 
 const moteslankarBooking = createMoteslankarBookingDeps({
   getAirtableUser,
   gmailIntegration,
-  onMeetingBooked: pushMeetingInviteToGoogle
+  onMeetingBooked: onMeetingBookedWithMail
 });
 
 const moteslankar = createMoteslankar({
@@ -11649,6 +11744,12 @@ if (!global.__clientflowKundformularReminderStarted) {
   global.__clientflowKundformularReminderStarted = true;
   setTimeout(() => { processKundformularReminders().catch(() => {}); }, 45000);
   setInterval(() => { processKundformularReminders().catch(() => {}); }, 60 * 60 * 1000);
+}
+
+if (!global.__clientflowMotesbokningReminderStarted) {
+  global.__clientflowMotesbokningReminderStarted = true;
+  setTimeout(() => { processMotesbokningReminders().catch(() => {}); }, 60000);
+  setInterval(() => { processMotesbokningReminders().catch(() => {}); }, 30 * 60 * 1000);
 }
 
 if (!global.__clientflowAmlNewsJobStarted) {
