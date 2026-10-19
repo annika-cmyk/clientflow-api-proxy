@@ -534,7 +534,10 @@
         }
       );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (!res.ok) {
+        const msg = data.error || data.message || `Kunde inte boka (fel ${res.status})`;
+        throw new Error(msg);
+      }
       show('done');
       if (el.doneText && data.invite) {
         el.doneText.textContent = `Bokad tid: ${fmtRange(data.invite.bookedStart, data.invite.bookedEnd)}`;
