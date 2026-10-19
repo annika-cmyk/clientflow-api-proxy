@@ -3038,10 +3038,34 @@ async function pushMeetingInviteToGoogle(invite) {
     const hostName = String(creator.name || creator.fullName || '').trim()
       || creatorEmail.split('@')[0]
       || '';
-    await gmailIntegration.pushMeetingForUser(creator, {
+    const result = await gmailIntegration.pushMeetingForUser(creator, {
       ...invite,
       hostName: invite.hostName || hostName
     });
+    const meetUrl = String(result?.hangoutLink || '').trim();
+    if (meetUrl && invite) {
+      invite.location = meetUrl;
+      // Spara Meet-länken på bokningen så mejl/hantera-sida får den.
+      try {
+        const atToken = process.env.AIRTABLE_ACCESS_TOKEN;
+        const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+        if (atToken && invite.id) {
+          const mb = require('./lib/motesbokning');
+          const tableId = await mb.getTableId(atToken, baseId);
+          if (tableId) {
+            await mb.updateInvite({
+              token: atToken,
+              baseId,
+              tableId,
+              id: invite.id,
+              fields: { Plats: meetUrl }
+            });
+          }
+        }
+      } catch (persistErr) {
+        console.warn('google-calendar meet persist:', persistErr.message);
+      }
+    }
   } catch (err) {
     console.warn('google-calendar meeting hook:', err.message);
   }
