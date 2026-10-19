@@ -199,11 +199,36 @@
         <div id="boka-done" class="boka-card boka-state hidden">
             <h2 class="boka-ok">Tack – tiden är bokad</h2>
             <p id="boka-done-text"></p>
+            <p class="boka-hint" id="boka-done-mail" hidden>En bekräftelse har skickats till dig och värden. Där finns länk för att av-/omboka eller justera agendan.</p>
         </div>
 
         <div id="boka-closed" class="boka-card boka-state hidden">
             <h2>Inbjudan är stängd</h2>
             <p>Det går inte längre att boka via den här länken.</p>
+        </div>
+
+        <div id="boka-manage" class="boka-card hidden">
+            <div class="boka-legacy">
+                <h1 id="boka-manage-title">Hantera bokning</h1>
+                <p class="boka-lead" id="boka-manage-meta"></p>
+                <p id="boka-manage-when" style="font-weight:600;"></p>
+                <p id="boka-manage-where" style="color:#64748b;font-size:0.95rem;"></p>
+                <label class="boka-field" style="margin-top:1rem;">
+                    <span>Agenda</span>
+                    <textarea id="boka-manage-agenda" rows="4"></textarea>
+                </label>
+                <div class="boka-footer" style="border:0;padding:0;background:transparent;justify-content:flex-start;gap:0.5rem;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-primary btn-sm" id="boka-manage-save-agenda">Spara agenda</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="boka-manage-reschedule">Omboka</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="boka-manage-cancel" style="color:#b42318;">Avboka</button>
+                </div>
+                <div id="boka-manage-slots-wrap" class="hidden" style="margin-top:1rem;">
+                    <p style="font-weight:600;margin:0 0 .4rem;">Välj ny tid</p>
+                    <div class="boka-slots" id="boka-manage-slots"></div>
+                </div>
+                <p class="boka-error hidden" id="boka-manage-error"></p>
+                <p class="boka-ok hidden" id="boka-manage-ok" style="margin-top:0.75rem;"></p>
+            </div>
         </div>
 
         <!-- Legacy invite flow -->
@@ -305,6 +330,6 @@
     </div>
 
     <script src="js/config.js" defer></script>
-    <script src="js/boka-mote.js?v=5" defer></script>
+    <script src="js/boka-mote.js?v=6" defer></script>
 </body>
 </html>

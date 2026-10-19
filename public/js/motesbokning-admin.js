@@ -507,6 +507,7 @@
       noticeHours: Number(document.getElementById('mb-notice')?.value || 2),
       windowDays: Number(document.getElementById('mb-window')?.value || 28),
       defaultAgenda: document.getElementById('mb-agenda')?.value || '',
+      reminder1h: !!document.getElementById('mb-reminder')?.checked,
       icon: document.getElementById('mb-icon')?.value || 'bolt',
       color: document.getElementById('mb-color')?.value || '#13505c'
     };
@@ -534,6 +535,8 @@
     document.getElementById('mb-notice').value = link?.noticeHours ?? 2;
     document.getElementById('mb-window').value = link?.windowDays || 28;
     document.getElementById('mb-agenda').value = link?.defaultAgenda || '';
+    const rem = document.getElementById('mb-reminder');
+    if (rem) rem.checked = link ? link.reminder1h !== false : true;
     document.getElementById('mb-icon').value = link?.icon || 'bolt';
     document.getElementById('mb-color').value = link?.color || '#13505c';
     if (el.formError) el.formError.hidden = true;

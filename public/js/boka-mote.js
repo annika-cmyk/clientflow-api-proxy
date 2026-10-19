@@ -6,6 +6,7 @@
 
   const params = new URLSearchParams(window.location.search);
   const token = String(params.get('token') || '').trim();
+  const manageToken = String(params.get('hantera') || params.get('manage') || '').trim();
   const linkSlug = String(params.get('lank') || params.get('link') || '').trim();
   const shareToken = String(params.get('dela') || params.get('share') || '').trim();
   const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || window.location.origin;
@@ -52,8 +53,24 @@
     linkError: document.getElementById('boka-link-error'),
     back: document.getElementById('boka-back'),
     confirm: document.getElementById('boka-confirm'),
+    doneMail: document.getElementById('boka-done-mail'),
+    manage: document.getElementById('boka-manage'),
+    manageTitle: document.getElementById('boka-manage-title'),
+    manageMeta: document.getElementById('boka-manage-meta'),
+    manageWhen: document.getElementById('boka-manage-when'),
+    manageWhere: document.getElementById('boka-manage-where'),
+    manageAgenda: document.getElementById('boka-manage-agenda'),
+    manageSaveAgenda: document.getElementById('boka-manage-save-agenda'),
+    manageReschedule: document.getElementById('boka-manage-reschedule'),
+    manageCancel: document.getElementById('boka-manage-cancel'),
+    manageSlotsWrap: document.getElementById('boka-manage-slots-wrap'),
+    manageSlots: document.getElementById('boka-manage-slots'),
+    manageError: document.getElementById('boka-manage-error'),
+    manageOk: document.getElementById('boka-manage-ok'),
     root: document.getElementById('boka-root')
   };
+
+  let manageState = { token: manageToken, linkSlug: '', data: null };
 
   let selectedSlotId = '';
   let linkState = {
@@ -71,9 +88,20 @@
   };
 
   function hideAll() {
-    ['loading', 'error', 'done', 'closed', 'formWrap', 'linkWrap'].forEach((k) => {
+    ['loading', 'error', 'done', 'closed', 'formWrap', 'linkWrap', 'manage'].forEach((k) => {
       if (el[k]) el[k].classList.add('hidden');
     });
+  }
+
+  function setManageMsg(okText, errText) {
+    if (el.manageOk) {
+      el.manageOk.textContent = okText || '';
+      el.manageOk.classList.toggle('hidden', !okText);
+    }
+    if (el.manageError) {
+      el.manageError.textContent = errText || '';
+      el.manageError.classList.toggle('hidden', !errText);
+    }
   }
 
   function show(key) {
@@ -542,6 +570,7 @@
       if (el.doneText && data.invite) {
         el.doneText.textContent = `Bokad tid: ${fmtRange(data.invite.bookedStart, data.invite.bookedEnd)}`;
       }
+      if (el.doneMail) el.doneMail.hidden = false;
     } catch (err) {
       if (el.linkError) {
         el.linkError.textContent = err.message || 'Kunde inte boka';
@@ -552,6 +581,136 @@
         el.confirm.disabled = false;
         el.confirm.textContent = 'Bekräfta';
       }
+    }
+  }
+
+  async function loadManage() {
+    show('loading');
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/motesbokning/public/${encodeURIComponent(manageState.token)}/manage`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Kunde inte hämta bokning (${res.status})`);
+      manageState.data = data;
+      manageState.linkSlug = data.linkSlug || '';
+      if (el.manageTitle) el.manageTitle.textContent = data.title || 'Hantera bokning';
+      if (el.manageMeta) {
+        el.manageMeta.textContent = data.bookerName
+          ? `Bokat av ${data.bookerName}`
+          : (data.canEdit ? 'Aktiv bokning' : `Status: ${data.status || ''}`);
+      }
+      if (el.manageWhen) {
+        el.manageWhen.textContent = data.bookedStart
+          ? fmtRange(data.bookedStart, data.bookedEnd)
+          : 'Ingen tid bokad';
+      }
+      if (el.manageWhere) {
+        el.manageWhere.textContent = data.location || data.meetingType || '';
+      }
+      if (el.manageAgenda) el.manageAgenda.value = data.note || '';
+      const can = !!data.canEdit;
+      if (el.manageSaveAgenda) el.manageSaveAgenda.disabled = !can;
+      if (el.manageReschedule) el.manageReschedule.disabled = !can || !manageState.linkSlug;
+      if (el.manageCancel) el.manageCancel.disabled = !can;
+      if (el.manageSlotsWrap) el.manageSlotsWrap.classList.add('hidden');
+      setManageMsg('', '');
+      show('manage');
+    } catch (err) {
+      show('error');
+      if (el.errorText) el.errorText.textContent = err.message || 'Kunde inte öppna bokningen.';
+    }
+  }
+
+  async function manageSaveAgenda() {
+    setManageMsg('', '');
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/motesbokning/public/${encodeURIComponent(manageState.token)}/agenda`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agenda: el.manageAgenda?.value || '' })
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Kunde inte spara agenda');
+      setManageMsg('Agendan är sparad.', '');
+    } catch (err) {
+      setManageMsg('', err.message || 'Kunde inte spara');
+    }
+  }
+
+  async function manageCancel() {
+    if (!confirm('Vill du avboka mötet?')) return;
+    setManageMsg('', '');
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/motesbokning/public/${encodeURIComponent(manageState.token)}/cancel`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Kunde inte avboka');
+      setManageMsg('Mötet är avbokat.', '');
+      if (el.manageSaveAgenda) el.manageSaveAgenda.disabled = true;
+      if (el.manageReschedule) el.manageReschedule.disabled = true;
+      if (el.manageCancel) el.manageCancel.disabled = true;
+    } catch (err) {
+      setManageMsg('', err.message || 'Kunde inte avboka');
+    }
+  }
+
+  async function manageReschedule() {
+    setManageMsg('', '');
+    if (!manageState.linkSlug) {
+      setManageMsg('', 'Ombokning kräver en möteslänk.');
+      return;
+    }
+    if (el.manageSlotsWrap) el.manageSlotsWrap.classList.remove('hidden');
+    if (el.manageSlots) el.manageSlots.innerHTML = '<p class="boka-hint">Hämtar lediga tider...</p>';
+    try {
+      const qs = new URLSearchParams({ days: '14' });
+      const res = await fetch(
+        `${baseUrl}/api/motesbokning/public/link/${encodeURIComponent(manageState.linkSlug)}?${qs}`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Kunde inte hämta tider');
+      const slots = Array.isArray(data.slots) ? data.slots : [];
+      if (!slots.length) {
+        el.manageSlots.innerHTML = '<p class="boka-hint">Inga lediga tider just nu.</p>';
+        return;
+      }
+      el.manageSlots.innerHTML = slots.slice(0, 40).map((s) => `
+        <button type="button" class="boka-slot" data-start="${esc(s.start)}" data-end="${esc(s.end)}">
+          ${esc(fmtRange(s.start, s.end))}
+        </button>
+      `).join('');
+      el.manageSlots.querySelectorAll('.boka-slot').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          setManageMsg('', '');
+          try {
+            const r = await fetch(
+              `${baseUrl}/api/motesbokning/public/${encodeURIComponent(manageState.token)}/reschedule`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ start: btn.dataset.start, end: btn.dataset.end })
+              }
+            );
+            const body = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(body.error || 'Kunde inte omboka');
+            if (el.manageWhen) {
+              el.manageWhen.textContent = fmtRange(body.bookedStart, body.bookedEnd);
+            }
+            if (el.manageSlotsWrap) el.manageSlotsWrap.classList.add('hidden');
+            setManageMsg('Ny tid är sparad. En uppdatering syns i kalendern.', '');
+          } catch (err) {
+            setManageMsg('', err.message || 'Kunde inte omboka');
+          }
+        });
+      });
+    } catch (err) {
+      setManageMsg('', err.message || 'Kunde inte hämta tider');
     }
   }
 
@@ -585,8 +744,13 @@
     el.stepPick?.classList.remove('hidden');
   });
   el.confirm?.addEventListener('click', confirmBook);
+  el.manageSaveAgenda?.addEventListener('click', manageSaveAgenda);
+  el.manageCancel?.addEventListener('click', manageCancel);
+  el.manageReschedule?.addEventListener('click', manageReschedule);
 
-  if (linkSlug || shareToken) {
+  if (manageToken) {
+    loadManage();
+  } else if (linkSlug || shareToken) {
     loadLinkOrShare();
   } else {
     loadToken();
