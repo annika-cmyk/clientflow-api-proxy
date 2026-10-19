@@ -3071,6 +3071,8 @@ async function sendMeetingBookingMails(invite, kind) {
       end: invite.bookedEnd,
       location: invite.location,
       meetingType: invite.meetingType,
+      hostPhone: invite.hostPhone,
+      bookerPhone: invite.bookerPhone,
       agenda: invite.note,
       manageLink
     });

@@ -71,12 +71,17 @@
       .boka-lead { color: #475569; margin: 0 0 1rem; line-height: 1.5; font-size: 0.92rem; }
       .boka-loc-list { display: grid; gap: 0.45rem; margin-bottom: 1.1rem; }
       .boka-loc {
-        display: flex; align-items: center; gap: 0.65rem;
+        display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.65rem;
+        align-items: start;
         border: 1px solid #e2e8f0; border-radius: 10px;
         padding: 0.65rem 0.8rem; cursor: pointer; background: #fff;
       }
       .boka-loc.is-selected { border-color: #1a73e8; background: #eef5ff; }
-      .boka-loc input { accent-color: #1a73e8; }
+      .boka-loc input { accent-color: #1a73e8; margin-top: 0.2rem; }
+      .boka-loc-label { font-weight: 600; font-size: 0.92rem; }
+      .boka-loc-detail {
+        grid-column: 2; font-size: 0.82rem; color: #64748b; line-height: 1.35;
+      }
       .boka-dur {
         display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem;
       }
@@ -313,6 +318,11 @@
                                 <input type="email" id="boka-link-email" autocomplete="email">
                             </label>
                             <label class="boka-field">
+                                <span>Telefonnummer</span>
+                                <input type="tel" id="boka-link-phone" required autocomplete="tel" placeholder="070-123 45 67">
+                                <p class="boka-hint">Syns för värden i bokningen och kalenderinbjudan.</p>
+                            </label>
+                            <label class="boka-field">
                                 <span id="boka-agenda-label">Meddelande / agenda</span>
                                 <textarea id="boka-link-agenda" rows="5"></textarea>
                                 <p class="boka-hint">Detta ingår i kalenderinbjudan.</p>
@@ -330,6 +340,6 @@
     </div>
 
     <script src="js/config.js" defer></script>
-    <script src="js/boka-mote.js?v=6" defer></script>
+    <script src="js/boka-mote.js?v=7" defer></script>
 </body>
 </html>
