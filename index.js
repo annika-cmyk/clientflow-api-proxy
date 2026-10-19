@@ -3035,7 +3035,13 @@ async function pushMeetingInviteToGoogle(invite) {
     if (!creatorEmail) return;
     const creator = await getAirtableUser(creatorEmail);
     if (!creator) return;
-    await gmailIntegration.pushMeetingForUser(creator, invite);
+    const hostName = String(creator.name || creator.fullName || '').trim()
+      || creatorEmail.split('@')[0]
+      || '';
+    await gmailIntegration.pushMeetingForUser(creator, {
+      ...invite,
+      hostName: invite.hostName || hostName
+    });
   } catch (err) {
     console.warn('google-calendar meeting hook:', err.message);
   }
