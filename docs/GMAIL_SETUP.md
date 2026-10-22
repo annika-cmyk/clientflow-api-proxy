@@ -170,6 +170,11 @@ Uppladdade bilder (Bild 1/2) komprimeras i webbläsaren till sidfotsstorlek inna
 
 Vid skicka konverteras data-URL-bilder till **inline CID-bilagor** (multipart/related) så Gmail/mottagare inte strippar dem. Mejltexten kodas som UTF-8 base64 så svenska tecken (åäö) behålls.
 
+## Bilagor i utgående mejl
+
+- **Öppen bilaga** (BankID av): skickas som vanlig Gmail-bilaga (`Content-Disposition: attachment`) via `/api/gmail/send` → `attachments[]`.
+- **BankID-skyddad bilaga**: lagras via `compose-prepare` / protected-store och nås via `mejl-skyddad.html` efter BankID — inte som MIME-bilaga.
+
 ## BankID-skydd i utgående mejl
 
 Markera text eller bilagor som BankID-skyddade i Nytt mejl. Offentlig del går i Gmail; skyddad del + filer nås via `mejl-skyddad.html` efter BankID (återanvänder `lib/samarbete-bankid.js`, mock default).
