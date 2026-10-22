@@ -1845,9 +1845,23 @@
       const quoteDate = els.compose.dataset.quoteDate || '';
       const protectedText = (els.protectedBody && els.protectedBody.value) || '';
       const protectedFiles = [];
+      const openAttachments = [];
       for (const f of pendingFiles) {
-        if (!f.bankId) continue;
-        protectedFiles.push({ name: f.name, mimeType: f.file.type || 'application/octet-stream', contentBase64: await readFileAsBase64(f.file) });
+        const contentBase64 = await readFileAsBase64(f.file);
+        const meta = {
+          name: f.name,
+          mimeType: f.file.type || 'application/octet-stream',
+          contentBase64
+        };
+        if (f.bankId) {
+          protectedFiles.push(meta);
+        } else {
+          openAttachments.push({
+            filename: f.name,
+            mimeType: meta.mimeType,
+            contentBase64
+          });
+        }
       }
       let samarbeteUrl = '';
       let samarbeteTitle = '';
@@ -1899,6 +1913,7 @@
         text: prep.text || publicText,
         html: prep.html || undefined,
         inlineImages: Array.isArray(prep.inlineImages) ? prep.inlineImages : [],
+        attachments: openAttachments,
         customerId: els.customer.value || undefined,
         threadId: els.compose.dataset.threadId || undefined,
         inReplyTo: els.compose.dataset.inReplyTo || undefined
