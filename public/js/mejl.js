@@ -186,6 +186,9 @@
   const handleStatusApi = (window.MejlHandleStatus && MejlHandleStatus.createApi)
     ? MejlHandleStatus.createApi()
     : null;
+  const repliedApi = (window.MejlReplied && MejlReplied.createApi)
+    ? MejlReplied.createApi()
+    : null;
   const hiddenMessagesApi = (window.MejlHidden && MejlHidden.createApi)
     ? MejlHidden.createApi()
     : null;
@@ -207,6 +210,7 @@
     if (!els.compose || !els.compose.dataset) return;
     delete els.compose.dataset.threadId;
     delete els.compose.dataset.inReplyTo;
+    delete els.compose.dataset.replyToMessageId;
     delete els.compose.dataset.quoteFrom;
     delete els.compose.dataset.quoteDate;
   }
@@ -570,6 +574,10 @@
                   attCount > 1 ? `<span class="mejl-item-attach-count">${attCount}</span>` : ''
                 }</span>`
               : '';
+          const repliedBadge =
+            repliedApi && folder !== 'sent' && repliedApi.isReplied(m)
+              ? repliedApi.badgeHtml(m, { compact: true })
+              : '';
           const sharedBadge =
             m.source === 'shared' || folder === 'shared'
               ? `<span class="mejl-item-shared-badge"><i class="fas fa-share-alt" aria-hidden="true"></i> Delat med dig</span>`
@@ -606,6 +614,7 @@
             ${customerLink}${unmatchedBadge}
           </div>
           <div class="mejl-item-top-right">
+            ${repliedBadge}
             ${attachBadge}
             <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
             ${menuHtml}
@@ -1525,11 +1534,19 @@
     const gmailMessageIdForArchive = isShared
       ? m.gmailMessageId || (archiveForDetail && archiveForDetail.gmailMessageId) || ''
       : id;
+    const detailRepliedBadge =
+      !isShared && repliedApi && repliedApi.isReplied({ ...m, id, replied: m.replied || (listMeta && listMeta.replied) })
+        ? repliedApi.badgeHtml(
+            { ...m, id, replied: true },
+            { compact: false }
+          )
+        : '';
     els.detail.innerHTML = `
       <div class="mejl-item-top">
         <div class="mejl-detail-title-row">
           ${customerTitleHtml}
           ${labelsToggleHtml}
+          ${detailRepliedBadge}
         </div>
         <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
       </div>
@@ -1566,6 +1583,7 @@
         els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
         els.compose.dataset.threadId = m.threadId || '';
         els.compose.dataset.inReplyTo = m.messageIdHeader || '';
+        els.compose.dataset.replyToMessageId = id || m.id || '';
         els.compose.dataset.quoteFrom = m.from || '';
         els.compose.dataset.quoteDate =
           m.date || (m.internalDate != null ? String(m.internalDate) : '');
@@ -1924,6 +1942,20 @@
       els.sendStatus.textContent = prep.signatureAttached
         ? `Skickat från ${data.from || 'Gmail'} (med sidfot)`
         : `Skickat från ${data.from || 'Gmail'}`;
+      if (repliedApi && (payload.threadId || payload.inReplyTo || els.compose.dataset.replyToMessageId)) {
+        repliedApi.mark({
+          messageId: els.compose.dataset.replyToMessageId || '',
+          threadId: payload.threadId || data.threadId || ''
+        });
+        const mid = String(els.compose.dataset.replyToMessageId || '').trim();
+        const tid = String(payload.threadId || data.threadId || '').trim();
+        for (const msg of messages) {
+          if (!msg) continue;
+          if ((mid && msg.id === mid) || (tid && msg.threadId === tid)) {
+            msg.replied = true;
+          }
+        }
+      }
       signatureReady = !!prep.signatureAttached;
       updateComposeSignatureHint();
       hideComposePane();
