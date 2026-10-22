@@ -138,29 +138,61 @@
       .mejl-layout-card { border:1px solid #e2e8f0; border-radius:10px; padding:0.65rem 0.75rem; cursor:pointer; background:#fff; text-align:left; font:inherit; font-size:0.82rem; }
       .mejl-layout-card.is-active { border-color:#64748b; background:#f8fafc; box-shadow:0 0 0 1px #94a3b8; }
 
-      /* Split panes: isolate tracks so list content cannot bleed under detail */
+      /* Split panes: isolate tracks so list content cannot bleed under detail.
+         Each pane scrolls on its own when the pointer is over it (overflow + overscroll contain). */
       .mejl-layout {
         display: flex; flex-direction: column; gap: 1.25rem; margin-top: 0.75rem;
         width: 100%; min-width: 0; box-sizing: border-box;
       }
       .mejl-layout > .mejl-pane { min-width: 0; max-width: 100%; box-sizing: border-box; }
-      .mejl-pane--list { overflow: hidden; }
-      .mejl-pane--detail { min-width: 0; }
+      .mejl-pane--list {
+        display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+      }
+      .mejl-pane--list .mejl-list {
+        max-height: min(50vh, 28rem);
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+      .mejl-pane--detail {
+        display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+      }
+      .mejl-pane--detail > .mejl-detail {
+        max-height: min(70vh, 40rem);
+        overflow-x: auto;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
       @media (min-width: 960px) {
         .mejl-layout {
-          flex-direction: row; align-items: flex-start;
+          flex-direction: row; align-items: stretch;
           gap: 1.5rem;
+          height: min(78vh, 920px);
+          min-height: 360px;
         }
         .mejl-pane--list {
           flex: 0 0 clamp(260px, 32%, 360px);
           width: clamp(260px, 32%, 360px);
           max-width: 360px;
-          overflow: hidden;
+          height: 100%;
+        }
+        .mejl-pane--list .mejl-list {
+          flex: 1 1 auto;
+          min-height: 0;
+          max-height: none;
         }
         .mejl-pane--detail {
           flex: 1 1 0;
           min-width: 0;
           max-width: 100%;
+          height: 100%;
+        }
+        .mejl-pane--detail > .mejl-detail {
+          flex: 1 1 auto;
+          min-height: 0;
+          max-height: none;
         }
       }
       .mejl-header-bar {
@@ -392,7 +424,6 @@
       .mejl-detail {
         border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; min-height: 320px;
         padding: 1.25rem 1.4rem; min-width: 0; max-width: 100%; box-sizing: border-box;
-        overflow-x: auto;
       }
       .mejl-detail-empty { color: #94a3b8; padding: 2rem 0.5rem; }
       .mejl-detail-body { white-space: pre-wrap; line-height: 1.55; color: #334155; margin-top: 1rem; }
@@ -407,7 +438,17 @@
         min-height: 320px;
         max-height: min(78vh, 920px);
         overflow: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
         box-sizing: border-box;
+      }
+      @media (min-width: 960px) {
+        .mejl-pane--detail > .mejl-compose {
+          flex: 1 1 auto;
+          min-height: 0;
+          max-height: none;
+          height: 100%;
+        }
       }
       .mejl-pane--detail > .mejl-compose[hidden],
       .mejl-compose[hidden] { display: none !important; }
@@ -832,6 +873,6 @@
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
     <script src="js/mejl-regga-tid.js?v=20260919lank" defer></script>
     <script src="js/mejl-replied.js?v=20261022svarat" defer></script>
-    <script src="js/mejl.js?v=20261022svarat" defer></script>
+    <script src="js/mejl.js?v=20261022scroll" defer></script>
 </body>
 </html>

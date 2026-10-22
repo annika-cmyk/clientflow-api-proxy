@@ -221,6 +221,12 @@
     if (els.detail) els.detail.hidden = false;
   }
 
+  /** Scrolla mejldetaljen till toppen (egen scrollyta, inte sidans). */
+  function resetDetailScroll() {
+    if (!els.detail) return;
+    els.detail.scrollTop = 0;
+  }
+
   function labelChipHtml(label, opts) {
     const removable = opts && opts.removable;
     const cls = [
@@ -1570,6 +1576,7 @@
       ${isShared ? '' : '<p class="mejl-mask-hint">Markera text i brödtexten och klicka Maska markering.</p>'}
       ${bodyHtml}
     `;
+    resetDetailScroll();
     detailContext = { id, message: m, listMeta, isShared };
     if (!isShared) bindDetailLabelUi(id);
 
@@ -1633,6 +1640,7 @@
     activeId = listId;
     renderList();
     els.detail.innerHTML = '<p class="mejl-detail-empty"><i class="fas fa-spinner fa-spin"></i> Laddar…</p>';
+    resetDetailScroll();
     const archiveId = archiveIdFromListId(listId);
     const res = await fetch(
       `${baseUrl}/api/gmail/archive/${encodeURIComponent(archiveId)}`,
@@ -1680,6 +1688,7 @@
     activeId = id;
     renderList();
     els.detail.innerHTML = '<p class="mejl-detail-empty"><i class="fas fa-spinner fa-spin"></i> Laddar…</p>';
+    resetDetailScroll();
     const res = await fetch(`${baseUrl}/api/gmail/messages/${encodeURIComponent(id)}`, authOpts());
     const data = await res.json();
     if (!res.ok || !data.success) {
