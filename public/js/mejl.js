@@ -2037,7 +2037,7 @@
   });
   if (els.refreshBtn) {
     els.refreshBtn.title =
-      'Uppdatera från Gmail (fyller i saknade KUNDER-mejl). Håll Shift för full omsynkning.';
+      'Uppdatera från Gmail (lägger till saknade KUNDER-mejl utan att ta bort andra). Håll Shift för tyngre full sync — fortfarande rättvis per kundetikett.';
   }
   els.filter.addEventListener('change', () => loadInbox());
   els.composeToggle.addEventListener('click', () => {
