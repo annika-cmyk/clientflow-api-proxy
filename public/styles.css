@@ -20395,6 +20395,69 @@ body.byra-resa-page .risk-header h1 {
   line-height: 1.45;
   max-width: 28rem;
 }
+.kundresa-checklist {
+  margin: 0.35rem 0 0.85rem;
+  padding: 0 0 0 1.1rem;
+  color: #334155;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  max-width: 32rem;
+}
+.kundresa-checklist li {
+  margin: 0.2rem 0;
+}
+.kundresa-highlight-cta {
+  box-shadow: 0 0 0 3px rgba(19, 80, 92, 0.28) !important;
+  animation: kundresa-cta-pulse 1.2s ease 2;
+}
+@keyframes kundresa-cta-pulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+.roller-ledamoter-placeholder {
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.roller-ledamoter-placeholder-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #0f3d4a;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.roller-placeholder-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.roller-placeholder-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+.roller-placeholder-pulse {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: #cbd5e1;
+  flex-shrink: 0;
+  animation: roller-placeholder-blink 1.6s ease-in-out infinite;
+}
+@keyframes roller-placeholder-blink {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
 body.kundresa-modal-open {
   overflow: hidden;
 }
