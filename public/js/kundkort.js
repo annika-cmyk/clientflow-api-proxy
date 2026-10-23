@@ -5689,7 +5689,7 @@ class CustomerCardManager {
                     </div>
                     ${this._renderLedamoterPlaceholders(kontaktPersoner, fields)}
                     <div id="roles-list" class="roles-list">${rollerHTML}</div>
-                    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                    <div class="roller-add-actions">
                         <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till</button>
                         <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePersonAs('Ombud')"><i class="fas fa-user-plus"></i> Lägg till ombud</button>
                     </div>
@@ -6897,16 +6897,8 @@ class CustomerCardManager {
         return `
             <div class="roller-ledamoter-placeholder" id="roller-ledamoter-placeholder">
                 <p class="roller-ledamoter-placeholder-title">
-                    <i class="fas fa-building"></i> Styrelseledamöter från Bolagsverket
+                    Ledamöter hämtas från Bolagsverket snart · lägg till manuellt under Personer
                 </p>
-                <p class="kundresa-hint" style="margin:0 0 0.55rem;">
-                    Här visas snart ledamöter hämtade från Bolagsverket. Tills dess kan du lägga till dem manuellt.
-                </p>
-                <div class="roller-placeholder-rows" aria-hidden="true">
-                    <div class="roller-placeholder-row"><span class="roller-placeholder-pulse"></span><span>Ledamot — hämtas snart</span></div>
-                    <div class="roller-placeholder-row"><span class="roller-placeholder-pulse"></span><span>Ledamot — hämtas snart</span></div>
-                    <div class="roller-placeholder-row"><span class="roller-placeholder-pulse"></span><span>Suppleant — hämtas snart</span></div>
-                </div>
             </div>`;
     }
 
@@ -11177,12 +11169,34 @@ class CustomerCardManager {
     }
 
     _unmountKundresaStep() {
+        const extras = this._kundresaMovedExtras;
+        if (Array.isArray(extras) && extras.length) {
+            // Återställ flyttade undernoder innan korten flyttas tillbaka
+            extras.slice().reverse().forEach((entry) => {
+                if (!entry || !entry.node) return;
+                if (entry.kind === 'title' && entry.titleEl) {
+                    entry.titleEl.textContent = entry.prevText || entry.titleEl.textContent;
+                    return;
+                }
+                entry.node.classList.remove('kundresa-embed-section');
+                if (entry.parent && entry.parent.isConnected) {
+                    if (entry.nextSibling && entry.nextSibling.parentNode === entry.parent) {
+                        entry.parent.insertBefore(entry.node, entry.nextSibling);
+                    } else {
+                        entry.parent.appendChild(entry.node);
+                    }
+                }
+            });
+        }
+        this._kundresaMovedExtras = [];
+
         const mounted = this._kundresaMountedNodes;
         if (!Array.isArray(mounted) || !mounted.length) {
             this._kundresaMountedNodes = [];
             return;
         }
-        mounted.forEach((entry) => {
+        // Återställ i omvänd mount-ordning så original-DOM-ordningen på sidan bevaras
+        mounted.slice().reverse().forEach((entry) => {
             if (!entry || !entry.node) return;
             entry.node.classList.remove('kundresa-embedded-card');
             if (entry.node.style && entry.node.dataset) {
@@ -11234,22 +11248,20 @@ class CustomerCardManager {
 
         const selectors = this._kundresaSelectorsForFocus(focus, key);
         const mounted = [];
+        const movedExtras = [];
         host.innerHTML = '';
 
-        selectors.forEach((sel) => {
+        const mountCard = (sel) => {
             const node = document.querySelector(sel);
-            if (!node || !node.parentNode) return;
-            // Undvik att flytta samma nod två gånger
-            if (mounted.some((m) => m.node === node)) return;
+            if (!node || !node.parentNode) return null;
+            if (mounted.some((m) => m.node === node)) return node;
             const placeholder = document.createElement('div');
             placeholder.className = 'kundresa-card-placeholder';
             placeholder.hidden = true;
             placeholder.setAttribute('data-kundresa-placeholder', sel);
             node.parentNode.insertBefore(placeholder, node);
             node.classList.add('kundresa-embedded-card');
-            // Öppna collapsible i modalen
             node.classList.remove('is-collapsed');
-            // Tab-paneler kan ha display:none — visa dem i popupen
             if (node.style) {
                 node.dataset.kundresaPrevDisplay = node.style.display || '';
                 node.dataset.kundresaPrevVisibility = node.style.visibility || '';
@@ -11260,9 +11272,61 @@ class CustomerCardManager {
             }
             host.appendChild(node);
             mounted.push({ node, parent: placeholder.parentNode, placeholder, sel });
-        });
+            return node;
+        };
+
+        selectors.forEach((sel) => { mountCard(sel); });
+
+        // Steg 1: ordning a) Bolagsverket b) Personer c) VH-verifiering d) PEP/screening
+        const isStep1 = focus === 'foretag_personer' || focus === 'screening'
+            || focus === 'nykund' || focus === 'sok_hamta' || Number(stepId) === 1;
+        if (isStep1) {
+            const bv = document.getElementById('bolagsverket-card');
+            const roller = document.getElementById('roller-card');
+            const vhPanel = document.getElementById('kundresa-vh-panel');
+            const screening = roller && roller.querySelector('.roller-screening-toolbar');
+
+            if (bv && bv.parentNode !== host) mountCard('#bolagsverket-card');
+            if (roller && roller.parentNode !== host) mountCard('#roller-card');
+
+            if (roller) {
+                const titleEl = roller.querySelector('.collapsible-title span');
+                if (titleEl && titleEl.textContent.trim() !== 'Personer') {
+                    movedExtras.push({ kind: 'title', titleEl, prevText: titleEl.textContent });
+                    titleEl.textContent = 'Personer';
+                }
+            }
+
+            if (screening && screening.parentNode) {
+                movedExtras.push({
+                    kind: 'node',
+                    node: screening,
+                    parent: screening.parentNode,
+                    nextSibling: screening.nextSibling
+                });
+                screening.classList.add('kundresa-embed-section');
+                // Lämna screening utanför roller tills VH lagts in
+                screening.remove();
+            }
+
+            // Säkerställ ordning i host: BV → roller → VH → screening
+            if (bv) host.appendChild(bv);
+            if (roller) host.appendChild(roller);
+            if (vhPanel && !vhPanel.hidden) {
+                movedExtras.push({
+                    kind: 'node',
+                    node: vhPanel,
+                    parent: vhPanel.parentNode,
+                    nextSibling: vhPanel.nextSibling
+                });
+                vhPanel.classList.add('kundresa-embed-section');
+                host.appendChild(vhPanel);
+            }
+            if (screening) host.appendChild(screening);
+        }
 
         this._kundresaMountedNodes = mounted;
+        this._kundresaMovedExtras = movedExtras;
 
         if (!mounted.length) {
             host.innerHTML = '<p class="lead-empty">Kunde inte hitta innehållet för steget. Stäng och öppna kunduppläggningen igen.</p>';
