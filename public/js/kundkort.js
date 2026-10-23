@@ -449,7 +449,7 @@ class CustomerCardManager {
             if (meta.stateClass === 'is-partial') progressHost.style.setProperty('--progress', String(meta.pct || 0));
             else progressHost.style.removeProperty('--progress');
             progressHost.setAttribute('aria-label', meta.complete
-                ? 'Alla steg i KYC och riskbedömning är klara'
+                ? 'Alla steg i kunduppläggningen är klara'
                 : (meta.done > 0
                     ? `${meta.done} av ${meta.total} steg klara`
                     : 'Inget steg klart ännu'));
@@ -458,8 +458,8 @@ class CustomerCardManager {
             progressLabel.textContent = summary.progressLabel || '';
         }
         btn.title = meta.complete
-            ? 'KYC och riskbedömning — alla steg klara'
-            : `KYC och riskbedömning — ${meta.done} av ${meta.total} steg`;
+            ? 'Kunduppläggning — alla steg klara'
+            : `Kunduppläggning — ${meta.done} av ${meta.total} steg`;
     }
 
     _navGroupForTab(tab) {
@@ -486,7 +486,7 @@ class CustomerCardManager {
         if (oversiktNav) oversiktNav.hidden = next !== 'oversikt';
         if (lead) {
             lead.textContent = next === 'onboarding'
-                ? 'Jobba igenom informationsinsamling, screening, formulär, riskprofil och godkännande. Öppna stegen via «KYC och riskbedömning» vid kundnamnet. Insamlad info och löpande arbete finns under Kundöversikt.'
+                ? 'Följ uppläggningsresan: företag & personer → beskrivning & frågor → redovisning & tjänster → skicka KYC. Öppna stegen via knappen vid kundnamnet. Riskprofil och godkännande finns kvar under flikarna.'
                 : 'Här ser ni insamlad information och löpande kundarbete (avtal, uppdrag, anteckningar, dokumentation och samarbete). Onboarding & KYC öppnas via knappen vid kundnamnet.';
         }
 
@@ -5652,21 +5652,40 @@ class CustomerCardManager {
 
             ${this._renderBehorighetCardHtml(fields)}
 
-            <!-- Tjänster (nykundsmöte / steg 1) -->
-            <div class="collapsible-card" id="nykund-tjanster-card">
-                <div class="collapsible-header" onclick="customerCardManager.toggleCard('nykund-tjanster-card')">
-                    <div class="collapsible-title"><i class="fas fa-briefcase"></i><span>Tjänster kunden vill anlita</span></div>
+            <!-- KORT: Roller (steg 1 — personer, VH, PEP) -->
+            <div class="collapsible-card" id="roller-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('roller-card')">
+                    <div class="collapsible-title"><i class="fas fa-users"></i><span>Roller</span></div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body">
-                    <p class="kundresa-hint" style="margin:0 0 0.75rem;">Välj tjänster redan vid nykundsmötet — samma katalog som senare används i riskbedömningen.</p>
-                    <div id="nykund-tjanster" class="tjanster-host">
-                        <p class="lead-empty">Laddar tjänster…</p>
+                    <div class="roller-screening-toolbar" style="margin-bottom:0.75rem;padding:0.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+                        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.04em;margin-bottom:0.5rem;">
+                            PEP & sanktionsscreening (Dilisense)
+                        </div>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="entity-screen-btn" onclick="customerCardManager.entityScreeningFromBolagsverket(event)">
+                                <i class="fas fa-building"></i> Screena företag
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm" id="screen-all-pep-btn" onclick="customerCardManager.screenAllPepAndEntity(event)">
+                                <i class="fas fa-search-dollar"></i> Screena företag + alla personer
+                            </button>
+                            <span id="entity-screening-datum-wrap">${this._getEntityScreeningDatumBadge()}</span>
+                        </div>
+                        <div style="font-size:0.78rem;color:#64748b;margin-top:0.5rem;">
+                            Kundföretaget och poster med rollen Företag med ägarandelar screenas som företag. Övriga roller screenas som personer.
+                        </div>
+                    </div>
+                    ${this._renderLedamoterPlaceholders(kontaktPersoner, fields)}
+                    <div id="roles-list" class="roles-list">${rollerHTML}</div>
+                    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePersonAs('Ombud')"><i class="fas fa-user-plus"></i> Lägg till ombud</button>
                     </div>
                 </div>
             </div>
 
-            <!-- KORT 3: Beskrivning av kunden -->
+            <!-- KORT: Beskrivning av kunden (steg 2) -->
             <div class="collapsible-card is-collapsed" id="beskrivning-card">
                 <div class="collapsible-header" onclick="customerCardManager.toggleCard('beskrivning-card')">
                     <div class="collapsible-title">
@@ -5802,33 +5821,16 @@ class CustomerCardManager {
                 </div>
             </div>
 
-            <!-- KORT 5: Roller -->
-            <div class="collapsible-card is-collapsed" id="roller-card">
-                <div class="collapsible-header" onclick="customerCardManager.toggleCard('roller-card')">
-                    <div class="collapsible-title"><i class="fas fa-users"></i><span>Roller</span></div>
+            <!-- Tjänster (steg 3 — välj/avvälj) -->
+            <div class="collapsible-card is-collapsed" id="nykund-tjanster-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('nykund-tjanster-card')">
+                    <div class="collapsible-title"><i class="fas fa-briefcase"></i><span>Tjänster kunden vill anlita</span></div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body">
-                    <div class="roller-screening-toolbar" style="margin-bottom:0.75rem;padding:0.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
-                        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.04em;margin-bottom:0.5rem;">
-                            PEP & sanktionsscreening (Dilisense)
-                        </div>
-                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-                            <button type="button" class="btn btn-secondary btn-sm" id="entity-screen-btn" onclick="customerCardManager.entityScreeningFromBolagsverket(event)">
-                                <i class="fas fa-building"></i> Screena företag
-                            </button>
-                            <button type="button" class="btn btn-primary btn-sm" id="screen-all-pep-btn" onclick="customerCardManager.screenAllPepAndEntity(event)">
-                                <i class="fas fa-search-dollar"></i> Screena företag + alla personer
-                            </button>
-                            <span id="entity-screening-datum-wrap">${this._getEntityScreeningDatumBadge()}</span>
-                        </div>
-                        <div style="font-size:0.78rem;color:#64748b;margin-top:0.5rem;">
-                            Kundföretaget och poster med rollen Företag med ägarandelar screenas som företag. Övriga roller screenas som personer.
-                        </div>
-                    </div>
-                    <div id="roles-list" class="roles-list">${rollerHTML}</div>
-                    <div style="margin-top:0.75rem;">
-                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till</button>
+                    <p class="kundresa-hint" style="margin:0 0 0.75rem;">Välj eller avvälj tjänster — samma katalog som senare används i riskbedömningen.</p>
+                    <div id="nykund-tjanster" class="tjanster-host">
+                        <p class="lead-empty">Laddar tjänster…</p>
                     </div>
                 </div>
             </div>
@@ -6860,9 +6862,34 @@ class CustomerCardManager {
         return /\b(ab|aktiebolag|hb|kb|llc|ltd|inc|gmbh|oy|as|asa|bv|s\.?a\.?|ag|plc|corp\.?|company)\b/i.test(namn);
     }
 
+    _renderLedamoterPlaceholders(personer, fields = {}) {
+        const list = Array.isArray(personer) ? personer : [];
+        const hasLedamot = list.some((p) => {
+            const roller = this._getRollerList(p).map((r) => String(r || '').toLowerCase());
+            return roller.some((r) => r.includes('styrelseledamot') || r === 'ledamot' || r === 'suppleant');
+        });
+        const bolagsform = String(fields.Bolagsform || this.customerData?.fields?.Bolagsform || '');
+        const arEf = /enskild\s*firma|fysisk/i.test(bolagsform);
+        if (arEf || hasLedamot) return '';
+        return `
+            <div class="roller-ledamoter-placeholder" id="roller-ledamoter-placeholder">
+                <p class="roller-ledamoter-placeholder-title">
+                    <i class="fas fa-building"></i> Styrelseledamöter från Bolagsverket
+                </p>
+                <p class="kundresa-hint" style="margin:0 0 0.55rem;">
+                    Här visas snart ledamöter hämtade från Bolagsverket. Tills dess kan du lägga till dem manuellt.
+                </p>
+                <div class="roller-placeholder-rows" aria-hidden="true">
+                    <div class="roller-placeholder-row"><span class="roller-placeholder-pulse"></span><span>Ledamot — hämtas snart</span></div>
+                    <div class="roller-placeholder-row"><span class="roller-placeholder-pulse"></span><span>Ledamot — hämtas snart</span></div>
+                    <div class="roller-placeholder-row"><span class="roller-placeholder-pulse"></span><span>Suppleant — hämtas snart</span></div>
+                </div>
+            </div>`;
+    }
+
     _renderRollerView(personer) {
         if (!personer || personer.length === 0) {
-            return `<span class="lead-empty">Inga kontaktpersoner registrerade. Klicka på <strong>Lägg till</strong> för att lägga till.</span>`;
+            return `<span class="lead-empty">Inga kontaktpersoner registrerade. Klicka på <strong>Lägg till</strong> för att lägga till ombud eller andra befattningshavare.</span>`;
         }
         return `<div class="roller-person-list">
             ${personer.map((p, idx) => {
@@ -6874,6 +6901,9 @@ class CustomerCardManager {
                 const idMissing = isForetag ? 'Org.nr saknas' : 'Personnr saknas';
                 const nameIcon = isForetag ? 'fa-building' : 'fa-user';
                 const screenTitle = isForetag ? 'Sanktionsscreening (företag)' : 'PEP & Sanktionsscreening';
+                const telefon = p.telefon || p.telefonnr || '';
+                const isVh = roller.some((r) => /verklig\s+huvudman/i.test(String(r || '')));
+                const needsContact = isVh && !isForetag;
                 return `
                 <div class="roller-person-item" data-idx="${idx}">
                     <div class="roller-person-info">
@@ -6885,7 +6915,8 @@ class CustomerCardManager {
                         ${rollText ? `<div class="roller-person-meta"><span class="roller-person-roll">${this._esc(rollText)}</span></div>` : ''}
                     </div>
                     <div class="roller-person-details">
-                        ${p.epost ? `<span class="roller-detail-chip"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>` : '<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas</span>'}
+                        ${p.epost ? `<span class="roller-detail-chip"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas${needsContact ? ' (krävs för VH)' : ''}</span>`}
+                        ${telefon ? `<span class="roller-detail-chip"><i class="fas fa-phone"></i> ${this._esc(telefon)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-phone"></i> Telefon saknas${needsContact ? ' (krävs för VH)' : ''}</span>`}
                         ${p.personnr ? `<span class="roller-detail-chip"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-id-card"></i> ${idMissing}</span>`}
                         ${(() => {
                             if (isForetag) return '';
@@ -7136,6 +7167,12 @@ class CustomerCardManager {
         this._showRollePersonModal(null, null);
     }
 
+    addRollePersonAs(roll) {
+        this._ensureCardOpen('roller-card');
+        const prefill = roll ? { namn: '', roller: [String(roll)], epost: '', telefon: '', personnr: '' } : null;
+        this._showRollePersonModal(prefill, null);
+    }
+
     editRollePerson(idx) {
         const p = (this._kontaktPersoner || [])[idx];
         this._showRollePersonModal(p, idx);
@@ -7177,6 +7214,12 @@ class CustomerCardManager {
             .some((cb) => /verklig\s+huvudman/i.test(String(cb.value || '').trim()));
         // Använd explicit block — tom sträng kan falla tillbaka till CSS display:none.
         if (hvWrap) hvWrap.style.display = (!isForetag && hasVh) ? 'block' : 'none';
+        const contactHint = document.getElementById('rp-vh-contact-hint');
+        if (contactHint) {
+            const bolagsform = String(this.customerData?.fields?.Bolagsform || '');
+            const vhRelevant = !/enskild\s*firma|fysisk/i.test(bolagsform);
+            contactHint.style.display = (!isForetag && hasVh && vhRelevant) ? 'block' : 'none';
+        }
         this._syncIdentitetDatumVisibility();
     }
 
@@ -7246,10 +7289,19 @@ class CustomerCardManager {
                             }).join('')}
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>E-postadress</label>
-                        <input type="email" id="rp-epost" class="form-control" value="${this._esc(person?.epost || '')}" placeholder="namn@foretag.se">
+                    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem;">
+                        <div>
+                            <label for="rp-epost">E-postadress</label>
+                            <input type="email" id="rp-epost" class="form-control" value="${this._esc(person?.epost || '')}" placeholder="namn@foretag.se">
+                        </div>
+                        <div>
+                            <label for="rp-telefon">Telefonnummer</label>
+                            <input type="tel" id="rp-telefon" class="form-control" value="${this._esc(person?.telefon || person?.telefonnr || '')}" placeholder="070-123 45 67" autocomplete="tel">
+                        </div>
                     </div>
+                    <p class="tjanst-panel-hint" id="rp-vh-contact-hint" style="display:none;margin:0 0 0.75rem;color:#0f766e;">
+                        Verklig huvudman (AB) kräver e-post och telefon.
+                    </p>
                     <div class="form-group">
                         <label id="rp-personnr-label">Personnummer <span style="color:#94a3b8;font-size:0.82em">(för BankID-signering)</span></label>
                         <input type="text" id="rp-personnr" class="form-control" value="${this._esc(person?.personnr || '')}" placeholder="YYYYMMDD-XXXX">
@@ -7300,15 +7352,25 @@ class CustomerCardManager {
         const namn = document.getElementById('rp-namn').value.trim();
         const roller = [...document.querySelectorAll('.rp-roll-cb:checked')].map(cb => cb.value.trim()).filter(Boolean);
         const epost = document.getElementById('rp-epost').value.trim();
+        const telefon = document.getElementById('rp-telefon')?.value.trim() || '';
         const personnr = document.getElementById('rp-personnr').value.trim();
         if (!namn) { alert('Namn är obligatoriskt.'); return; }
 
+        const isForetag = roller.some((r) => String(r || '').trim().toLowerCase() === 'företag med ägarandelar');
+        const hasVhRoll = roller.some((r) => /verklig\s+huvudman/i.test(String(r || '')));
+        const bolagsform = String(this.customerData?.fields?.Bolagsform || '');
+        const vhRelevant = !/enskild\s*firma|fysisk/i.test(bolagsform);
+        if (!isForetag && hasVhRoll && vhRelevant && (!epost || !telefon)) {
+            alert('Verklig huvudman kräver e-post och telefonnummer för aktiebolag.');
+            (epost ? document.getElementById('rp-telefon') : document.getElementById('rp-epost'))?.focus();
+            return;
+        }
+
         const existing = (idx != null && idx !== undefined) ? (this._kontaktPersoner || [])[idx] : null;
-        let person = { namn, roller, epost, personnr };
+        let person = { namn, roller, epost, telefon, personnr };
         if (existing?.pepSoktDatum) person.pepSoktDatum = existing.pepSoktDatum;
         if (existing?.pepMarkerad) person.pepMarkerad = existing.pepMarkerad;
 
-        const isForetag = roller.some((r) => String(r || '').trim().toLowerCase() === 'företag med ägarandelar');
         const Id = window.IdentitetKontroll;
         if (!isForetag && Id && Id.applyToPerson) {
             const hasVh = Id.hasHuvudmanRoll ? Id.hasHuvudmanRoll(roller) : false;
@@ -11038,14 +11100,14 @@ class CustomerCardManager {
         const focus = step.focus || '';
         const stepId = step.stepId != null ? step.stepId : step.id;
         const key = step.key || '';
-        const closeAfter = step.closeAfter !== false
-            && focus !== 'vh'
-            && key !== 'vh_ombud'
-            && !!tab;
+        const stayInModal = focus === 'vh'
+            || key === 'vh_ombud'
+            || (focus === 'foretag_personer' && step.closeAfter === false);
+        const closeAfter = step.closeAfter !== false && !stayInModal && !!tab;
         this._activeKundresaStepId = stepId != null ? Number(stepId) : this._activeKundresaStepId;
         this._activeKundresaFocus = focus || key || '';
         this.setKundkortMode('onboarding', { skipTabSwitch: true });
-        if (focus === 'vh' || key === 'vh_ombud' || !tab) {
+        if ((focus === 'vh' || key === 'vh_ombud' || !tab) && !closeAfter) {
             if (!this._kundresaModalOpen) this.openKundresaModal();
             else this._renderKundresa();
             return;
@@ -11059,23 +11121,49 @@ class CustomerCardManager {
     }
 
     _focusKundresaSurface(focus, tab) {
-        if (focus === 'screening') {
-            this._ensureCardOpen('roller-card');
-            const el = document.getElementById('roller-card') || document.querySelector('.roller-screening-toolbar');
-            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            return;
-        }
-        if (focus === 'nykund' || tab === 'foretagsinformation') {
+        if (focus === 'foretag_personer' || focus === 'screening' || focus === 'nykund') {
             this._ensureCardOpen('bolagsverket-card');
-            this._ensureCardOpen('nykund-tjanster-card');
-            const el = document.getElementById('nykund-tjanster-card')
-                || document.getElementById('bolagsverket-card');
+            this._ensureCardOpen('roller-card');
+            const el = document.getElementById('bolagsverket-card')
+                || document.getElementById('roller-card')
+                || document.querySelector('.roller-screening-toolbar');
             if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
             return;
         }
-        if (focus === 'formular_kyc') {
-            const el = document.getElementById('kundresa-work-subnav') || document.getElementById('kundformular-content');
+        if (focus === 'beskrivning_fragor') {
+            // KYC-formuläret innehåller både beskrivning och frågorna (bild 2 + 6–10)
+            const el = document.querySelector('.kyc-beskrivning-card')
+                || document.getElementById('kycformular-content')
+                || document.getElementById('beskrivning-card');
+            this._ensureCardOpen('beskrivning-card');
             if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+        if (focus === 'redovisning_tjanster') {
+            this._ensureCardOpen('redovisning-card');
+            this._ensureCardOpen('nykund-tjanster-card');
+            // Öppna redigeringsläge för tjänster så man kan välja/avvälja direkt
+            try {
+                if (typeof this.toggleTjansterEdit === 'function') {
+                    const edit = document.getElementById('tjanster-edit-nykund-tjanster');
+                    if (edit && edit.style.display === 'none') this.toggleTjansterEdit('nykund-tjanster');
+                }
+            } catch (_) { /* ignore */ }
+            const el = document.getElementById('redovisning-card')
+                || document.getElementById('nykund-tjanster-card');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+        if (focus === 'kyc_skicka' || focus === 'formular_kyc') {
+            const actions = document.querySelector('#kycformular-content .uppdrag-actions');
+            const el = actions || document.getElementById('kycformular-content') || document.getElementById('kundresa-work-subnav');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            // Markera skicka-knappen visuellt
+            const sendBtn = document.querySelector('#kycformular-content button[onclick*="skickaKYCFormularTillKund"]');
+            if (sendBtn) {
+                sendBtn.classList.add('kundresa-highlight-cta');
+                setTimeout(() => sendBtn.classList.remove('kundresa-highlight-cta'), 4000);
+            }
             return;
         }
         if (focus === 'godkannande' || tab === 'godkannande') {
@@ -11089,6 +11177,11 @@ class CustomerCardManager {
         }
         if (tab === 'ovrigkyc') {
             const el = document.getElementById('ovrigkyc-content');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        if (tab === 'foretagsinformation' && !focus) {
+            this._ensureCardOpen('bolagsverket-card');
+            const el = document.getElementById('bolagsverket-card');
             if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
@@ -11167,8 +11260,12 @@ class CustomerCardManager {
     }
 
     _godkannandeStepStatus() {
-        const step = (this._kundresa?.steps || []).find((s) => s.key === 'godkannande');
-        return step || { status: 'pending', label: 'Ej påbörjat', done: false };
+        const step = (this._kundresa?.steps || []).find((s) => s.key === 'godkannande' || s.key === 'kyc_skicka');
+        if (step) return step;
+        const f = this.customerData?.fields || {};
+        const residual = String(f.Riskniva || f['Kund residual riskprofil'] || '').trim();
+        if (residual) return { status: 'next', label: 'Redo för beslut', done: false };
+        return { status: 'pending', label: 'Ej påbörjat', done: false };
     }
 
     _riskprofilSummaryHtml() {

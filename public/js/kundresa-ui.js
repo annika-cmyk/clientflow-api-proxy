@@ -1,6 +1,6 @@
 /**
- * Kundresa-UI — popup «Din resa» (samma steglista som tjänsteanalysen).
- * VH-steget utelämnas för enskild firma / fysisk person.
+ * Kundresa-UI — popup «Din resa» (analyskorts-design) för 4-stegs kunduppläggning.
+ * VH-bekräftelse visas i steg 1 när bolagsformen kräver verklig huvudman.
  */
 (function (global) {
   function esc(s) {
@@ -55,7 +55,7 @@
   function renderProgressIcon(summary) {
     const p = progressMeta(summary);
     const label = p.complete
-      ? 'Alla steg i KYC och riskbedömning är klara'
+      ? 'Alla steg i kunduppläggningen är klara'
       : (p.done > 0
         ? `${p.done} av ${p.total} steg klara`
         : 'Inget steg klart ännu');
@@ -66,7 +66,7 @@
   function renderRegisterList(register) {
     const list = Array.isArray(register) ? register.filter((p) => p && p.namn) : [];
     if (!list.length) {
-      return `<p class="kundresa-vh-empty">Ingen VH i formuläret ännu. Hämta från Bolagsverket i steg 1.</p>`;
+      return `<p class="kundresa-vh-empty">Ingen VH i formuläret ännu. Lägg till verklig huvudman under Roller i steg 1.</p>`;
     }
     return `<ul class="kundresa-vh-register">
       ${list.map((p) => `<li>
@@ -75,6 +75,21 @@
         ${p.hemvist ? `<span class="kundresa-vh-meta">${esc(p.hemvist)}</span>` : ''}
       </li>`).join('')}
     </ul>`;
+  }
+
+  function renderChecklist(step) {
+    const items = Array.isArray(step?.checklist) ? step.checklist : [];
+    if (!items.length) return '';
+    return `<ul class="kundresa-checklist">
+      ${items.map((item) => `<li>${esc(item)}</li>`).join('')}
+    </ul>`;
+  }
+
+  function isVhStep(step) {
+    if (!step) return false;
+    return step.focus === 'foretag_personer'
+      || step.key === 'foretag_personer'
+      || Number(step.id) === 1;
   }
 
   function render(container, summary, opts) {
@@ -95,11 +110,11 @@
     const showAlign = align.relevant !== false && align.status && align.status !== 'n/a'
       && (align.status !== 'pending' || !byraVal);
     const showVhPanel = gate.relevant !== false
-      && (Number(activeStepId) === 2 || (activeStep && activeStep.key === 'vh_ombud') || gate.blocked);
+      && (isVhStep(activeStep) || gate.blocked || Number(activeStepId) === 1);
 
     container.innerHTML = `
       <div class="kundresa-popup-layout tjanst-modal-layout">
-        <nav class="tjanst-tabs kundresa-popup-tabs" role="tablist" aria-label="KYC och riskbedömning">
+        <nav class="tjanst-tabs kundresa-popup-tabs" role="tablist" aria-label="Kunduppläggning">
           <p class="tjanst-tabs-kicker">Din resa</p>
           <div class="tjanst-tabs-steps">
             ${steps.map((step) => {
@@ -133,7 +148,8 @@
             <p class="kundresa-popup-stepmeta">${esc(String(activeStep.number != null ? activeStep.number : activeStep.id))} · ${esc(activeStep.label || '')}</p>
             <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
             <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
-            ${activeStep.key !== 'vh_ombud' && !activeStep.gated ? `
+            ${renderChecklist(activeStep)}
+            ${!activeStep.gated ? `
               <button type="button" class="btn btn-primary btn-sm" data-kundresa-open-work
                 data-kundresa-goto="${esc(activeStep.tab || '')}"
                 data-kundresa-focus="${esc(activeStep.focus || '')}"
@@ -146,7 +162,7 @@
           ${gate.relevant !== false ? `<div class="kundresa-vh-box"${showVhPanel ? '' : ' hidden'} id="kundresa-vh-panel" data-kundresa-vh-panel>
             <div class="kundresa-vh-box-head">
               <h4>Verifiera verklig huvudman</h4>
-              <p class="kundresa-hint">Byråns kontroll mot registret. Kundens intygande sker i formuläret och ska stämma med samma lista.</p>
+              <p class="kundresa-hint">Gäller aktiebolag. Lägg till VH med e-post och telefon under Roller, screena personerna, och bekräfta listan mot Bolagsverket här.</p>
             </div>
             <div class="kundresa-vh-layout">
               <div class="kundresa-vh-block">
@@ -209,8 +225,9 @@
       btn.addEventListener('click', () => {
         const key = btn.getAttribute('data-kundresa-key') || '';
         const focus = btn.getAttribute('data-kundresa-focus') || '';
-        const isVh = focus === 'vh' || key === 'vh_ombud';
-        emitStep(btn, !isVh);
+        // Växla aktivt steg i popupen; öppna arbetsytan via primärknappen
+        const keepOpen = focus === 'foretag_personer' || key === 'foretag_personer';
+        emitStep(btn, !keepOpen);
       });
     });
 
