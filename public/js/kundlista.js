@@ -66,6 +66,19 @@ class CustomerManager {
             addBtn.addEventListener('click', () => this.openAddCompanyModal());
         }
 
+        // Auto-öppna Nytt lead om man kommer från t.ex. ?nyttLead=1
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('nyttLead') === '1' || params.get('nytt-lead') === '1') {
+                params.delete('nyttLead');
+                params.delete('nytt-lead');
+                const qs = params.toString();
+                const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`;
+                window.history.replaceState({}, '', next);
+                setTimeout(() => this.openAddCompanyModal(), 200);
+            }
+        } catch (_) { /* ignore */ }
+
         const riskaptitBtn = document.getElementById('riskaptit-filter-btn');
         if (riskaptitBtn) {
             riskaptitBtn.addEventListener('click', () => {
@@ -80,81 +93,42 @@ class CustomerManager {
     }
 
     closeAddCompanyModal() {
+        if (window.NyttLead && typeof window.NyttLead.close === 'function') {
+            window.NyttLead.close();
+            return;
+        }
         const existing = document.getElementById('kundlista-add-modal');
         if (existing) existing.remove();
     }
 
     openAddCompanyModal(prefillName = '') {
-        this.closeAddCompanyModal();
-
-        const modal = document.createElement('div');
-        modal.id = 'kundlista-add-modal';
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-box kundlista-add-modal" role="dialog" aria-modal="true" aria-labelledby="kundlista-add-title">
-                <div class="modal-header">
-                    <h3 id="kundlista-add-title">Lägg till företag</h3>
-                    <button class="modal-close" type="button" aria-label="Stäng">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <form id="kundlista-add-form" class="modal-body" novalidate>
-                    <p class="dashboard-card-desc" style="margin-top:0;">
-                        Skapa en kund innan organisationsnummer finns. Org.nr kan kompletteras senare.
-                    </p>
-                    <div id="kundlista-add-error" class="kundlista-add-error" role="alert"></div>
-                    <div class="form-group">
-                        <label for="kundlista-add-namn">Företagsnamn</label>
-                        <input type="text" id="kundlista-add-namn" name="namn" required autocomplete="organization" placeholder="t.ex. Exempel AB">
-                    </div>
-                    <div class="form-group">
-                        <label for="kundlista-add-orgnr">Organisationsnummer <span style="font-weight:400;color:var(--ink-3);">(valfritt)</span></label>
-                        <input type="text" id="kundlista-add-orgnr" name="orgnr" inputmode="numeric" placeholder="t.ex. 556722-3705" autocomplete="off">
-                        <small class="form-hint">Lämna tomt om företaget ännu inte fått sitt org.nr.</small>
-                    </div>
-                    <p class="kundlista-add-alt">
-                        Har företaget redan org.nr?
-                        <button type="button" id="kundlista-add-bolagsverket">Sök hos Bolagsverket</button>
-                    </p>
-                </form>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-ghost btn-sm" id="kundlista-add-cancel">Avbryt</button>
-                    <button type="submit" form="kundlista-add-form" class="btn btn-primary btn-sm" id="kundlista-add-submit">
-                        <i class="fas fa-plus"></i> Skapa företag
-                    </button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-
-        const close = () => this.closeAddCompanyModal();
-        modal.querySelector('.modal-close')?.addEventListener('click', close);
-        modal.querySelector('#kundlista-add-cancel')?.addEventListener('click', close);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) close();
-        });
-        modal.querySelector('#kundlista-add-bolagsverket')?.addEventListener('click', () => {
-            const orgnr = (document.getElementById('kundlista-add-orgnr')?.value || '').trim();
-            close();
-            this.openBolagsverketModal(orgnr);
-        });
-
-        const form = document.getElementById('kundlista-add-form');
-        form?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.createCompanyWithoutOrg();
-        });
-
-        const nameInput = document.getElementById('kundlista-add-namn');
-        if (nameInput) {
-            const raw = (prefillName || this.lastQuery || '').toString().trim();
-            // Prefylla namn endast om sökningen inte ser ut som ett org.nr
-            if (raw && !/^\d[\d\s-]{5,}$/.test(raw)) {
-                nameInput.value = raw;
-            }
-            nameInput.focus();
+        const prefill = (prefillName || this.lastQuery || '').toString();
+        if (window.NyttLead && typeof window.NyttLead.open === 'function') {
+            window.NyttLead.open(prefill);
+            return;
         }
+        // Fallback om nytt-lead.js inte hunnit laddas
+        this._ensureNyttLead(() => this.openAddCompanyModal(prefill));
+    }
+
+    _ensureNyttLead(cb) {
+        if (window.NyttLead) {
+            cb();
+            return;
+        }
+        if (!document.querySelector('script[src*="nytt-lead.js"]')) {
+            const script = document.createElement('script');
+            script.src = 'js/nytt-lead.js?v=1.0';
+            script.async = false;
+            script.onload = () => cb();
+            document.body.appendChild(script);
+            return;
+        }
+        const wait = () => {
+            if (window.NyttLead) cb();
+            else setTimeout(wait, 40);
+        };
+        wait();
     }
 
     showAddCompanyError(message) {
@@ -165,103 +139,10 @@ class CustomerManager {
     }
 
     async createCompanyWithoutOrg() {
-        const nameInput = document.getElementById('kundlista-add-namn');
-        const orgInput = document.getElementById('kundlista-add-orgnr');
-        const submitBtn = document.getElementById('kundlista-add-submit');
-        const namn = (nameInput?.value || '').trim();
-        const orgnrRaw = (orgInput?.value || '').trim();
-
-        if (!namn) {
-            this.showAddCompanyError('Ange ett företagsnamn.');
-            nameInput?.focus();
-            return;
+        if (window.NyttLead && typeof window.NyttLead.createCompanyWithoutOrg === 'function') {
+            return window.NyttLead.createCompanyWithoutOrg();
         }
-
-        let orgnr = '';
-        if (orgnrRaw) {
-            const digits = orgnrRaw.replace(/[^\d]/g, '');
-            if (digits.length < 10 || digits.length > 12) {
-                this.showAddCompanyError('Ogiltigt organisationsnummer. Ange 10–12 siffror, eller lämna fältet tomt.');
-                orgInput?.focus();
-                return;
-            }
-            orgnr = digits;
-        }
-
-        const user = window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser();
-        if (!user) {
-            this.showAddCompanyError('Du måste vara inloggad för att skapa ett företag.');
-            return;
-        }
-
-        const byraId = (user.byraId || user.fields?.byraId || user.fields?.['Byrå ID'] || '').toString().replace(/,/g, '').trim();
-        const anvandareId = user.id || user.fields?.id || null;
-        if (!byraId) {
-            this.showAddCompanyError('Kunde inte avgöra vilken byrå du tillhör. Logga in igen och försök på nytt.');
-            return;
-        }
-
-        const fields = {
-            Namn: namn,
-            'Byrå ID': byraId,
-            Kundstatus: 'Lead'
-        };
-        if (anvandareId) fields['Användare'] = String(anvandareId);
-        if (orgnr) fields.Orgnr = orgnr;
-
-        const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || {
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' }
-        };
-
-        const originalText = submitBtn ? submitBtn.innerHTML : '';
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skapar...';
-        }
-        document.getElementById('kundlista-add-error')?.classList.remove('is-visible');
-
-        try {
-            const res = await fetch(`${this.baseUrl}/api/kunddata/create`, {
-                method: 'POST',
-                ...opts,
-                body: JSON.stringify({ fields })
-            });
-            const data = await res.json().catch(() => ({}));
-
-            if (res.ok && (data.success || data.id)) {
-                const recordId = data.id || data.record?.id;
-                this.closeAddCompanyModal();
-                if (recordId) {
-                    window.location.href = `kundkort.html?id=${encodeURIComponent(recordId)}`;
-                    return;
-                }
-                await this.loadCustomers();
-                return;
-            }
-
-            if (res.status === 409 || data.error === 'duplicate') {
-                const existingId = data.existingId;
-                if (existingId) {
-                    this.showAddCompanyError('Företaget finns redan hos er byrå. Öppnar befintligt kundkort...');
-                    setTimeout(() => {
-                        window.location.href = `kundkort.html?id=${encodeURIComponent(existingId)}`;
-                    }, 900);
-                    return;
-                }
-                this.showAddCompanyError(data.message || 'Företaget finns redan hos er byrå.');
-            } else {
-                this.showAddCompanyError(data.message || data.error || `Kunde inte skapa företaget (HTTP ${res.status}).`);
-            }
-        } catch (err) {
-            console.error('Fel vid skapande av företag:', err);
-            this.showAddCompanyError('Kunde inte skapa företaget. Kontrollera anslutningen.');
-        } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalText;
-            }
-        }
+        this.showAddCompanyError('Kunde inte ladda formuläret. Ladda om sidan och försök igen.');
     }
 
     updateAccessHint() {
@@ -444,113 +325,11 @@ class CustomerManager {
     }
 
     openBolagsverketModal(prefillOrgnr = '') {
-        // Ta bort ev. befintlig modal
-        const existing = document.getElementById('bolagsverket-modal');
-        if (existing) {
-            existing.remove();
+        if (window.NyttLead && typeof window.NyttLead.openBolagsverketModal === 'function') {
+            window.NyttLead.openBolagsverketModal(prefillOrgnr, { autoSearch: !!String(prefillOrgnr || '').trim() });
+            return;
         }
-
-        const modal = document.createElement('div');
-        modal.id = 'bolagsverket-modal';
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-box" style="max-width:1600px; width:98vw; max-height:90vh;">
-                <div class="modal-header">
-                    <h2>Företagssök hos Bolagsverket</h2>
-                    <button class="modal-close" type="button" onclick="document.getElementById('bolagsverket-modal').remove()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body">
-
-                    <section class="kundlista-foretagssok-section">
-                        <p class="dashboard-card-desc">
-                            Hämta företagsdata från Bolagsverket via organisationsnummer och spara som kund.
-                        </p>
-                        <form id="search-form" class="dashboard-search-form">
-                            <div class="dashboard-search-row">
-                                <input
-                                    type="text"
-                                    id="org-number"
-                                    name="org-number"
-                                    placeholder="t.ex. 556722-3705"
-                                    pattern="[0-9\\-]{8,12}"
-                                    required
-                                >
-                                <button type="submit" class="btn btn-primary btn-sm">
-                                    <i class="fas fa-search"></i> Hämta
-                                </button>
-                                <button type="button" id="clear-search" class="btn btn-secondary btn-sm">
-                                    <i class="fas fa-times"></i> Rensa
-                                </button>
-                            </div>
-                            <small>Format: 10 siffror, bindestreck tillåtna</small>
-                        </form>
-                    </section>
-
-                    <section id="error-message" class="error-section" style="display: none;">
-                        <div class="error-card">
-                            <div class="error-header">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <h3>Fel uppstod</h3>
-                            </div>
-                            <div class="error-content">
-                                <p id="error-text">Ett fel uppstod vid hämtning av företagsdata.</p>
-                                <div class="error-details" id="error-details" style="display: none;">
-                                    <h4>Teknisk information:</h4>
-                                    <pre id="error-technical"></pre>
-                                </div>
-                            </div>
-                            <div class="error-actions">
-                                <button id="show-error-details" class="btn btn-ghost btn-sm" type="button">
-                                    <i class="fas fa-info-circle"></i>
-                                    Visa teknisk information
-                                </button>
-                                <button id="hide-error-details" class="btn btn-ghost btn-sm" type="button" style="display: none;">
-                                    <i class="fas fa-eye-slash"></i>
-                                    Dölj teknisk information
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section id="company-info" class="company-info-section company-info-section--flat" style="display: none;">
-                        <div class="company-result">
-                            <div class="company-header">
-                                <h2 id="company-name-header"></h2>
-                                <div class="company-actions">
-                                    <button id="save-to-datasource" class="btn btn-primary" type="button">
-                                        <i class="fas fa-arrow-right"></i>
-                                        Spara företag
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="company-details" class="company-details"></div>
-                        </div>
-                    </section>
-
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-
-        // Koppla händelser till den injicerade sökformen via ClientFlowApp
-        if (window.clientFlowApp && typeof window.clientFlowApp.bindEvents === 'function') {
-            window.clientFlowApp.bindEvents();
-        }
-
-        // Fokusera fältet för org-nummer
-        const orgInput = document.getElementById('org-number');
-        if (orgInput) {
-            const raw = (prefillOrgnr || '').toString().trim();
-            const normalized = raw.replace(/\s+/g, '');
-            if (normalized) {
-                orgInput.value = normalized;
-            }
-            orgInput.focus();
-            try { orgInput.setSelectionRange(orgInput.value.length, orgInput.value.length); } catch (_) {}
-        }
+        this._ensureNyttLead(() => this.openBolagsverketModal(prefillOrgnr));
     }
 }
 

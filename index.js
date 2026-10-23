@@ -62,6 +62,7 @@ const {
   riskAtgarderAllChecked
 } = require('./lib/uppdrag-risk');
 const access = require('./lib/access');
+const kundByOrgnr = require('./lib/kund-by-orgnr');
 const cfa = require('./lib/cfa');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
@@ -4568,13 +4569,21 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
 
     if (existing) {
       console.log('⚠️ Kund finns redan – spärr, returnerar 409 (ingen dubblett skapas):', existing.id);
+      let hasAccess = false;
+      try {
+        const userData = req.user?.email ? await getAirtableUser(req.user.email) : null;
+        if (userData) hasAccess = access.userHasCustomerAccess(userData, existing);
+      } catch (_) { /* ignore */ }
       return res.status(409).json({
         error: 'duplicate',
         duplicate: true,
-        message: 'Kunden är redan upplagd hos er byrå. Gå till befintligt kundkort istället.',
+        message: hasAccess
+          ? 'Kunden är redan upplagd hos er byrå. Gå till befintligt kundkort istället.'
+          : 'Kunden är redan upplagd hos er byrå, men du saknar behörighet till kundkortet. Be en ledare ge dig åtkomst.',
         airtableRecordId: existing.id,
         existingId: existing.id,
-        existingNamn: existing.fields?.Namn || airtableData.fields?.Namn || ''
+        existingNamn: existing.fields?.Namn || airtableData.fields?.Namn || '',
+        hasAccess
       });
     }
 
@@ -6703,6 +6712,59 @@ app.get('/api/auth/test-users', async (req, res) => {
     res.status(500).json({
       error: 'Fel vid test av användaranslutning',
       message: error.message
+    });
+  }
+});
+
+// GET /api/kunddata/by-orgnr — uppslag utan skapa (måste komma före /api/kunddata/:id)
+app.get('/api/kunddata/by-orgnr', authenticateToken, async (req, res) => {
+  try {
+    const orgnr = kundByOrgnr.normalizeOrgnrDigits(req.query.orgnr || req.query.organisationsnummer || '');
+    if (!orgnr || orgnr.length < 10 || orgnr.length > 12) {
+      return res.status(400).json({
+        error: 'invalid_orgnr',
+        message: 'Ange ett giltigt organisationsnummer (10–12 siffror).'
+      });
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ error: 'Användare hittades inte' });
+    }
+
+    const byraId = (userData.byraId || '').toString().replace(/,/g, '').trim();
+    if (!byraId && !access.isClientFlowAdmin(userData.role)) {
+      return res.status(400).json({
+        error: 'byra_required',
+        message: 'Kunde inte avgöra vilken byrå du tillhör.'
+      });
+    }
+
+    const record = await kundByOrgnr.findKundByOrgnrForByra({
+      axios,
+      token: airtableAccessToken,
+      baseId: airtableBaseId,
+      orgnr,
+      byraId
+    });
+
+    if (!record) {
+      return res.json(kundByOrgnr.toLookupPayload(null));
+    }
+
+    const hasAccess = access.userHasCustomerAccess(userData, record);
+    return res.json(kundByOrgnr.toLookupPayload(record, { hasAccess }));
+  } catch (error) {
+    console.error('❌ GET /api/kunddata/by-orgnr:', error.message);
+    return res.status(500).json({
+      error: 'lookup_failed',
+      message: 'Kunde inte söka efter befintlig kund.'
     });
   }
 });
@@ -13541,7 +13603,7 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
         const orgnrOnlyFormula = orgnrVariants.length === 1
           ? `{Orgnr}="${esc(orgnrRaw)}"`
           : `OR(${orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',')})`;
-        const fallbackUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(orgnrOnlyFormula)}&maxRecords=100&fields[]=id&fields[]=Namn&fields[]=Byrå ID&fields[]=Orgnr`;
+        const fallbackUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(orgnrOnlyFormula)}&maxRecords=100&fields[]=id&fields[]=Namn&fields[]=Byrå ID&fields[]=Orgnr&fields[]=Användare&fields[]=Klientansvarig`;
         const fallbackRes = await axios.get(fallbackUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
         const records = fallbackRes.data.records || [];
         return records.find(r => recordMatchesOrgnr(r) && byraIdMatch(r.fields?.['Byrå ID'] || r.fields?.['Byra_ID'])) || null;
@@ -13554,7 +13616,7 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
         const byraIdFormula = /^\d+$/.test(byraIdClean) ? `{Byrå ID}=${byraIdClean}` : `{Byrå ID}="${esc(byraIdClean)}"`;
         const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
         const checkFormula = `AND(OR(${orgnrConditions}),${byraIdFormula})`;
-        const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=Namn`;
+        const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=Namn&fields[]=Orgnr&fields[]=Byrå ID&fields[]=Användare&fields[]=Klientansvarig`;
         try {
           const checkRes = await axios.get(checkUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
           existingRecord = checkRes.data.records?.[0] || null;
@@ -13564,11 +13626,19 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
         if (!existingRecord) existingRecord = await runFallback();
       }
       if (existingRecord) {
+        let hasAccess = false;
+        try {
+          const userData = req.user?.email ? await getAirtableUser(req.user.email) : null;
+          if (userData) hasAccess = access.userHasCustomerAccess(userData, existingRecord);
+        } catch (_) { /* ignore */ }
         return res.status(409).json({
           error: 'duplicate',
-          message: 'Företaget är redan upplagt som kund hos er byrå. Samma organisationsnummer kan bara förekomma en gång per byrå.',
+          message: hasAccess
+            ? 'Företaget är redan upplagt som kund hos er byrå. Samma organisationsnummer kan bara förekomma en gång per byrå.'
+            : 'Företaget är redan upplagt som kund hos er byrå, men du saknar behörighet till kundkortet. Be en ledare ge dig åtkomst.',
           existingId: existingRecord.id,
-          existingNamn: existingRecord.fields?.Namn || ''
+          existingNamn: existingRecord.fields?.Namn || '',
+          hasAccess
         });
       }
     }
