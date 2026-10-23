@@ -423,6 +423,7 @@ class CustomerCardManager {
     closeKundresaModal() {
         const modal = document.getElementById('kundresa-modal');
         if (!modal) return;
+        this._unmountKundresaStep();
         this._kundresaModalOpen = false;
         modal.hidden = true;
         modal.setAttribute('aria-hidden', 'true');
@@ -5317,6 +5318,11 @@ class CustomerCardManager {
     loadCompanyInfo() {
         const container = document.getElementById('foretagsinformation-content');
         if (!container) return;
+        // Om korten ligger i kundresa-popupen: lägg tillbaka dem innan DOM skrivs om
+        const remountFocus = this._kundresaModalOpen ? (this._activeKundresaFocus || '') : '';
+        const remountStepId = this._activeKundresaStepId;
+        if (this._kundresaModalOpen) this._unmountKundresaStep();
+
         this._ensureByraUsers().then((users) => {
             if (users && document.getElementById('behorighet-card') && !this._behorighetUsersReady) {
                 this._behorighetUsersReady = true;
@@ -5328,6 +5334,10 @@ class CustomerCardManager {
             container.innerHTML = '<p class="lead-empty">Ingen företagsinformation tillgänglig.</p>';
             return;
         }
+
+        this._kundresaRemountAfterCompanyInfo = remountFocus
+            ? { focus: remountFocus, id: remountStepId }
+            : null;
 
         const fields = this.customerData.fields || {};
         console.log('📋 Loading company info with fields:', fields);
@@ -5850,6 +5860,18 @@ class CustomerCardManager {
         this._maybeAutoRecheckUtsattOmrade();
         if (document.getElementById('nykund-tjanster')) {
             this.loadServices().catch((e) => console.warn('nykund-tjanster:', e));
+        }
+        // Flytta tillbaka aktuellt steg till kundresa-popupen efter omritning
+        const remount = this._kundresaRemountAfterCompanyInfo;
+        this._kundresaRemountAfterCompanyInfo = null;
+        if (remount && this._kundresaModalOpen) {
+            setTimeout(() => {
+                this._mountKundresaStep({
+                    focus: remount.focus,
+                    key: remount.focus,
+                    id: remount.id
+                });
+            }, 30);
         }
     }
 
@@ -11070,17 +11092,17 @@ class CustomerCardManager {
     _renderKundresa() {
         const host = document.getElementById('kundresa-shell');
         if (!host || !window.KundresaUi) return;
+        // Flytta tillbaka kort innan shell byggs om (annars försvinner de i innerHTML)
+        this._unmountKundresaStep();
         const summary = this._kundresa;
         this._updateKundresaTrigger();
         if (!summary) {
             host.innerHTML = '<p class="lead-empty">Kunde inte ladda KYC-resan.</p>';
             return;
         }
-        // Bifoga byrå-VH från kundformulär-summary om vi redan har den
         const kf = this._kundformularSummary || {};
         const enriched = {
             ...summary,
-            // Endast byråns VH — inte kundens svar via vhGate.value
             byraVhBekraftelse: kf.byraVhBekraftelse || summary.byraVhBekraftelse || '',
             byraVhNote: kf.byraVhNote || summary.byraVhNote || '',
             vhRegister: summary.vhRegister || summary.vhAlignment?.register || [],
@@ -11091,8 +11113,189 @@ class CustomerCardManager {
             activeStepId: this._activeKundresaStepId || enriched.nextStepId
         }, {
             onStep: (target) => this._gotoKundresaStep(target),
-            onVhSave: (payload, btn) => this._onKundresaVhSave(payload, btn)
+            onVhSave: (payload, btn) => this._onKundresaVhSave(payload, btn),
+            onReady: ({ activeStep }) => {
+                this._mountKundresaStep(activeStep || {
+                    id: this._activeKundresaStepId,
+                    focus: this._activeKundresaFocus,
+                    key: this._activeKundresaFocus
+                });
+            }
         });
+    }
+
+    _kundresaSelectorsForFocus(focus, key) {
+        const f = focus || key || '';
+        if (f === 'foretag_personer' || f === 'screening' || f === 'nykund' || f === 'sok_hamta') {
+            return ['#bolagsverket-card', '#roller-card'];
+        }
+        if (f === 'beskrivning_fragor') {
+            return ['#beskrivning-card', '#kycformular-content'];
+        }
+        if (f === 'redovisning_tjanster') {
+            return ['#redovisning-card', '#nykund-tjanster-card'];
+        }
+        if (f === 'kyc_skicka' || f === 'formular_kyc' || f === 'kundformular') {
+            return ['#kycformular-content'];
+        }
+        return ['#bolagsverket-card', '#roller-card'];
+    }
+
+    _kundresaTabForFocus(focus, key, tab) {
+        const f = focus || key || '';
+        if (tab) return tab;
+        if (f === 'beskrivning_fragor' || f === 'kyc_skicka' || f === 'formular_kyc') return 'kycformular';
+        return 'foretagsinformation';
+    }
+
+    async _ensureKundresaSurfaces(focus, key, tab) {
+        const targetTab = this._kundresaTabForFocus(focus, key, tab);
+        this.setKundkortMode('onboarding', { skipTabSwitch: true });
+        // Ladda underliggande flikar utan att stjäla fokus från modalen
+        if (targetTab === 'kycformular' || focus === 'beskrivning_fragor' || focus === 'kyc_skicka') {
+            if (!document.getElementById('kyc-formular-form') && !document.querySelector('#kycformular-content .uppdrag-section')) {
+                await this.loadKYCFormular();
+            }
+        }
+        if (targetTab === 'foretagsinformation'
+            || focus === 'foretag_personer'
+            || focus === 'redovisning_tjanster'
+            || focus === 'beskrivning_fragor') {
+            if (!document.getElementById('bolagsverket-card') && !document.getElementById('beskrivning-card')) {
+                this.loadCompanyInfo();
+            } else if (!document.getElementById('bolagsverket-card')
+                || !document.getElementById('roller-card')
+                || !document.getElementById('redovisning-card')
+                || !document.getElementById('nykund-tjanster-card')
+                || !document.getElementById('beskrivning-card')) {
+                this.loadCompanyInfo();
+            }
+            if (document.getElementById('nykund-tjanster') && typeof this.loadServices === 'function') {
+                try { await this.loadServices(); } catch (_) { /* ignore */ }
+            }
+        }
+    }
+
+    _unmountKundresaStep() {
+        const mounted = this._kundresaMountedNodes;
+        if (!Array.isArray(mounted) || !mounted.length) {
+            this._kundresaMountedNodes = [];
+            return;
+        }
+        mounted.forEach((entry) => {
+            if (!entry || !entry.node) return;
+            entry.node.classList.remove('kundresa-embedded-card');
+            if (entry.node.style && entry.node.dataset) {
+                if ('kundresaPrevDisplay' in entry.node.dataset) {
+                    entry.node.style.display = entry.node.dataset.kundresaPrevDisplay || '';
+                    delete entry.node.dataset.kundresaPrevDisplay;
+                }
+                if ('kundresaPrevVisibility' in entry.node.dataset) {
+                    entry.node.style.visibility = entry.node.dataset.kundresaPrevVisibility || '';
+                    delete entry.node.dataset.kundresaPrevVisibility;
+                }
+                if ('kundresaPrevOpacity' in entry.node.dataset) {
+                    entry.node.style.opacity = entry.node.dataset.kundresaPrevOpacity || '';
+                    delete entry.node.dataset.kundresaPrevOpacity;
+                }
+            }
+            if (entry.placeholder && entry.placeholder.parentNode) {
+                entry.placeholder.parentNode.insertBefore(entry.node, entry.placeholder);
+                entry.placeholder.remove();
+            } else if (entry.parent && entry.parent.isConnected) {
+                entry.parent.appendChild(entry.node);
+            }
+        });
+        this._kundresaMountedNodes = [];
+    }
+
+    async _mountKundresaStep(step) {
+        const focus = step?.focus || step?.key || this._activeKundresaFocus || '';
+        const key = step?.key || focus;
+        const tab = step?.tab || '';
+        const stepId = step?.id != null ? Number(step.id) : this._activeKundresaStepId;
+        this._activeKundresaStepId = stepId;
+        this._activeKundresaFocus = focus || key;
+
+        const host = document.getElementById('kundresa-step-host');
+        if (!host) return;
+
+        this._unmountKundresaStep();
+        host.innerHTML = '<div class="kundresa-step-loading lead-empty"><i class="fas fa-spinner fa-spin"></i> Laddar steg…</div>';
+
+        try {
+            await this._ensureKundresaSurfaces(focus, key, tab);
+        } catch (e) {
+            console.warn('_ensureKundresaSurfaces:', e);
+        }
+
+        // Vänta en tick så loadCompanyInfo hann skriva DOM
+        await new Promise((r) => setTimeout(r, 40));
+
+        const selectors = this._kundresaSelectorsForFocus(focus, key);
+        const mounted = [];
+        host.innerHTML = '';
+
+        selectors.forEach((sel) => {
+            const node = document.querySelector(sel);
+            if (!node || !node.parentNode) return;
+            // Undvik att flytta samma nod två gånger
+            if (mounted.some((m) => m.node === node)) return;
+            const placeholder = document.createElement('div');
+            placeholder.className = 'kundresa-card-placeholder';
+            placeholder.hidden = true;
+            placeholder.setAttribute('data-kundresa-placeholder', sel);
+            node.parentNode.insertBefore(placeholder, node);
+            node.classList.add('kundresa-embedded-card');
+            // Öppna collapsible i modalen
+            node.classList.remove('is-collapsed');
+            // Tab-paneler kan ha display:none — visa dem i popupen
+            if (node.style) {
+                node.dataset.kundresaPrevDisplay = node.style.display || '';
+                node.dataset.kundresaPrevVisibility = node.style.visibility || '';
+                node.dataset.kundresaPrevOpacity = node.style.opacity || '';
+                node.style.display = 'block';
+                node.style.visibility = 'visible';
+                node.style.opacity = '1';
+            }
+            host.appendChild(node);
+            mounted.push({ node, parent: placeholder.parentNode, placeholder, sel });
+        });
+
+        this._kundresaMountedNodes = mounted;
+
+        if (!mounted.length) {
+            host.innerHTML = '<p class="lead-empty">Kunde inte hitta innehållet för steget. Stäng och öppna kunduppläggningen igen.</p>';
+            return;
+        }
+
+        // Steg-specifika UX-justeringar
+        if (focus === 'redovisning_tjanster') {
+            try {
+                if (typeof this.toggleTjansterEdit === 'function') {
+                    const edit = document.getElementById('tjanster-edit-nykund-tjanster');
+                    if (edit && edit.style.display === 'none') this.toggleTjansterEdit('nykund-tjanster');
+                }
+                if (typeof this.toggleRedovisningEdit === 'function') {
+                    const edit = document.getElementById('redovisning-edit');
+                    if (edit && edit.style.display === 'none') this.toggleRedovisningEdit();
+                }
+            } catch (_) { /* ignore */ }
+        }
+        if (focus === 'kyc_skicka') {
+            const sendBtn = host.querySelector('button[onclick*="skickaKYCFormularTillKund"]');
+            if (sendBtn) {
+                sendBtn.classList.add('kundresa-highlight-cta');
+                setTimeout(() => sendBtn.classList.remove('kundresa-highlight-cta'), 4000);
+                sendBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+        if (focus === 'beskrivning_fragor') {
+            const desc = host.querySelector('.kyc-beskrivning-card, #beskrivning-card');
+            if (desc && desc.scrollIntoView) desc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        host.scrollTop = 0;
     }
 
     _gotoKundresaStep(target) {
@@ -11101,88 +11304,41 @@ class CustomerCardManager {
         const focus = step.focus || '';
         const stepId = step.stepId != null ? step.stepId : step.id;
         const key = step.key || '';
-        const stayInModal = focus === 'vh'
-            || key === 'vh_ombud'
-            || (focus === 'foretag_personer' && step.closeAfter === false);
-        const closeAfter = step.closeAfter !== false && !stayInModal && !!tab;
         this._activeKundresaStepId = stepId != null ? Number(stepId) : this._activeKundresaStepId;
         this._activeKundresaFocus = focus || key || '';
-        this.setKundkortMode('onboarding', { skipTabSwitch: true });
-        if ((focus === 'vh' || key === 'vh_ombud' || !tab) && !closeAfter) {
-            if (!this._kundresaModalOpen) this.openKundresaModal();
-            else this._renderKundresa();
+
+        // Alltid behåll popupen öppen — innehållet ligger i modalen (analyskorts-mönster)
+        if (!this._kundresaModalOpen) {
+            this.openKundresaModal();
             return;
         }
-        this.switchToTab(tab);
-        this.loadTabContent(tab);
-        this._syncWorkSubnav(tab);
-        setTimeout(() => this._focusKundresaSurface(focus, tab), 280);
-        if (closeAfter) this.closeKundresaModal();
-        else if (this._kundresaModalOpen) this._renderKundresa();
+        this._renderKundresa();
     }
 
     _focusKundresaSurface(focus, tab) {
+        // Bakåtkompatibilitet: vid inbäddad modal behövs ingen scroll på sidan
+        if (this._kundresaModalOpen) return;
         if (focus === 'foretag_personer' || focus === 'screening' || focus === 'nykund') {
             this._ensureCardOpen('bolagsverket-card');
             this._ensureCardOpen('roller-card');
             const el = document.getElementById('bolagsverket-card')
-                || document.getElementById('roller-card')
-                || document.querySelector('.roller-screening-toolbar');
+                || document.getElementById('roller-card');
             if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
             return;
         }
         if (focus === 'beskrivning_fragor') {
-            // KYC-formuläret innehåller både beskrivning och frågorna (bild 2 + 6–10)
-            const el = document.querySelector('.kyc-beskrivning-card')
-                || document.getElementById('kycformular-content')
-                || document.getElementById('beskrivning-card');
             this._ensureCardOpen('beskrivning-card');
+            const el = document.querySelector('.kyc-beskrivning-card') || document.getElementById('beskrivning-card');
             if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
             return;
         }
         if (focus === 'redovisning_tjanster') {
             this._ensureCardOpen('redovisning-card');
             this._ensureCardOpen('nykund-tjanster-card');
-            // Öppna redigeringsläge för tjänster så man kan välja/avvälja direkt
-            try {
-                if (typeof this.toggleTjansterEdit === 'function') {
-                    const edit = document.getElementById('tjanster-edit-nykund-tjanster');
-                    if (edit && edit.style.display === 'none') this.toggleTjansterEdit('nykund-tjanster');
-                }
-            } catch (_) { /* ignore */ }
-            const el = document.getElementById('redovisning-card')
-                || document.getElementById('nykund-tjanster-card');
-            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
             return;
         }
         if (focus === 'kyc_skicka' || focus === 'formular_kyc') {
-            const actions = document.querySelector('#kycformular-content .uppdrag-actions');
-            const el = actions || document.getElementById('kycformular-content') || document.getElementById('kundresa-work-subnav');
-            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            // Markera skicka-knappen visuellt
-            const sendBtn = document.querySelector('#kycformular-content button[onclick*="skickaKYCFormularTillKund"]');
-            if (sendBtn) {
-                sendBtn.classList.add('kundresa-highlight-cta');
-                setTimeout(() => sendBtn.classList.remove('kundresa-highlight-cta'), 4000);
-            }
-            return;
-        }
-        if (focus === 'godkannande' || tab === 'godkannande') {
-            const el = document.getElementById('godkannande-content');
-            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            return;
-        }
-        if (tab === 'kundformular') {
-            const el = document.querySelector('[data-kf-vh-section], #kundformular-content');
-            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-        if (tab === 'ovrigkyc') {
-            const el = document.getElementById('ovrigkyc-content');
-            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-        if (tab === 'foretagsinformation' && !focus) {
-            this._ensureCardOpen('bolagsverket-card');
-            const el = document.getElementById('bolagsverket-card');
+            const el = document.getElementById('kycformular-content');
             if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
@@ -11662,6 +11818,14 @@ class CustomerCardManager {
     async loadKYCFormular() {
         const container = document.getElementById('kycformular-content');
         if (!container) return;
+
+        const remountFocus = this._kundresaModalOpen ? (this._activeKundresaFocus || '') : '';
+        const remountStepId = this._activeKundresaStepId;
+        // KYC-noden kan ligga i popupen — lägg tillbaka innan omritning
+        if (this._kundresaModalOpen
+            && (remountFocus === 'beskrivning_fragor' || remountFocus === 'kyc_skicka' || remountFocus === 'formular_kyc')) {
+            this._unmountKundresaStep();
+        }
 
         if (!this.customerData?.fields) {
             container.innerHTML = '<p class="lead-empty">Ingen kunddata tillgänglig.</p>';
@@ -12268,6 +12432,16 @@ class CustomerCardManager {
         this._applyUtlandskaUboFromKyc();
         this._applyVerksamhetChecksFromKyc();
         this._renderKycVerksamhetStyrHint();
+
+        if (remountFocus && this._kundresaModalOpen) {
+            setTimeout(() => {
+                this._mountKundresaStep({
+                    focus: remountFocus,
+                    key: remountFocus,
+                    id: remountStepId
+                });
+            }, 30);
+        }
     }
 
     // HTML för en företrädar-rad (används vid render och när man lägger till fler)

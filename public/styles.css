@@ -20346,9 +20346,9 @@ body.byra-resa-page .risk-header h1 {
   display: flex !important;
 }
 .kundresa-modal-content {
-  max-width: min(820px, 96vw);
-  width: min(820px, 96vw);
-  max-height: min(88dvh, 720px);
+  max-width: min(1180px, 98vw);
+  width: min(1180px, 98vw);
+  max-height: min(94dvh, 920px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -20419,6 +20419,58 @@ body.byra-resa-page .risk-header h1 {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+}
+.kundresa-popup-layout--embed {
+  align-items: stretch;
+}
+.kundresa-popup-body--embed {
+  min-height: 0;
+  overflow: hidden;
+}
+.kundresa-popup-stepinfo--compact {
+  gap: 0.15rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+.kundresa-popup-stepinfo--compact .kundresa-popup-stepdesc {
+  margin-bottom: 0;
+}
+.kundresa-step-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-right: 0.15rem;
+}
+.kundresa-step-host .kundresa-embedded-card {
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+.kundresa-step-host .collapsible-card {
+  box-shadow: none;
+}
+.kundresa-step-host .collapsible-card.is-collapsed .collapsible-body {
+  display: block; /* alltid öppna i popupen */
+}
+.kundresa-step-host .collapsible-chevron {
+  display: none;
+}
+.kundresa-step-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0.5rem;
+}
+.kundresa-step-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line, #e8eaee);
+  margin-top: 0.15rem;
 }
 .kundresa-popup-stepinfo {
   display: flex;
