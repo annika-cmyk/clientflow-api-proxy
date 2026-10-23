@@ -66,7 +66,7 @@
   function renderRegisterList(register) {
     const list = Array.isArray(register) ? register.filter((p) => p && p.namn) : [];
     if (!list.length) {
-      return `<p class="kundresa-vh-empty">Ingen VH i formuläret ännu. Lägg till verklig huvudman under Roller nedan.</p>`;
+      return `<p class="kundresa-vh-empty">Ingen VH i formuläret ännu. Lägg till verklig huvudman under Personer ovan.</p>`;
     }
     return `<ul class="kundresa-vh-register">
       ${list.map((p) => `<li>
@@ -82,6 +82,17 @@
     return step.focus === 'foretag_personer'
       || step.key === 'foretag_personer'
       || Number(step.id) === 1;
+  }
+
+  function syncVhSegments(container) {
+    const sel = container.querySelector('[data-kundresa-vh]');
+    if (!sel) return;
+    const val = sel.value || '';
+    container.querySelectorAll('[data-kundresa-vh-seg]').forEach((btn) => {
+      const on = btn.getAttribute('data-kundresa-vh-seg') === val;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
   }
 
   function render(container, summary, opts) {
@@ -147,53 +158,61 @@
             <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
           </header>` : ''}
 
-          ${gate.relevant !== false ? `<div class="kundresa-vh-box"${showVhPanel ? '' : ' hidden'} id="kundresa-vh-panel" data-kundresa-vh-panel>
-            <div class="kundresa-vh-box-head">
-              <h4>Verifiera verklig huvudman</h4>
-              <p class="kundresa-hint">Gäller aktiebolag. Lägg till VH med e-post och telefon under Roller, screena, och bekräfta listan här.</p>
-            </div>
-            <div class="kundresa-vh-layout">
-              <div class="kundresa-vh-block">
-                <p class="kundresa-vh-label">Registrerad VH</p>
-                ${renderRegisterList(register)}
+          <div class="kundresa-popup-scroll" data-kundresa-scroll>
+            <div id="kundresa-step-host" class="kundresa-step-host" data-kundresa-step-host
+              data-active-focus="${esc(activeStep?.focus || '')}"
+              data-active-key="${esc(activeStep?.key || '')}"
+              data-active-step-id="${esc(String(activeStep?.id || ''))}">
+              <div class="kundresa-step-loading lead-empty">
+                <i class="fas fa-spinner fa-spin"></i> Laddar steg…
               </div>
-              <div class="kundresa-vh-form">
-                ${showAlign ? `<div class="kundresa-vh-align ${alignmentClass(align.status)}" role="status">
-                  <strong>${esc(alignTitle(align.status))}</strong>
-                  <span>${esc(align.message || '')}</span>
-                  ${align.kund ? `<span class="kundresa-vh-align-meta">Kund: ${esc(labelVh(align.kund))}</span>` : ''}
-                </div>` : ''}
-                <label class="kundresa-vh-field">
-                  <span>Stämmer listan mot Bolagsverket?</span>
-                  <select class="form-control" data-kundresa-vh>
-                    <option value="">— Välj —</option>
-                    <option value="Ja"${byraVal === 'Ja' ? ' selected' : ''}>Ja</option>
-                    <option value="Osaker"${byraVal === 'Osaker' ? ' selected' : ''}>Osäker</option>
-                    <option value="Nej"${byraVal === 'Nej' ? ' selected' : ''}>Nej</option>
-                  </select>
-                </label>
-                <label class="kundresa-vh-field kundresa-vh-note-field"${showNote ? '' : ' hidden'} data-kundresa-vh-note-wrap>
-                  <span>Anteckning${byraVal === 'Osaker' || byraVal === 'Nej' ? '' : ' (valfritt)'}</span>
-                  <input type="text" class="form-control" data-kundresa-vh-note
-                    placeholder="Utredningsstatus, källa…"
-                    value="${esc(s.byraVhNote || '')}">
-                </label>
-                <div class="kundresa-vh-actions">
-                  <button type="button" class="btn btn-primary btn-sm" data-kundresa-vh-save>
-                    <i class="fas fa-save"></i> Spara
-                  </button>
+            </div>
+
+            ${gate.relevant !== false ? `<div class="kundresa-vh-box"${showVhPanel ? '' : ' hidden'} id="kundresa-vh-panel" data-kundresa-vh-panel>
+              <div class="kundresa-vh-box-head">
+                <h4>Verifiera verklig huvudman</h4>
+                <p class="kundresa-hint">Gäller aktiebolag. Lägg till VH med e-post och telefon under Personer ovan, screena, och bekräfta listan här.</p>
+              </div>
+              ${showAlign ? `<div class="kundresa-vh-align kundresa-vh-status-banner ${alignmentClass(align.status)}" role="status">
+                <strong>${esc(alignTitle(align.status))}</strong>
+                <span>${esc(align.message || '')}</span>
+                ${align.kund ? `<span class="kundresa-vh-align-meta">Kund: ${esc(labelVh(align.kund))}</span>` : ''}
+              </div>` : ''}
+              <div class="kundresa-vh-layout">
+                <div class="kundresa-vh-block">
+                  <p class="kundresa-vh-label">Registrerad VH</p>
+                  ${renderRegisterList(register)}
+                </div>
+                <div class="kundresa-vh-form">
+                  <p class="kundresa-vh-label">Stämmer listan mot Bolagsverket?</p>
+                  <div class="kundresa-vh-segment-row">
+                    <div class="kundresa-vh-segments" role="group" aria-label="VH-bekräftelse">
+                      <button type="button" class="kundresa-vh-seg${byraVal === 'Ja' ? ' is-active' : ''}"
+                        data-kundresa-vh-seg="Ja" aria-pressed="${byraVal === 'Ja' ? 'true' : 'false'}">Ja</button>
+                      <button type="button" class="kundresa-vh-seg${byraVal === 'Osaker' ? ' is-active' : ''}"
+                        data-kundresa-vh-seg="Osaker" aria-pressed="${byraVal === 'Osaker' ? 'true' : 'false'}">Osäker</button>
+                      <button type="button" class="kundresa-vh-seg${byraVal === 'Nej' ? ' is-active' : ''}"
+                        data-kundresa-vh-seg="Nej" aria-pressed="${byraVal === 'Nej' ? 'true' : 'false'}">Nej</button>
+                    </div>
+                    <select class="form-control kundresa-vh-select-hidden" data-kundresa-vh hidden aria-hidden="true" tabindex="-1">
+                      <option value="">— Välj —</option>
+                      <option value="Ja"${byraVal === 'Ja' ? ' selected' : ''}>Ja</option>
+                      <option value="Osaker"${byraVal === 'Osaker' ? ' selected' : ''}>Osäker</option>
+                      <option value="Nej"${byraVal === 'Nej' ? ' selected' : ''}>Nej</option>
+                    </select>
+                    <button type="button" class="btn btn-primary btn-sm" data-kundresa-vh-save>
+                      <i class="fas fa-save"></i> Spara
+                    </button>
+                  </div>
+                  <label class="kundresa-vh-field kundresa-vh-note-field"${showNote ? '' : ' hidden'} data-kundresa-vh-note-wrap>
+                    <span>Anteckning${byraVal === 'Osaker' || byraVal === 'Nej' ? '' : ' (valfritt)'}</span>
+                    <input type="text" class="form-control" data-kundresa-vh-note
+                      placeholder="Utredningsstatus, källa…"
+                      value="${esc(s.byraVhNote || '')}">
+                  </label>
                 </div>
               </div>
-            </div>
-          </div>` : ''}
-
-          <div id="kundresa-step-host" class="kundresa-step-host" data-kundresa-step-host
-            data-active-focus="${esc(activeStep?.focus || '')}"
-            data-active-key="${esc(activeStep?.key || '')}"
-            data-active-step-id="${esc(String(activeStep?.id || ''))}">
-            <div class="kundresa-step-loading lead-empty">
-              <i class="fas fa-spinner fa-spin"></i> Laddar steg…
-            </div>
+            </div>` : ''}
           </div>
 
           ${activeStep && !activeStep.gated ? `<div class="kundresa-step-nav">
@@ -219,8 +238,19 @@
         const v = vhSelect.value;
         const need = v === 'Osaker' || v === 'Nej' || !!(container.querySelector('[data-kundresa-vh-note]')?.value || '').trim();
         noteWrap.hidden = !need;
+        syncVhSegments(container);
       });
     }
+
+    container.querySelectorAll('[data-kundresa-vh-seg]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sel = container.querySelector('[data-kundresa-vh]');
+        if (!sel) return;
+        sel.value = btn.getAttribute('data-kundresa-vh-seg') || '';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+    syncVhSegments(container);
 
     function emitStep(stepLike) {
       if (!stepLike || stepLike.gated) return;
