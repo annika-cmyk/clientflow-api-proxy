@@ -662,8 +662,8 @@ class CustomerCardManager {
                     throw new Error('Oväntat svar från servern');
                 }
                 this.displayCustomerInfo();
-                this.loadKundresa().catch((e) => console.warn('kundresa:', e));
                 const urlParams = new URLSearchParams(window.location.search);
+                const shouldOpenSetup = urlParams.get('setup') === '1' || urlParams.get('kundresa') === '1';
                 const noteId = urlParams.get('note');
                 const hash = (window.location.hash || '').replace('#', '');
                 const shouldOpenAnteckningar = noteId || hash === 'anteckningar';
@@ -672,6 +672,21 @@ class CustomerCardManager {
                 const shouldOpenDokumentation = hash === 'dokumentation';
                 const shouldOpenUppdrag = hash === 'uppdrag';
                 const shouldOpenGodkannande = hash === 'godkannande';
+                this.loadKundresa()
+                    .then(() => {
+                        if (!shouldOpenSetup) return;
+                        // Endast för nya leads: öppna kunduppläggningsflödet (analyskorts-design)
+                        try {
+                            urlParams.delete('setup');
+                            urlParams.delete('kundresa');
+                            const qs = urlParams.toString();
+                            const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`;
+                            window.history.replaceState({}, '', next);
+                        } catch (_) { /* ignore */ }
+                        this.setKundkortMode('onboarding', { skipTabSwitch: true });
+                        this.openKundresaModal();
+                    })
+                    .catch((e) => console.warn('kundresa:', e));
                 const oversiktTab = shouldOpenAnteckningar
                     ? 'anteckningar'
                     : (shouldOpenAvvikelser

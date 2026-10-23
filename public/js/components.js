@@ -18,7 +18,7 @@ class ComponentLoader {
                 return true;
             }
 
-            const response = await fetch(`Components/${componentName}.html?v=addon3`);
+            const response = await fetch(`Components/${componentName}.html?v=nyttlead1`);
             if (!response.ok) {
                 throw new Error(`Failed to load component: ${componentName}`);
             }
@@ -86,6 +86,7 @@ class ComponentLoader {
 
         this.initMobileNav(element);
         this.initSidebarSearch(element);
+        this.initNyttLead(element);
         this.initByraAmlProfilProgress(element);
         this.initNavStatus(element);
         this.initMinibokBanner();
@@ -163,6 +164,33 @@ class ComponentLoader {
             script.async = false;
             script.onload = runInit;
             document.body.appendChild(script);
+        }
+    }
+
+    initNyttLead(element) {
+        const runInit = () => {
+            if (window.NyttLead && typeof window.NyttLead.bindSidebar === 'function') {
+                window.NyttLead.bindSidebar(element);
+            }
+        };
+
+        if (window.NyttLead && typeof window.NyttLead.bindSidebar === 'function') {
+            runInit();
+            return;
+        }
+
+        if (!document.querySelector('script[src*="nytt-lead.js"]')) {
+            const script = document.createElement('script');
+            script.src = 'js/nytt-lead.js?v=1.0';
+            script.async = false;
+            script.onload = runInit;
+            document.body.appendChild(script);
+        } else {
+            const wait = () => {
+                if (window.NyttLead) runInit();
+                else setTimeout(wait, 40);
+            };
+            wait();
         }
     }
 

@@ -1906,13 +1906,19 @@ class ClientFlowApp {
                 saveBtn.style.background = '#10b981';
                 this.showMessage(`✅ "${companyData.namn}" har sparats med årsredovisningar! Dirigerar till kundkortet...`, 'success');
                 setTimeout(() => {
-                    window.location.href = `kundkort.html?id=${recordId}`;
+                    // Nytt lead: öppna tomt kundkort med kunduppläggnings-popup (setup=1)
+                    const setupQs = recordId ? `kundkort.html?id=${encodeURIComponent(recordId)}&setup=1` : 'kundlista.html';
+                    window.location.href = setupQs;
                 }, 1000);
             } else if (response.status === 409 || data.duplicate) {
                 // Duplicat – företaget finns redan hos denna byrå
                 saveBtn.innerHTML = originalText;
                 saveBtn.disabled = false;
-                this.showDuplicateWarning(companyData.namn, data.existingId || data.airtableRecordId || data.recordId);
+                this.showDuplicateWarning(
+                    companyData.namn,
+                    data.existingId || data.airtableRecordId || data.recordId,
+                    { hasAccess: data.hasAccess !== false, message: data.message }
+                );
             } else if (response.status === 400 && (data.loginRequired || data.error === 'byra_required')) {
                 saveBtn.innerHTML = originalText;
                 saveBtn.disabled = false;
@@ -1930,12 +1936,17 @@ class ClientFlowApp {
         }
     }
 
-    showDuplicateWarning(namn, existingId) {
+    showDuplicateWarning(namn, existingId, options = {}) {
         // Ta bort eventuell befintlig varning
         const prev = document.getElementById('duplicate-warning');
         if (prev) prev.remove();
 
-        const kundkortUrl = existingId ? `kundkort.html?id=${existingId}` : null;
+        const hasAccess = options.hasAccess !== false && !!existingId;
+        const kundkortUrl = hasAccess && existingId ? `kundkort.html?id=${encodeURIComponent(existingId)}` : null;
+        const detail = options.message
+            || (hasAccess
+                ? `"${namn}" är redan registrerat som kund hos er byrå.`
+                : `"${namn}" är redan registrerat som kund hos er byrå, men du saknar behörighet till kundkortet. Be en ledare ge dig åtkomst.`);
 
         const el = document.createElement('div');
         el.id = 'duplicate-warning';
@@ -1944,7 +1955,7 @@ class ClientFlowApp {
                 <i class="fas fa-exclamation-triangle" style="color:#d97706;font-size:1.2rem;margin-top:2px;flex-shrink:0;"></i>
                 <div>
                     <strong>Företaget finns redan upplagt</strong><br>
-                    <span style="color:#92400e;">"${namn}" är redan registrerat som kund hos er byrå.</span><br>
+                    <span style="color:#92400e;">${detail}</span><br>
                     ${kundkortUrl ? `<a href="${kundkortUrl}" style="color:#b45309;font-weight:600;text-decoration:underline;margin-top:4px;display:inline-block;">
                         <i class="fas fa-arrow-right"></i> Gå till befintligt kundkort
                     </a>` : ''}
@@ -1963,6 +1974,13 @@ class ClientFlowApp {
         if (companySection) {
             companySection.parentNode.insertBefore(el, companySection.nextSibling);
             el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Om användaren har behörighet: öppna befintligt kundkort (utan setup-popup)
+        if (kundkortUrl) {
+            setTimeout(() => {
+                window.location.href = kundkortUrl;
+            }, 1200);
         }
     }
 
