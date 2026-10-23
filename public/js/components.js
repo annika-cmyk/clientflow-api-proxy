@@ -181,7 +181,7 @@ class ComponentLoader {
 
         if (!document.querySelector('script[src*="nytt-lead.js"]')) {
             const script = document.createElement('script');
-            script.src = 'js/nytt-lead.js?v=1.0';
+            script.src = 'js/nytt-lead.js?v=1.1';
             script.async = false;
             script.onload = runInit;
             document.body.appendChild(script);

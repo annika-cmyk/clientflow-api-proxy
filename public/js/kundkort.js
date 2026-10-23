@@ -673,9 +673,11 @@ class CustomerCardManager {
                 const shouldOpenUppdrag = hash === 'uppdrag';
                 const shouldOpenGodkannande = hash === 'godkannande';
                 this.loadKundresa()
-                    .then(() => {
+                    .catch((e) => console.warn('kundresa:', e))
+                    .finally(() => {
                         if (!shouldOpenSetup) return;
                         // Endast för nya leads: öppna kunduppläggningsflödet (analyskorts-design)
+                        // Körs i finally så flödet inte bryts om status-API:t failar.
                         try {
                             urlParams.delete('setup');
                             urlParams.delete('kundresa');
@@ -685,8 +687,7 @@ class CustomerCardManager {
                         } catch (_) { /* ignore */ }
                         this.setKundkortMode('onboarding', { skipTabSwitch: true });
                         this.openKundresaModal();
-                    })
-                    .catch((e) => console.warn('kundresa:', e));
+                    });
                 const oversiktTab = shouldOpenAnteckningar
                     ? 'anteckningar'
                     : (shouldOpenAvvikelser

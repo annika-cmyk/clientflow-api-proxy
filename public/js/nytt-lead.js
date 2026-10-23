@@ -251,6 +251,159 @@
     });
   }
 
+  function pickOrgName(org) {
+    const lista = org?.organisationsnamn?.organisationsnamnLista;
+    if (Array.isArray(lista) && lista.length) {
+      const namn = lista.map((n) => n && n.namn).filter(Boolean);
+      if (namn.length) return namn[0];
+    }
+    if (typeof org?.namn === 'string' && org.namn.trim()) return org.namn.trim();
+    return 'Namn saknas';
+  }
+
+  function pickOrgForm(org) {
+    const of = org?.organisationsform || org?.juridiskForm;
+    if (!of) return '';
+    if (typeof of === 'string') return of;
+    return of.klartext || of.beskrivning || of.text || of.name || of.kod || '';
+  }
+
+  function pickOrgStatus(org) {
+    if (org?.verksamOrganisation?.kod === 'JA') return 'Aktiv';
+    if (org?.avregistreradOrganisation?.fel) return 'Aktiv';
+    if (org?.avregistreringsorsak?.fel) return 'Aktiv';
+    if (org?.avregistreradOrganisation || org?.avregistreringsorsak) return 'Avregistrerad';
+    return '';
+  }
+
+  function summarizeBolagsverket(data, orgnrDigits) {
+    const raw = data && data.data != null ? data.data : data;
+    const organisations = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    const primary = organisations[0] || {};
+    return {
+      organisationsnummer: orgnrDigits,
+      namn: pickOrgName(primary),
+      form: pickOrgForm(primary) || '—',
+      status: pickOrgStatus(primary) || '—'
+    };
+  }
+
+  function showSearchStep() {
+    const searchPanel = document.getElementById('kundlista-add-search-panel');
+    const resultPanel = document.getElementById('kundlista-add-result-panel');
+    const footerSearch = document.getElementById('kundlista-add-footer-search');
+    const footerResult = document.getElementById('kundlista-add-footer-result');
+    if (searchPanel) searchPanel.hidden = false;
+    if (resultPanel) resultPanel.hidden = true;
+    if (footerSearch) footerSearch.hidden = false;
+    if (footerResult) footerResult.hidden = true;
+    clearError();
+    document.getElementById('kundlista-add-sok-orgnr')?.focus();
+  }
+
+  function showResultStep(summary) {
+    const searchPanel = document.getElementById('kundlista-add-search-panel');
+    const resultPanel = document.getElementById('kundlista-add-result-panel');
+    const footerSearch = document.getElementById('kundlista-add-footer-search');
+    const footerResult = document.getElementById('kundlista-add-footer-result');
+    const title = document.getElementById('kundlista-add-title');
+    if (title) title.textContent = 'Nytt lead';
+    if (searchPanel) searchPanel.hidden = true;
+    if (resultPanel) {
+      resultPanel.hidden = false;
+      resultPanel.dataset.orgnr = summary.organisationsnummer || '';
+      const setTxt = (sel, val) => {
+        const el = resultPanel.querySelector(sel);
+        if (el) el.textContent = val || '—';
+      };
+      setTxt('[data-nl-namn]', summary.namn);
+      setTxt('[data-nl-orgnr]', summary.organisationsnummer);
+      setTxt('[data-nl-form]', summary.form);
+      setTxt('[data-nl-status]', summary.status);
+    }
+    if (footerSearch) footerSearch.hidden = true;
+    if (footerResult) footerResult.hidden = false;
+    clearError();
+    document.getElementById('kundlista-add-continue')?.focus();
+  }
+
+  async function continueFromBolagsverketResult() {
+    clearError();
+    const resultPanel = document.getElementById('kundlista-add-result-panel');
+    const orgnr = normalizeOrgnr(resultPanel?.dataset?.orgnr || '');
+    if (!orgnr) {
+      showError('Organisationsnummer saknas. Sök igen.');
+      return;
+    }
+
+    const user = currentUser();
+    if (!user) {
+      showError('Du måste vara inloggad för att fortsätta.');
+      return;
+    }
+    const byraId = (user.byraId || user.fields?.byraId || user.fields?.['Byrå ID'] || '')
+      .toString()
+      .replace(/,/g, '')
+      .trim();
+    const anvandareId = user.id || user.fields?.id || null;
+    if (!byraId) {
+      showError('Kunde inte avgöra vilken byrå du tillhör. Logga in igen och försök på nytt.');
+      return;
+    }
+
+    const btn = document.getElementById('kundlista-add-continue');
+    const original = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar…';
+    }
+
+    try {
+      // Dubbelkolla dubblett precis innan spar
+      const lookup = await lookupByOrgnr(orgnr);
+      if (handleExistingCustomer(lookup)) return;
+
+      const res = await fetch(`${baseUrl()}/api/bolagsverket/save-to-airtable`, {
+        method: 'POST',
+        ...authOpts(),
+        body: JSON.stringify({
+          organisationsnummer: orgnr,
+          orgnr,
+          byraId,
+          anvandareId,
+          userId: anvandareId
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.success) {
+        const recordId = data.airtableRecordId || data.recordId || data.id;
+        closeModal();
+        if (recordId) {
+          global.location.href = kundkortUrl(recordId, { setup: true });
+          return;
+        }
+        showError('Företaget sparades men kund-id saknas. Öppna kundlistan och sök upp det.');
+        return;
+      }
+
+      if (res.status === 409 || data.duplicate || data.error === 'duplicate') {
+        handleDuplicateResponse(data);
+        return;
+      }
+
+      showError(data.message || data.error || `Kunde inte spara företaget (HTTP ${res.status}).`);
+    } catch (err) {
+      console.error('Nytt lead fortsätt:', err);
+      showError(err.message || 'Kunde inte spara företaget. Kontrollera anslutningen.');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
+    }
+  }
+
   async function searchBolagsverketFromAddModal() {
     clearError();
     const input = document.getElementById('kundlista-add-sok-orgnr');
@@ -276,8 +429,24 @@
       }
       const lookup = await lookupByOrgnr(digits);
       if (handleExistingCustomer(lookup)) return;
-      closeModal();
-      openBolagsverketModal(orgnr, { autoSearch: true });
+
+      // Hämta Bolagsverket i samma popup — bryt inte flödet med separat modal
+      const res = await fetch(`${baseUrl()}/api/bolagsverket/organisationer`, {
+        method: 'POST',
+        ...authOpts(),
+        body: JSON.stringify({ organisationsnummer: digits })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        const msg = data.message || data.error
+          || (res.status === 404
+            ? `Inget företag hittades med organisationsnummer ${digits}.`
+            : `Kunde inte hämta från Bolagsverket (HTTP ${res.status}).`);
+        throw new Error(msg);
+      }
+
+      const summary = summarizeBolagsverket(data, digits);
+      showResultStep(summary);
     } catch (err) {
       console.error('Nytt lead Bolagsverket-sök:', err);
       showError(err.message || 'Kunde inte söka mot Bolagsverket.');
@@ -404,38 +573,59 @@
         <div class="modal-body">
           <div id="kundlista-add-error" class="kundlista-add-error" role="alert"></div>
 
-          <div class="kundlista-add-sok">
-            <label for="kundlista-add-sok-orgnr">Sök organisationsnummer hos Bolagsverket</label>
-            <div class="kundlista-add-sok-row">
-              <input type="text" id="kundlista-add-sok-orgnr" name="sok-orgnr" inputmode="numeric"
-                placeholder="t.ex. 556722-3705" autocomplete="off">
-              <button type="button" class="btn btn-primary btn-sm" id="kundlista-add-sok-btn">
-                <i class="fas fa-search"></i> Sök
-              </button>
+          <div id="kundlista-add-search-panel">
+            <div class="kundlista-add-sok">
+              <label for="kundlista-add-sok-orgnr">Sök organisationsnummer hos Bolagsverket</label>
+              <div class="kundlista-add-sok-row">
+                <input type="text" id="kundlista-add-sok-orgnr" name="sok-orgnr" inputmode="numeric"
+                  placeholder="t.ex. 556722-3705" autocomplete="off">
+                <button type="button" class="btn btn-primary btn-sm" id="kundlista-add-sok-btn">
+                  <i class="fas fa-search"></i> Sök
+                </button>
+              </div>
+              <small class="form-hint">Om företaget redan finns hos er byrå öppnas befintligt kundkort (om du har behörighet).</small>
             </div>
-            <small class="form-hint">Om företaget redan finns hos er byrå öppnas befintligt kundkort (om du har behörighet).</small>
+
+            <div class="kundlista-add-divider" role="separator">
+              <span>eller skapa manuellt</span>
+            </div>
+
+            <form id="kundlista-add-form" novalidate>
+              <div class="form-group">
+                <label for="kundlista-add-namn">Företagsnamn</label>
+                <input type="text" id="kundlista-add-namn" name="namn" required autocomplete="organization" placeholder="t.ex. Exempel AB">
+              </div>
+              <div class="form-group">
+                <label for="kundlista-add-orgnr">Organisationsnummer <span style="font-weight:400;color:var(--ink-3);">(valfritt)</span></label>
+                <input type="text" id="kundlista-add-orgnr" name="orgnr" inputmode="numeric" placeholder="t.ex. 556722-3705" autocomplete="off">
+                <small class="form-hint">Lämna tomt om företaget ännu inte fått sitt org.nr.</small>
+              </div>
+            </form>
           </div>
 
-          <div class="kundlista-add-divider" role="separator">
-            <span>eller skapa manuellt</span>
+          <div id="kundlista-add-result-panel" class="kundlista-add-result" hidden>
+            <p class="kundlista-add-result-kicker">Hittat hos Bolagsverket</p>
+            <h4 class="kundlista-add-result-namn" data-nl-namn>—</h4>
+            <dl class="kundlista-add-result-meta">
+              <div><dt>Org.nr</dt><dd data-nl-orgnr>—</dd></div>
+              <div><dt>Bolagsform</dt><dd data-nl-form>—</dd></div>
+              <div><dt>Status</dt><dd data-nl-status>—</dd></div>
+            </dl>
+            <p class="form-hint" style="margin:0.75rem 0 0;">
+              Nästa steg öppnar kundkortet med uppläggningsresan (företag &amp; personer → beskrivning → redovisning → skicka KYC).
+            </p>
           </div>
-
-          <form id="kundlista-add-form" novalidate>
-            <div class="form-group">
-              <label for="kundlista-add-namn">Företagsnamn</label>
-              <input type="text" id="kundlista-add-namn" name="namn" required autocomplete="organization" placeholder="t.ex. Exempel AB">
-            </div>
-            <div class="form-group">
-              <label for="kundlista-add-orgnr">Organisationsnummer <span style="font-weight:400;color:var(--ink-3);">(valfritt)</span></label>
-              <input type="text" id="kundlista-add-orgnr" name="orgnr" inputmode="numeric" placeholder="t.ex. 556722-3705" autocomplete="off">
-              <small class="form-hint">Lämna tomt om företaget ännu inte fått sitt org.nr.</small>
-            </div>
-          </form>
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer" id="kundlista-add-footer-search">
           <button type="button" class="btn btn-ghost btn-sm" id="kundlista-add-cancel">Avbryt</button>
           <button type="submit" form="kundlista-add-form" class="btn btn-primary btn-sm" id="kundlista-add-submit">
             <i class="fas fa-plus"></i> Skapa företag
+          </button>
+        </div>
+        <div class="modal-footer" id="kundlista-add-footer-result" hidden>
+          <button type="button" class="btn btn-ghost btn-sm" id="kundlista-add-back">Tillbaka</button>
+          <button type="button" class="btn btn-primary btn-sm" id="kundlista-add-continue">
+            <i class="fas fa-arrow-right"></i> Fortsätt till kunduppläggning
           </button>
         </div>
       </div>
@@ -458,6 +648,10 @@
         e.preventDefault();
         searchBolagsverketFromAddModal();
       }
+    });
+    modal.querySelector('#kundlista-add-back')?.addEventListener('click', () => showSearchStep());
+    modal.querySelector('#kundlista-add-continue')?.addEventListener('click', () => {
+      continueFromBolagsverketResult();
     });
 
     const form = document.getElementById('kundlista-add-form');
@@ -502,6 +696,8 @@
     openBolagsverketModal,
     bindSidebar,
     createCompanyWithoutOrg,
+    continueFromBolagsverketResult,
+    searchBolagsverketFromAddModal,
     kundkortUrl
   };
 
