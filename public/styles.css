@@ -23891,6 +23891,17 @@ a.byra-profil-chip:hover {
 }
 .kalender-detail-actions--scope {
     margin-bottom: 0.25rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.kalender-detail-block-remove {
+    flex-shrink: 0;
+    min-width: 1.75rem;
+    color: #b91c1c;
+}
+.kalender-detail-block-remove:hover {
+    color: #991b1b;
+    background: #fef2f2;
 }
 .kalender-side-item.has-estimate .kalender-side-status {
     font-variant-numeric: tabular-nums;

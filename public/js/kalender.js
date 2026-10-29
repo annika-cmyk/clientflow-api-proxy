@@ -873,8 +873,54 @@
 
   function refreshOpenDetail() {
     if (!openDetailKey || !el.detail || el.detail.hidden) return;
-    if (!eventByKey(openDetailKey)) return;
-    openDetail(openDetailKey);
+    if (eventByKey(openDetailKey)) {
+      openDetail(openDetailKey);
+      return;
+    }
+    // Tillfälle borttaget: öppna kvarvarande syskon / körningen, annars stäng
+    const runKey = String(openDetailKey).split('#')[0];
+    if (runKey && eventByKey(runKey)) {
+      openDetail(runKey);
+      return;
+    }
+    closeDetail();
+  }
+
+  /**
+   * Ta bort ett tidblock (tillfälle) — inte hela uppdragskörningen.
+   * @returns {Promise<boolean>}
+   */
+  async function removeTillfalle(ev, blockId) {
+    const id = String(blockId || '').trim();
+    if (!ev || !id) return false;
+    const blocks = blocksOf(ev);
+    const target = blocks.find((b) => b && b.id === id);
+    const sched = target ? KV.normalizeSchedule(target.start, target.end) : null;
+    const when = sched
+      ? `${fmtDate(sched.date)} · ${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`
+      : 'detta tillfälle';
+    if (!confirm(
+      `Ta bort ${when} från kalendern?\n\nBara detta tillfälle tas bort — uppdragskörningen behålls.`
+    )) {
+      return false;
+    }
+    const ok = await persistSchedule(ev, null, null, { mode: 'remove', blockId: id });
+    if (!ok) return false;
+    const remaining = blocksOf(ev);
+    const runKey = String(ev.runKey || String(ev.key || '').split('#')[0] || '').trim();
+    render();
+    if (remaining.length && runKey) {
+      const nextId = remaining[0].id;
+      const nextKey = `${runKey}#${nextId}`;
+      if (eventByKey(nextKey)) openDetail(nextKey);
+      else if (eventByKey(runKey)) openDetail(runKey);
+      else closeDetail();
+    } else if (runKey && eventByKey(runKey)) {
+      openDetail(runKey);
+    } else {
+      closeDetail();
+    }
+    return true;
   }
 
   function showSaveToast(msg, isError) {
@@ -2815,11 +2861,11 @@
             const rowNote = b.note ? ` — ${String(b.note).trim()}` : '';
             return `<li class="kalender-detail-block-row${isFocus ? ' is-focus' : ''}">
               <span>${esc(fmtDate(sched.date))} · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))} (${esc(String(sched.hours))} t)${isFocus ? ' · valt' : ''}${esc(rowNote)}</span>
-              ${canKlar ? `<button type="button" class="btn btn-ghost btn-sm" data-remove-block="${esc(b.id)}" title="Ta bort tillfälle"><i class="fas fa-times"></i></button>` : ''}
+              ${canKlar ? `<button type="button" class="btn btn-ghost btn-sm kalender-detail-block-remove" data-remove-block="${esc(b.id)}" title="Ta bort tillfälle" aria-label="Ta bort tillfälle"><i class="fas fa-times" aria-hidden="true"></i></button>` : ''}
             </li>`;
           }).join('')}
         </ul>
-        <p class="kalender-detail-blocks-hint">Dra från listan igen för fler tillfällen. Med uppskattad tid försvinner raden från listan när allt är utlagt.</p>`
+        <p class="kalender-detail-blocks-hint">Dra från listan igen för fler tillfällen. Med uppskattad tid försvinner raden från listan när allt är utlagt. Ta bort ett enskilt tillfälle med × eller «Ta bort detta tillfälle».</p>`
       : '';
 
     const estimateVal = plan.hasEstimate ? String(plan.estimated) : '';
@@ -2837,6 +2883,8 @@
 
     const focusNote = focusBlock ? String(focusBlock.note || '').trim() : String(ev.blockNote || '').trim();
     const canEditNote = !!focusSched && !!focusBlockId && !!ev.runRec?.id;
+    // Ta bort bokning = bara detta tillfälle, även om det är klarmarkerat (så länge körningen är öppen)
+    const canRemoveTillfalle = canKlar && !!focusSched && !!focusBlockId && !!ev.runRec?.id;
     const noteHtml = canEditNote
       ? `<div class="kalender-detail-note">
           <label for="kal-block-note">Anteckning</label>
@@ -2850,19 +2898,34 @@
       : (focusNote
         ? `<p class="kalender-detail-note-readonly">${esc(focusNote)}</p>`
         : '');
+    let tillfalleActions = '';
+    if (canKlarTillfalle || canRemoveTillfalle) {
+      const klarBtns = canKlarTillfalle
+        ? `<button type="button" class="btn btn-ghost btn-sm" data-klar-tillfalle>
+            <i class="fas fa-check"></i> Klarmarkera tillfälle
+          </button>
+          ${canKlarTillfalleTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tillfalle-tid ${hasFocusHours ? '' : 'disabled'}>
+            <i class="fas fa-check"></i> Klarmarkera tillfälle & tid (${esc(String(focusSched.hours))} t)
+          </button>` : ''}`
+        : (isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>` : '');
+      const removeBtn = canRemoveTillfalle
+        ? `<button type="button" class="btn btn-danger btn-sm" data-remove-tillfalle>
+            <i class="fas fa-trash-alt"></i> Ta bort detta tillfälle
+          </button>`
+        : '';
+      tillfalleActions = `<div class="kalender-detail-actions kalender-detail-actions--scope">
+          ${klarBtns}
+          ${removeBtn}
+        </div>`;
+    } else if (isKlar) {
+      tillfalleActions = `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>`;
+    }
     const tillfalleHtml = focusSched
       ? `<div class="kalender-detail-scope">
           <h4 class="kalender-detail-scope-title">Detta tillfälle</h4>
           <p class="kalender-detail-blocks-hint">${esc(fmtDate(focusSched.date))} · ${esc(KV.fmtTimeLabel(focusSched.startMin))}–${esc(KV.fmtTimeLabel(focusSched.endMin))} (${esc(String(focusSched.hours))} t)</p>
           ${noteHtml}
-          ${canKlarTillfalle ? `<div class="kalender-detail-actions kalender-detail-actions--scope">
-            <button type="button" class="btn btn-ghost btn-sm" data-klar-tillfalle>
-              <i class="fas fa-check"></i> Klarmarkera tillfälle
-            </button>
-            ${canKlarTillfalleTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tillfalle-tid ${hasFocusHours ? '' : 'disabled'}>
-              <i class="fas fa-check"></i> Klarmarkera tillfälle & tid (${esc(String(focusSched.hours))} t)
-            </button>` : ''}
-          </div>` : (isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>` : '')}
+          ${tillfalleActions}
         </div>`
       : '';
 
@@ -3000,15 +3063,18 @@
         const blockId = btn.getAttribute('data-remove-block');
         if (!blockId) return;
         btn.disabled = true;
-        const ok = await persistSchedule(ev, null, null, { mode: 'remove', blockId });
-        if (ok) {
-          render();
-          refreshOpenDetail();
-        } else {
-          btn.disabled = false;
-        }
+        const ok = await removeTillfalle(ev, blockId);
+        if (!ok) btn.disabled = false;
       });
     });
+    const removeTillfalleBtn = el.detailBody.querySelector('[data-remove-tillfalle]');
+    if (removeTillfalleBtn) {
+      removeTillfalleBtn.addEventListener('click', async () => {
+        removeTillfalleBtn.disabled = true;
+        const ok = await removeTillfalle(ev, focusBlockId);
+        if (!ok) removeTillfalleBtn.disabled = false;
+      });
+    }
   }
 
   function closeDetail() {
