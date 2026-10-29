@@ -1143,8 +1143,8 @@
     const canDrag = !!ev.runRec?.id && !done;
     const note = String(ev.blockNote || (focusBlockNoteOf(ev)) || '').trim();
     const titleParts = [
-      `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`,
       name,
+      `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`,
       done ? 'Klar' : '',
       note
     ].filter(Boolean);
@@ -1154,8 +1154,8 @@
       title="${esc(titleParts.join(' · '))}">
       ${canDrag ? '<span class="kalender-block-resize kalender-block-resize--start" data-resize="start" title="Ändra start" aria-hidden="true"></span>' : ''}
       <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}" ${canDrag ? 'draggable="true"' : ''}>
-        <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
         <span class="kalender-block-name">${esc(name)}</span>
+        <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
         ${note ? `<span class="kalender-block-note">${esc(note)}</span>` : ''}
         <span class="kalender-block-typ">${esc(done ? 'Klar' : typShort(ev.typ))}</span>
       </button>

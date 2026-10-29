@@ -24486,12 +24486,12 @@ body.kalender-detail-open { overflow: hidden; }
 }
 .kalender-block-time {
     font-size: 0.65rem;
-    font-weight: 700;
+    font-weight: 600;
     opacity: 0.85;
 }
 .kalender-block-name {
     font-size: 0.72rem;
-    font-weight: 600;
+    font-weight: 700;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
