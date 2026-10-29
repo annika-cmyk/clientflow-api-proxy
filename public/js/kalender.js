@@ -1359,7 +1359,7 @@
       style="${KV.blockPositionStyleAttr(layout)}"
       title="${esc(titleParts.join(' · '))}">
       ${canDrag ? '<span class="kalender-block-resize kalender-block-resize--start" data-resize="start" title="Ändra start" aria-hidden="true"></span>' : ''}
-      <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}" ${canDrag ? 'draggable="true"' : ''}>
+      <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}">
         <span class="kalender-block-name">${esc(name)}</span>
         <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
         ${note ? `<span class="kalender-block-note">${esc(note)}</span>` : ''}
@@ -1391,36 +1391,167 @@
       return { y: clientY - rect.top, height: rect.height, date: col.getAttribute('data-date') };
     };
 
-    gridEl.querySelectorAll('.kalender-block-main[draggable="true"]').forEach((btn) => {
+    const clearColDropTargets = () => {
+      columns.forEach((c) => c.classList.remove('is-drop-target'));
+    };
+
+    const colUnderPoint = (clientX, clientY) => {
+      const stack = typeof document.elementsFromPoint === 'function'
+        ? document.elementsFromPoint(clientX, clientY)
+        : [document.elementFromPoint(clientX, clientY)].filter(Boolean);
+      for (const node of stack) {
+        const col = node && node.closest && node.closest('.kalender-time-col[data-date]');
+        if (col && columns.includes(col)) return col;
+      }
+      // Fallback: kolumn via X om pekaren är över tidsspåret men elementFromPoint missar
+      for (const col of columns) {
+        const rect = col.getBoundingClientRect();
+        if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+          return col;
+        }
+      }
+      return null;
+    };
+
+    const applyTimedBlockPreview = (block, startMin, endMin) => {
+      const layout = KV.blockLayout(startMin, endMin);
+      const pos = KV.blockPositionStyle(layout);
+      block.style.top = pos.top;
+      block.style.height = pos.height;
+      const timeEl = block.querySelector('.kalender-block-time');
+      if (timeEl) {
+        timeEl.textContent = `${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)}`;
+      }
+    };
+
+    // Pointer-baserad flytt: greppunkt bevaras, live-preview, snap en gång per frame
+    gridEl.querySelectorAll('.kalender-block.is-draggable').forEach((block) => {
+      const btn = block.querySelector('.kalender-block-main[data-key]');
+      if (!btn) return;
+      const key = btn.getAttribute('data-key');
+
       btn.addEventListener('click', (e) => {
-        if (btn.dataset.suppressClick === '1') {
+        if (btn.dataset.suppressClick === '1' || block.dataset.suppressClick === '1') {
           btn.dataset.suppressClick = '';
+          block.dataset.suppressClick = '';
           e.preventDefault();
           e.stopPropagation();
           return;
         }
         e.preventDefault();
-        openDetail(btn.getAttribute('data-key'));
+        e.stopPropagation();
+        openDetail(key);
       });
-      btn.addEventListener('dragstart', (e) => {
-        const key = btn.getAttribute('data-key');
+
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        if (dragState) return;
         const ev = eventByKey(key);
         const sched = ev && scheduleOf(ev);
-        e.dataTransfer.setData('text/plain', key);
-        e.dataTransfer.effectAllowed = 'move';
-        btn.closest('.kalender-block')?.classList.add('is-dragging');
+        const col = block.closest('.kalender-time-col');
+        if (!ev || !sched || !col) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const { y, height, date } = pointerYInCol(e.clientY, col);
+        const pointerMin = KV.yToMinutesRaw(y, height);
+        try { btn.setPointerCapture(e.pointerId); } catch (_) { /* */ }
         dragState = {
           key,
           mode: 'timed-move',
-          blockId: ev?.blockId || null,
-          duration: sched ? (sched.endMin - sched.startMin) : KV.DEFAULT_BLOCK_MINUTES
+          blockId: ev.blockId || null,
+          origStartMin: sched.startMin,
+          origEndMin: sched.endMin,
+          startMin: sched.startMin,
+          endMin: sched.endMin,
+          grabOffsetMin: KV.grabOffsetMinutes(pointerMin, sched.startMin),
+          date,
+          originX: e.clientX,
+          originY: e.clientY,
+          moved: false,
+          block,
+          btn
         };
+        block.classList.add('is-moving');
       });
-      btn.addEventListener('dragend', () => {
-        btn.closest('.kalender-block')?.classList.remove('is-dragging');
+
+      btn.addEventListener('pointermove', (e) => {
+        if (!dragState || dragState.mode !== 'timed-move' || dragState.key !== key) return;
+        const dx = e.clientX - dragState.originX;
+        const dy = e.clientY - dragState.originY;
+        if (!dragState.moved && (dx * dx + dy * dy) < 16) return;
+
+        const col = colUnderPoint(e.clientX, e.clientY) || block.closest('.kalender-time-col');
+        if (!col) return;
+        clearColDropTargets();
+        col.classList.add('is-drop-target');
+
+        const track = col.querySelector('.kalender-time-track');
+        if (track && block.parentElement !== track) {
+          track.appendChild(block);
+        }
+
+        const { y, height, date } = pointerYInCol(e.clientY, col);
+        const pointerMin = KV.yToMinutesRaw(y, height);
+        const moved = KV.moveBlockFromPointer(
+          dragState.origStartMin,
+          dragState.origEndMin,
+          pointerMin,
+          dragState.grabOffsetMin
+        );
+        // Undvik onödig DOM-uppdatering om snap-läge är oförändrat (mindre flimmer)
+        if (
+          dragState.moved
+          && dragState.startMin === moved.startMin
+          && dragState.endMin === moved.endMin
+          && dragState.date === date
+        ) {
+          return;
+        }
+        dragState.moved = true;
+        dragState.startMin = moved.startMin;
+        dragState.endMin = moved.endMin;
+        dragState.date = date;
+        applyTimedBlockPreview(block, moved.startMin, moved.endMin);
+        previewDetailSchedule(key, moved.startMin, moved.endMin);
+      });
+
+      const finishTimedMove = async (e) => {
+        if (!dragState || dragState.mode !== 'timed-move' || dragState.key !== key) return;
+        try { btn.releasePointerCapture(e.pointerId); } catch (_) { /* */ }
+        block.classList.remove('is-moving');
+        clearColDropTargets();
+        const didMove = dragState.moved;
+        const startMin = dragState.startMin;
+        const endMin = dragState.endMin;
+        const date = dragState.date;
+        const blockId = dragState.blockId;
         dragState = null;
-        columns.forEach((c) => c.classList.remove('is-drop-target'));
-      });
+        if (!didMove) {
+          // Låt klick-hanteraren öppna detaljen
+          return;
+        }
+        btn.dataset.suppressClick = '1';
+        block.dataset.suppressClick = '1';
+        const ev = eventByKey(key);
+        if (!ev || startMin == null || endMin == null || !date) {
+          render();
+          return;
+        }
+        const startIso = KV.toLocalDateTimeIso(date, startMin);
+        const endIso = KV.toLocalDateTimeIso(date, endMin);
+        const ok = await persistSchedule(ev, startIso, endIso, {
+          mode: ev.blockId || blockId ? 'update' : 'set',
+          blockId: ev.blockId || blockId || null
+        });
+        if (ok) {
+          render();
+          refreshOpenDetail();
+        } else {
+          render();
+        }
+      };
+      btn.addEventListener('pointerup', finishTimedMove);
+      btn.addEventListener('pointercancel', finishTimedMove);
     });
 
     gridEl.querySelectorAll('.kalender-chip[draggable="true"]').forEach((btn) => {
@@ -1434,13 +1565,13 @@
       btn.addEventListener('dragend', () => {
         btn.classList.remove('is-dragging');
         dragState = null;
-        columns.forEach((c) => c.classList.remove('is-drop-target'));
+        clearColDropTargets();
       });
     });
 
     columns.forEach((col) => {
       col.addEventListener('dragover', (e) => {
-        if (!dragState || !isCalendarDropMode(dragState.mode) || dragState.mode === 'month-move') return;
+        if (!dragState || !isCalendarDropMode(dragState.mode) || dragState.mode === 'month-move' || dragState.mode === 'timed-move') return;
         e.preventDefault();
         e.dataTransfer.dropEffect = dragState.mode === 'side-add' ? 'copy' : 'move';
         col.classList.add('is-drop-target');
@@ -1449,6 +1580,7 @@
       col.addEventListener('drop', async (e) => {
         e.preventDefault();
         col.classList.remove('is-drop-target');
+        if (dragState?.mode === 'timed-move') return;
         const key = e.dataTransfer.getData('text/plain') || dragState?.key;
         const ev = eventByKey(key);
         if (!ev) return;
@@ -1504,7 +1636,8 @@
         const atMin = KV.yToMinutes(y, height);
         const resized = dragState.edge === 'start'
           ? KV.resizeBlockStart(atMin, dragState.endMin)
-          : KV.resizeBlock(dragState.startMin, atMin + KV.SNAP_MINUTES);
+          : KV.resizeBlock(dragState.startMin, atMin);
+        if (resized.startMin === dragState.startMin && resized.endMin === dragState.endMin) return;
         const layout = KV.blockLayout(resized.startMin, resized.endMin);
         const pos = KV.blockPositionStyle(layout);
         block.style.top = pos.top;

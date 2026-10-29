@@ -329,12 +329,36 @@
     return `top:${s.top};height:${s.height};`;
   }
 
-  /** Y-position → minuter från midnatt, snappat. */
-  function yToMinutes(y, columnHeight) {
+  /** Y-position → minuter från midnatt (osnappat, för greppunkt vid drag). */
+  function yToMinutesRaw(y, columnHeight) {
     const h = Number(columnHeight) || 1;
     const ratio = clamp(Number(y) / h, 0, 1);
-    const raw = dayStartMinutes() + ratio * daySpanMinutes();
-    return clamp(snapMinutes(raw, SNAP_MINUTES), dayStartMinutes(), dayEndMinutes() - SNAP_MINUTES);
+    return dayStartMinutes() + ratio * daySpanMinutes();
+  }
+
+  /** Y-position → minuter från midnatt, snappat. */
+  function yToMinutes(y, columnHeight) {
+    return clamp(
+      snapMinutes(yToMinutesRaw(y, columnHeight), SNAP_MINUTES),
+      dayStartMinutes(),
+      dayEndMinutes() - SNAP_MINUTES
+    );
+  }
+
+  /**
+   * Greppunkt relativt blockets start (minuter). Behålls under flytt så blocket
+   * inte hoppar till pekarens Y som ny start.
+   */
+  function grabOffsetMinutes(pointerMin, blockStartMin) {
+    return Number(pointerMin) - Number(blockStartMin);
+  }
+
+  /**
+   * Flytta block utifrån pekarposition + greppunkt. Snappar en gång via moveBlock.
+   */
+  function moveBlockFromPointer(startMin, endMin, pointerMin, grabOffsetMin) {
+    const newStart = Number(pointerMin) - Number(grabOffsetMin);
+    return moveBlock(startMin, endMin, newStart);
   }
 
   function moveBlock(startMin, endMin, newStartMin) {
@@ -749,7 +773,10 @@
     BLOCK_GAP_PX,
     blockPositionStyle,
     blockPositionStyleAttr,
+    yToMinutesRaw,
     yToMinutes,
+    grabOffsetMinutes,
+    moveBlockFromPointer,
     moveBlock,
     resizeBlock,
     resizeBlockStart,
