@@ -164,7 +164,8 @@
     function archiveMetaHtml(archive, opts) {
       const messageAttachments = (opts && opts.attachments) || [];
       if (!archive) {
-        return '<div class="mejl-archive-meta">Inte kopplat i ClientFlow ännu.</div>';
+        // Ingen statusrad när mejlet inte sparats/arkiverats — undvik brus i läsrutan.
+        return '';
       }
       const vis = archive.visibility === 'privat' ? 'privat' : 'byra';
       const summary =
