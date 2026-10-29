@@ -160,29 +160,30 @@
       @media (min-width: 960px) {
         .mejl-layout { flex-direction: row; align-items: stretch; gap: 0; }
         .mejl-pane--list {
-          flex: 0 0 clamp(240px, 30%, 340px); width: clamp(240px, 30%, 340px); max-width: 340px; height: 100%;
+          flex: 0 0 clamp(280px, 34%, 380px); width: clamp(280px, 34%, 380px); max-width: 380px; height: 100%;
           border-right: 1px solid var(--mejl-line); padding-right: 0;
         }
         .mejl-pane--list .mejl-list { border-radius: 0; }
         .mejl-pane--detail { flex: 1 1 0; min-width: 0; max-width: 100%; height: 100%; }
       }
 
-      /* List rows */
+      /* List rows — läsbara 3-raderskort */
       .mejl-list { display: flex; flex-direction: column; gap: 0; min-width: 0; }
       .mejl-item {
         text-align: left; width: 100%; max-width: 100%; box-sizing: border-box;
         border: 0; border-bottom: 1px solid var(--mejl-line); background: #fff;
-        border-radius: 0; padding: 0.55rem 0.75rem 0.55rem 0.9rem; cursor: pointer;
+        border-radius: 0; padding: 0.78rem 0.9rem 0.78rem 1.1rem; cursor: pointer;
         transition: background .12s; overflow: hidden; position: relative;
+        min-height: 4.85rem;
       }
       .mejl-item::before {
-        content: ''; position: absolute; left: 0.28rem; top: 0.85rem;
-        width: 6px; height: 6px; border-radius: 50%; background: transparent;
+        content: ''; position: absolute; left: 0.35rem; top: 1.05rem;
+        width: 7px; height: 7px; border-radius: 50%; background: transparent;
       }
       .mejl-item:hover { background: #f8fafc; }
       .mejl-item.is-active {
         background: var(--mejl-accent-tint);
-        box-shadow: inset 2px 0 0 var(--mejl-accent);
+        box-shadow: inset 3px 0 0 var(--mejl-accent);
       }
       .mejl-item.is-unhandled::before { background: var(--mejl-accent); }
       .mejl-item.is-handled {
@@ -194,43 +195,47 @@
       .mejl-item.is-handled .mejl-item-snippet,
       .mejl-item.is-handled .mejl-item-date { color: #94a3b8; font-weight: 500; }
       .mejl-item.is-handled::before { background: transparent; }
-      .mejl-item.is-handled.is-active { background: #f1f5f9; box-shadow: inset 2px 0 0 #94a3b8; }
+      .mejl-item.is-handled.is-active { background: #f1f5f9; box-shadow: inset 3px 0 0 #94a3b8; }
       .mejl-item.is-todo, .mejl-item.is-task-created { background: #fff; }
       .mejl-item-top {
-        display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; min-width: 0;
+        display: flex; justify-content: space-between; gap: 0.55rem; align-items: baseline; min-width: 0;
       }
-      .mejl-item-top-right { display: flex; align-items: center; gap: 0.28rem; flex-shrink: 0; }
+      .mejl-item-top-right { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
       .mejl-item-attach, .mejl-item-replied {
-        display: inline-flex; align-items: center; color: #94a3b8; font-size: 0.72rem; line-height: 1;
+        display: inline-flex; align-items: center; color: #94a3b8; font-size: 0.78rem; line-height: 1;
       }
-      .mejl-item-attach-count { font-variant-numeric: tabular-nums; margin-left: 0.1rem; font-size: 0.68rem; }
+      .mejl-item-attach-count { font-variant-numeric: tabular-nums; margin-left: 0.1rem; font-size: 0.72rem; }
       .mejl-item-customer, a.mejl-item-customer-link {
-        font-weight: 700; color: #0f172a; font-size: 0.86rem; line-height: 1.25;
+        font-weight: 700; color: #0f172a; font-size: 0.92rem; line-height: 1.3;
         min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none;
       }
       .mejl-item.is-unhandled .mejl-item-customer,
       .mejl-item.is-unhandled a.mejl-item-customer-link { font-weight: 700; }
       a.mejl-item-customer-link:hover { color: var(--mejl-accent); text-decoration: underline; }
       .mejl-item-customer-row {
-        display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.35rem; min-width: 0; flex: 1 1 auto; overflow: hidden;
+        display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.4rem; min-width: 0; flex: 1 1 auto; overflow: hidden;
       }
       .mejl-item-unmatched-text {
-        font-size: 0.72rem; font-weight: 600; color: var(--mejl-orange); white-space: nowrap; flex-shrink: 0;
+        font-size: 0.75rem; font-weight: 600; color: var(--mejl-orange); white-space: nowrap; flex-shrink: 0;
       }
-      .mejl-item-date { color: #94a3b8; font-size: 0.72rem; white-space: nowrap; }
+      .mejl-item-date { color: #94a3b8; font-size: 0.78rem; white-space: nowrap; }
       .mejl-item-from-subj {
-        font-size: 0.8rem; color: #475569; margin-top: 0.12rem;
+        font-size: 0.84rem; color: #475569; margin-top: 0.22rem; line-height: 1.35;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
       .mejl-item-from-subj .mejl-item-nosubject { color: #94a3b8; }
       .mejl-item-snippet {
-        font-size: 0.76rem; color: #94a3b8; margin-top: 0.1rem;
+        font-size: 0.8rem; color: #94a3b8; margin-top: 0.18rem; line-height: 1.35;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
       .mejl-item-shared-badge {
         display: inline-flex; align-items: center; gap: 0.2rem;
-        font-size: 0.65rem; font-weight: 600; color: #0f766e; margin-top: 0.15rem;
+        font-size: 0.7rem; font-weight: 600; color: #0f766e; margin-top: 0.2rem;
       }
+      .mejl-sync-status.is-quiet {
+        font-size: 0.72rem; color: #94a3b8; opacity: 0.85;
+      }
+      #mejl-refresh-btn.is-busy i { animation: fa-spin 1s linear infinite; }
 
       /* Detail */
       .mejl-detail {
@@ -679,6 +684,6 @@
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
     <script src="js/mejl-regga-tid.js?v=20260919lank" defer></script>
     <script src="js/mejl-replied.js?v=20261022svarat" defer></script>
-    <script src="js/mejl.js?v=20261029compact" defer></script>
+    <script src="js/mejl.js?v=20261029spacing" defer></script>
 </body>
 </html>

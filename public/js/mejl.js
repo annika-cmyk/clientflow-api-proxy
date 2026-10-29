@@ -673,14 +673,59 @@
     }
   }
 
-  async function setSyncStatus(text) {
-    if (!els.syncStatus) return;
+  let syncStatusGen = 0;
+  const CACHE_FRESH_MS = 2 * 60 * 1000;
+  const SYNC_TIMEOUT_MS = 22000;
+
+  function setRefreshBusy(busy) {
+    if (!els.refreshBtn) return;
+    els.refreshBtn.classList.toggle('is-busy', !!busy);
+    els.refreshBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+
+  function inboxSyncedAt(data) {
+    return (
+      (data && data.syncedAt) ||
+      (data && data.syncMeta && data.syncMeta.syncedAt) ||
+      ''
+    );
+  }
+
+  function cacheIsFresh(data) {
+    const raw = inboxSyncedAt(data);
+    if (!raw) return false;
+    const t = new Date(raw).getTime();
+    if (!Number.isFinite(t)) return false;
+    return Date.now() - t < CACHE_FRESH_MS;
+  }
+
+  function setSyncStatus(text, opts) {
+    const options = opts || {};
+    const quiet = !!options.quiet;
     if (!text) {
-      els.syncStatus.hidden = true;
-      els.syncStatus.innerHTML = '';
+      setRefreshBusy(false);
+      if (els.syncStatus) {
+        els.syncStatus.hidden = true;
+        els.syncStatus.classList.remove('is-quiet');
+        els.syncStatus.innerHTML = '';
+      }
       return;
     }
+    // När listan redan syns: snurra bara uppdatera-knappen — undvik “Söker efter nya…”
+    // som får sidan att kännas fast.
+    if (quiet || (messages && messages.length)) {
+      setRefreshBusy(true);
+      if (els.syncStatus) {
+        els.syncStatus.hidden = true;
+        els.syncStatus.classList.remove('is-quiet');
+        els.syncStatus.innerHTML = '';
+      }
+      return;
+    }
+    setRefreshBusy(true);
+    if (!els.syncStatus) return;
     els.syncStatus.hidden = false;
+    els.syncStatus.classList.toggle('is-quiet', quiet);
     els.syncStatus.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${esc(text)}`;
   }
 
@@ -756,14 +801,18 @@
     }
   }
 
-  async function fetchInbox(mode) {
+  async function fetchInbox(mode, fetchOpts) {
     const customerId = els.filter.value || '';
     const params = new URLSearchParams();
     params.set('folder', folder === 'open' ? 'inbox' : folder);
     params.set('mode', mode || 'sync');
     params.set('limit', '100');
     if (customerId) params.set('customerId', customerId);
-    const res = await fetch(`${baseUrl}/api/gmail/inbox?${params}`, authOpts());
+    const extra = fetchOpts || {};
+    const res = await fetch(`${baseUrl}/api/gmail/inbox?${params}`, {
+      ...authOpts(),
+      signal: extra.signal
+    });
     const data = await res.json().catch(() => ({}));
     return { res, data };
   }
@@ -771,9 +820,11 @@
   /**
    * Visa cachad lista direkt, synka sedan inkrementellt utan att tömma listan.
    * opts.full = true → tvinga full sync (Shift+Uppdatera).
+   * Färsk cache (< 2 min) hoppar över sync tills användaren uppdaterar manuellt.
    */
   async function loadInbox(opts) {
     const options = opts || {};
+    const myGen = ++syncStatusGen;
     setFolderUi();
 
     if (folder === 'shared') {
@@ -806,8 +857,7 @@
         const { res, data } = await fetchInbox('cache');
         if (res.ok && data.success && (data.messages || []).length) {
           applyInboxData(data);
-          setSyncStatus('Gmail ej kopplad — visar sparade mejl');
-          setTimeout(() => setSyncStatus(''), 4000);
+          setSyncStatus('');
           return;
         }
       } catch (_) {
@@ -823,33 +873,57 @@
 
     if (!hadMessages) {
       els.list.innerHTML =
-        '<p class="mejl-hint"><i class="fas fa-spinner fa-spin"></i> Hämtar mejl från Gmail…</p>';
+        '<p class="mejl-hint"><i class="fas fa-spinner fa-spin"></i> Hämtar mejl…</p>';
       if (!preserveDetail) {
         els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
         activeId = null;
       }
     }
 
+    let showedCache = false;
     if (!options.full && !options.skipCache) {
       try {
         const { res, data } = await fetchInbox('cache');
         if (res.ok && data.success && (data.messages || []).length) {
           applyInboxData(data);
-          setSyncStatus('Söker efter nya…');
+          showedCache = true;
+          // Färsk cache: visa listan direkt, synka inte i bakgrunden förrän Uppdatera.
+          if (!options.forceSync && cacheIsFresh(data)) {
+            if (myGen === syncStatusGen) setSyncStatus('');
+            return;
+          }
+          setSyncStatus('Söker efter nya…', { quiet: true });
         } else if (!hadMessages) {
-          setSyncStatus('Hämtar mejl från Gmail…');
+          setSyncStatus('Hämtar mejl…');
         } else {
-          setSyncStatus('Söker efter nya…');
+          setSyncStatus('Söker efter nya…', { quiet: true });
         }
       } catch (_) {
-        if (!hadMessages) setSyncStatus('Hämtar mejl från Gmail…');
+        if (!hadMessages) setSyncStatus('Hämtar mejl…');
       }
     } else {
-      setSyncStatus(options.full ? 'Full synkning…' : 'Söker efter nya…');
+      setSyncStatus(options.full ? 'Full synkning…' : 'Söker efter nya…', {
+        quiet: !!(messages && messages.length)
+      });
     }
 
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller
+      ? setTimeout(() => {
+          try {
+            controller.abort();
+          } catch (_) {
+            /* ignore */
+          }
+        }, SYNC_TIMEOUT_MS)
+      : null;
+
     try {
-      const { res, data } = await fetchInbox(options.full ? 'full' : 'sync');
+      const { res, data } = await fetchInbox(options.full ? 'full' : 'sync', {
+        signal: controller ? controller.signal : undefined
+      });
+      if (timeoutId) clearTimeout(timeoutId);
+      if (myGen !== syncStatusGen) return;
       setSyncStatus('');
       if (!res.ok || !data.success) {
         const reconnect = inboxErrorNeedsReconnect(res, data);
@@ -872,7 +946,19 @@
         renderList(renderUnmatchedHint(data.unmatchedLabels));
       }
     } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (myGen !== syncStatusGen) return;
       setSyncStatus('');
+      const aborted =
+        err && (err.name === 'AbortError' || /aborted/i.test(String(err.message || '')));
+      if (aborted) {
+        if (showedCache || (messages && messages.length)) {
+          // Lista syns redan — synken fick timeout; användaren kan trycka Uppdatera.
+          return;
+        }
+        showInboxFailure('Hämtningen tog för lång tid. Försök igen.');
+        return;
+      }
       showInboxFailure((err && err.message) || 'Kunde inte hämta mejl');
     }
   }
@@ -2259,7 +2345,12 @@
   });
 
   els.refreshBtn.addEventListener('click', (ev) => {
-    loadInbox({ full: !!(ev && ev.shiftKey), preserveDetail: true });
+    loadInbox({
+      full: !!(ev && ev.shiftKey),
+      preserveDetail: true,
+      forceSync: true,
+      skipCache: !!(ev && ev.shiftKey)
+    });
   });
   if (els.refreshBtn) {
     els.refreshBtn.title =
