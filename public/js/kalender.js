@@ -141,6 +141,12 @@
   }
 
   function statusOf(ev) {
+    // Klarmarkerat tillfälle (enskilt tidblock) syns kvar som Klar i kalendern
+    if (ev && (ev.blockDone === true || (ev.blockId && SB.isBlockDone
+      && Array.isArray(ev.scheduleBlocks)
+      && SB.isBlockDone(ev.scheduleBlocks.find((b) => b && b.id === ev.blockId))))) {
+      return 'Klar';
+    }
     const st = String(ev.status || '').trim();
     if (st) return st;
     const pk = String(ev.periodKey || '').trim();
@@ -354,11 +360,16 @@
         const tidBody = await buildTidPayloadForSchedule(ev, sched);
         await postTidPayload(tidBody);
       }
-      const ok = await persistSchedule(ev, null, null, { mode: 'remove', blockId });
+      // Behåll blocket i kalendern — markera som done så man ser vad som gjorts
+      const ok = await persistSchedule(ev, null, null, { mode: 'complete', blockId });
       if (!ok) return;
-      // Markera som pågående om den fortfarande är planerad
-      const st = statusOf(ev);
-      if (st === 'Planerad') {
+      if (!showDone) {
+        showDone = true;
+        syncUi();
+      }
+      // Körningen förblir aktiv om fler tillfällen återstår; Planerad → Pågående
+      const runStatus = String(ev.runRec?.fields?.Status || ev.status || '').trim();
+      if (runStatus === 'Planerad') {
         try {
           await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/status`, {
             method: 'PATCH',
@@ -372,7 +383,7 @@
             const data = await res.json().catch(() => ({}));
             if (res.ok && data.record) {
               ev.runRec = data.record;
-              ev.status = 'Pågående';
+              // Tillfället i fokus är fortfarande Klar via blockDone; run-status uppdateras lokalt
               const idx = runRecords.findIndex((r) => r.id === data.record.id);
               if (idx >= 0) runRecords[idx] = data.record;
             }
@@ -381,7 +392,7 @@
       }
       showSaveToast(withTid
         ? `Tillfälle klart · ${sched.hours} t registrerad`
-        : 'Tillfälle avbockat');
+        : 'Tillfälle klarmarkerat');
       render();
       refreshOpenDetail();
     } catch (err) {
@@ -842,7 +853,7 @@
     }
     const body = { start: startIso, end: endIso, mode };
     if (blockId) body.blockId = blockId;
-    if (mode === 'remove') {
+    if (mode === 'remove' || mode === 'complete' || mode === 'done') {
       delete body.start;
       delete body.end;
     }
@@ -868,7 +879,13 @@
         ? data.blocks
         : SB.parseBlocksFromFields((data.record && data.record.fields) || {});
       applyScheduleLocal(ev, nextBlocks);
-      showSaveToast(mode === 'remove' ? 'Tidblock borttaget' : 'Tidblock sparat');
+      if (mode === 'complete' || mode === 'done') {
+        ev.blockDone = true;
+        ev.status = 'Klar';
+        showSaveToast('Tillfälle kvar i kalendern som klart');
+      } else {
+        showSaveToast(mode === 'remove' ? 'Tidblock borttaget' : 'Tidblock sparat');
+      }
       return true;
     } catch (err) {
       console.error('Kalender schedule:', err);
@@ -897,7 +914,8 @@
     const sched = scheduleOf(ev);
     const timeBit = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : '';
     const title = `${timeBit}${name} · ${displayName(ev.typ, f)} · ${statusLabel(st, ev.deadline)}`;
-    const canDrag = !!ev.runRec?.id;
+    const done = st === 'Klar' || st === 'Avslutad';
+    const canDrag = !!ev.runRec?.id && !done;
     return `<button type="button" class="kalender-chip kalender-chip--${cls}${canDrag ? ' is-draggable' : ''}"
       data-key="${esc(ev.key)}" ${canDrag ? 'draggable="true"' : ''} title="${esc(title)}">
       <span class="kalender-chip-typ">${esc(typShort(ev.typ))}</span>
@@ -1027,15 +1045,16 @@
     const sched = scheduleOf(ev);
     if (!sched) return '';
     const layout = KV.blockLayout(sched.startMin, sched.endMin);
-    const canDrag = !!ev.runRec?.id;
+    const done = st === 'Klar' || st === 'Avslutad';
+    const canDrag = !!ev.runRec?.id && !done;
     return `<div class="kalender-block kalender-block--${cls}${canDrag ? ' is-draggable' : ''}"
       data-key="${esc(ev.key)}" data-timed="1"
       style="${KV.blockPositionStyleAttr(layout)}"
-      title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name}`)}">
+      title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name}${done ? ' · Klar' : ''}`)}">
       <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}" ${canDrag ? 'draggable="true"' : ''}>
         <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
         <span class="kalender-block-name">${esc(name)}</span>
-        <span class="kalender-block-typ">${esc(typShort(ev.typ))}</span>
+        <span class="kalender-block-typ">${esc(done ? 'Klar' : typShort(ev.typ))}</span>
       </button>
       ${canDrag ? '<span class="kalender-block-resize" data-resize="1" title="Ändra längd" aria-hidden="true"></span>' : ''}
     </div>`;
