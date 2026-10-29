@@ -95,7 +95,7 @@
     shareToken: shareToken,
     hostAgenda: '',
     link: null,
-    duration: 30,
+    duration: null,
     locationId: '',
     month: new Date(),
     selectedDay: '',
@@ -325,7 +325,8 @@
   }
 
   async function fetchLinkAvailability() {
-    const qs = { duration: linkState.duration };
+    const qs = {};
+    if (linkState.duration) qs.duration = linkState.duration;
     let url;
     if (linkState.shareToken) {
       url = apiUrl(`/api/motesbokning/public/share/${encodeURIComponent(linkState.shareToken)}`, qs);
@@ -359,13 +360,17 @@
       el.locs.innerHTML = '';
       return;
     }
-    if (!linkState.locationId) linkState.locationId = locs[0].id;
+    // Ingen plats förvald – kunden måste välja
+    if (linkState.locationId && !locs.some((l) => l.id === linkState.locationId)) {
+      linkState.locationId = '';
+    }
     el.locs.innerHTML = locs
       .map((loc) => {
         const detail = locDetailText(loc);
+        const on = loc.id === linkState.locationId;
         return `
-      <label class="boka-loc${loc.id === linkState.locationId ? ' is-selected' : ''}">
-        <input type="radio" name="boka-loc" value="${esc(loc.id)}" ${loc.id === linkState.locationId ? 'checked' : ''}>
+      <label class="boka-loc${on ? ' is-selected' : ''}">
+        <input type="radio" name="boka-loc" value="${esc(loc.id)}" ${on ? 'checked' : ''}>
         <span class="boka-loc-label">${esc(loc.label || loc.type || 'Plats')}</span>
         ${detail ? `<span class="boka-loc-detail">${esc(detail)}</span>` : ''}
       </label>`;
@@ -374,14 +379,19 @@
     el.locs.querySelectorAll('input').forEach((inp) => {
       inp.addEventListener('change', () => {
         linkState.locationId = inp.value;
+        clearPickHint();
         el.locs.querySelectorAll('.boka-loc').forEach((n) => n.classList.toggle('is-selected', n.querySelector('input')?.value === inp.value));
+        updateNext();
       });
     });
   }
 
   function renderDurs(durations) {
     const durs = durations || [30];
-    if (!durs.includes(linkState.duration)) linkState.duration = durs[0];
+    // Ingen längd förvald – kunden måste välja
+    if (linkState.duration != null && !durs.includes(linkState.duration)) {
+      linkState.duration = null;
+    }
     el.durs.innerHTML = durs
       .map(
         (d) =>
@@ -393,6 +403,10 @@
         linkState.duration = Number(btn.getAttribute('data-dur'));
         linkState.selectedDay = '';
         linkState.selectedSlot = null;
+        clearPickHint();
+        el.durs.querySelectorAll('[data-dur]').forEach((b) => {
+          b.classList.toggle('is-selected', Number(b.getAttribute('data-dur')) === linkState.duration);
+        });
         updateNext();
         await refreshSlots();
       });
@@ -465,6 +479,15 @@
   }
 
   function renderTimes() {
+    if (!linkState.duration) {
+      el.times.innerHTML = '';
+      if (el.timesEmpty) {
+        el.timesEmpty.hidden = false;
+        el.timesEmpty.textContent = 'Välj längd först.';
+      }
+      updateNext();
+      return;
+    }
     const slots = (linkState.slotsByDay && linkState.slotsByDay[linkState.selectedDay]) || [];
     if (!linkState.selectedDay || !slots.length) {
       el.times.innerHTML = '';
@@ -523,13 +546,25 @@
     updateNext();
   }
 
+  function pickReady() {
+    return !!(
+      linkState.locationId &&
+      linkState.duration &&
+      linkState.selectedSlot &&
+      linkState.selectedSlot.start
+    );
+  }
+
   function updateNext() {
     if (!el.next) return;
-    const ready = !!(linkState.selectedSlot && linkState.selectedSlot.start);
+    const ready = pickReady();
     el.next.disabled = false;
     el.next.classList.toggle('is-ready', ready);
     el.next.setAttribute('aria-disabled', ready ? 'false' : 'true');
-    el.next.title = ready ? 'Fortsätt till bekräftelse' : 'Välj en tid först';
+    if (!linkState.locationId) el.next.title = 'Välj mötesplats först';
+    else if (!linkState.duration) el.next.title = 'Välj längd först';
+    else if (!linkState.selectedSlot?.start) el.next.title = 'Välj en tid först';
+    else el.next.title = 'Fortsätt till bekräftelse';
   }
 
   async function refreshSlots() {
@@ -548,9 +583,16 @@
 
   function applyLinkData(data) {
     linkState.link = data.link || {};
-    linkState.slotsByDay = data.slotsByDay || {};
-    linkState.days = data.days || Object.keys(linkState.slotsByDay);
-    linkState.duration = data.duration || linkState.duration;
+    // Visa lediga tider först när kunden valt längd
+    if (linkState.duration) {
+      linkState.slotsByDay = data.slotsByDay || {};
+      linkState.days = data.days || Object.keys(linkState.slotsByDay);
+    } else {
+      linkState.slotsByDay = {};
+      linkState.days = [];
+      linkState.selectedDay = '';
+      linkState.selectedSlot = null;
+    }
     if (data.share && data.share.agenda != null) {
       linkState.hostAgenda = String(data.share.agenda || '');
     } else {
@@ -571,6 +613,14 @@
   }
 
   function goConfirm() {
+    if (!linkState.locationId) {
+      showPickHint('Välj mötesplats (t.ex. Google Meet, telefon eller på plats).');
+      return;
+    }
+    if (!linkState.duration) {
+      showPickHint('Välj längd först.');
+      return;
+    }
     // Om tid saknas men det finns luckor: välj den enda, annars visa tipset
     if (!linkState.selectedSlot || !linkState.selectedSlot.start) {
       const slots = (linkState.slotsByDay && linkState.slotsByDay[linkState.selectedDay]) || [];
@@ -588,9 +638,11 @@
       }
     }
     clearPickHint();
-    const loc =
-      (linkState.link.locations || []).find((l) => l.id === linkState.locationId) ||
-      (linkState.link.locations || [])[0];
+    const loc = (linkState.link.locations || []).find((l) => l.id === linkState.locationId);
+    if (!loc) {
+      showPickHint('Välj mötesplats först.');
+      return;
+    }
     const start = linkState.selectedSlot.start;
     const end = linkState.selectedSlot.end;
     const dateStr = new Date(start).toLocaleDateString('sv-SE', {
