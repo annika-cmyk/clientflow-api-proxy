@@ -98,7 +98,13 @@ const KUND_BESKRIVNING_DELKORT = [
         icon: 'fa-briefcase',
         field: 'Verksamhet',
         hint: 'Vad gör kunden',
-        kycKey: 'verksamhet'
+        kycKey: 'verksamhet',
+        placeholder: 'T.ex. Skogsbruk på egen fastighet, drivs med två söner. Ingen anställd personal.',
+        chips: [
+            { label: 'Vad gör kunden?', prompt: 'Vad gör kunden: ' },
+            { label: 'Ägare/familj i verksamheten', prompt: 'Ägare/familj i verksamheten: ' },
+            { label: 'Storlek', prompt: 'Storlek: ' }
+        ]
     },
     {
         id: 'kostnader',
@@ -106,7 +112,13 @@ const KUND_BESKRIVNING_DELKORT = [
         icon: 'fa-receipt',
         field: 'Kostnader',
         hint: 'Beskriv vilka kostnader kunden har, vilka leverantörerna är och hur betalning sker',
-        kycKey: 'kostnader'
+        kycKey: 'kostnader',
+        placeholder: 'T.ex. Maskiner och diesel är största kostnaderna. Leverantörer: XX. Betalas via bankgiro.',
+        chips: [
+            { label: 'Största kostnader', prompt: 'Största kostnader: ' },
+            { label: 'Leverantörer', prompt: 'Leverantörer: ' },
+            { label: 'Hur betalas de?', prompt: 'Hur betalas de: ' }
+        ]
     },
     {
         id: 'intakterna',
@@ -114,7 +126,14 @@ const KUND_BESKRIVNING_DELKORT = [
         icon: 'fa-coins',
         field: 'Intäkterna',
         hint: 'Vilka är kundens kunder, hur möter de sina kunder (digitalt, fysiskt möte?) hur tar de betalt, använder de faktureringsprogram eller andra systemstöd?',
-        kycKey: 'intakterna'
+        kycKey: 'intakterna',
+        placeholder: 'T.ex. Privatpersoner och mindre företag. Möts fysiskt och digitalt. Betalning via faktura i Fortnox.',
+        chips: [
+            { label: 'Vilka är kunderna?', prompt: 'Vilka är kunderna: ' },
+            { label: 'Hur möts de (digitalt/fysiskt)?', prompt: 'Hur möts de: ' },
+            { label: 'Hur tar de betalt?', prompt: 'Hur tar de betalt: ' },
+            { label: 'Faktureringsprogram', prompt: 'Faktureringsprogram: ' }
+        ]
     },
     {
         id: 'bokforing-beskrivning',
@@ -122,7 +141,76 @@ const KUND_BESKRIVNING_DELKORT = [
         icon: 'fa-book',
         field: 'Bokföring beskrivning',
         hint: 'Hur får vi in underlag från kunden? Har vi inlogg på banken? Hur är ordningen?\nHur väl känner vi till kunden och hur god kännedom har vi om den bransch kunden verkar i? Har kunden bytt konsulter/revisor tidigare?',
-        kycKey: null
+        kycKey: null,
+        placeholder: 'T.ex. Underlag via e-post varje månad. Bankinlogg finns. Bra ordning. Branschen känd sedan tidigare.',
+        chips: [
+            { label: 'Hur kommer underlag in?', prompt: 'Hur kommer underlag in: ' },
+            { label: 'Inlogg på banken?', prompt: 'Inlogg på banken: ' },
+            { label: 'Ordning på underlaget', prompt: 'Ordning på underlaget: ' },
+            { label: 'Branschkännedom', prompt: 'Branschkännedom: ' },
+            { label: 'Tidigare konsult/revisor', prompt: 'Tidigare konsult/revisor: ' }
+        ]
+    }
+];
+
+/** KYC-frågor som visas förenklat i kundresa steg 2 (samma fält-id som i KYC-formuläret). */
+const KUNDRESA_STEP2_KYC_FRAGOR = [
+    {
+        id: 'vh-noterat',
+        selectId: 'kyc-vh-noterat-bolag',
+        label: 'Noterat bolag eller ägt av noterat bolag',
+        type: 'janej'
+    },
+    {
+        id: 'vh-utlandska',
+        selectId: 'kyc-vh-utlandska-agare',
+        label: 'Utländska ägare eller styrelseledamöter',
+        type: 'janej'
+    },
+    {
+        id: 'kapital',
+        inputId: 'kyc-kapital-ursprung',
+        label: 'Pengarnas ursprung',
+        type: 'textarea',
+        placeholder: 't.ex. svensk försäljning, lån, investeringar'
+    },
+    {
+        id: 'anstallda',
+        inputId: 'kyc-anstallda',
+        label: 'Antal anställda',
+        type: 'unit',
+        unit: 'st',
+        placeholder: 't.ex. 5'
+    },
+    {
+        id: 'omsattning',
+        inputId: 'kyc-omsattning',
+        label: 'Uppskattad årsomsättning',
+        type: 'omsattning'
+    },
+    {
+        id: 'internationell',
+        selectId: 'kyc-internationell',
+        label: 'Handel med kunder eller leverantörer utanför Sverige?',
+        type: 'janej',
+        followUpId: 'kyc-internationella-lander-wrap',
+        followUpWhen: 'Ja'
+    },
+    {
+        id: 'kontanter',
+        selectId: 'kyc-kontanter',
+        label: 'Hanterar företaget kontanter i sin verksamhet?',
+        type: 'janej',
+        followUpId: 'kyc-kontanter-andel-wrap',
+        followUpWhen: 'Ja',
+        onChange: 'verksamhet'
+    },
+    {
+        id: 'krypto',
+        selectId: 'kyc-kryptovaluta',
+        label: 'Har företaget transaktioner i kryptovaluta?',
+        type: 'janej',
+        onChange: 'verksamhet'
     }
 ];
 
@@ -6605,17 +6693,54 @@ class CustomerCardManager {
         }
     }
 
-    async saveBeskrivningDelkort(id) {
+    _beskrivningValueFromInput(inputEl) {
+        if (!inputEl) return '';
+        if (inputEl.tagName === 'TEXTAREA') {
+            const text = String(inputEl.value || '').replace(/\s+$/g, '');
+            if (!text.trim()) return '';
+            return this._esc(text).replace(/\n/g, '<br>');
+        }
+        return (inputEl.innerHTML || '').trim();
+    }
+
+    _setBeskrivningSaveStatus(id, state) {
+        const el = document.querySelector(`[data-kundresa-save-status="${id}"]`);
+        if (!el) return;
+        el.classList.remove('is-saving', 'is-saved', 'is-error');
+        el.removeAttribute('role');
+        if (state === 'saving') {
+            el.classList.add('is-saving');
+            el.textContent = 'Sparar…';
+        } else if (state === 'saved') {
+            el.classList.add('is-saved');
+            el.textContent = 'Sparat';
+        } else if (state === 'error') {
+            el.classList.add('is-error');
+            el.setAttribute('role', 'button');
+            el.tabIndex = 0;
+            el.textContent = 'Kunde inte spara – försök igen';
+        } else {
+            el.textContent = '';
+            el.removeAttribute('tabindex');
+        }
+    }
+
+    async saveBeskrivningDelkort(id, opts = {}) {
+        const silent = !!(opts && opts.silent);
         const def = this._beskrivningDelkortById(id);
-        if (!def) return;
+        if (!def) return false;
         const inputEl = document.getElementById(`ku-${def.id}-input`);
-        const html = inputEl?.innerHTML.trim() || '';
+        const html = this._beskrivningValueFromInput(inputEl);
         const saveBtn = document.querySelector(`#${def.id}-edit .btn-primary`);
         const orig = saveBtn?.innerHTML;
-        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+        if (!silent && saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+        if (silent) this._setBeskrivningSaveStatus(def.id, 'saving');
         try {
             const result = await this._patchKunddataFields({ [def.field]: html });
-            if (!result.ok) return;
+            if (!result.ok) {
+                if (silent) this._setBeskrivningSaveStatus(def.id, 'error');
+                return false;
+            }
             const viewEl = document.getElementById(`ku-${def.id}-view`);
             if (viewEl) viewEl.innerHTML = this._htmlToPlainText(html) ? html : '<span class="missing-data">Ej angiven</span>';
             if (this.customerData?.fields) this.customerData.fields[def.field] = html;
@@ -6626,13 +6751,28 @@ class CustomerCardManager {
                 const hiddenView = document.getElementById('ku-beskrivning-view');
                 const hiddenInput = document.getElementById('ku-beskrivning-input');
                 if (hiddenView) hiddenView.innerHTML = html;
-                if (hiddenInput) hiddenInput.innerHTML = html;
+                if (hiddenInput) {
+                    if (hiddenInput.tagName === 'TEXTAREA') hiddenInput.value = this._htmlToPlainText(html);
+                    else hiddenInput.innerHTML = html;
+                }
             }
             if (def.kycKey && this._savedKycFormular) this._savedKycFormular[def.kycKey] = this._htmlToPlainText(html);
-            this.toggleBeskrivningDelkortEdit(def.id);
-            this.showNotification(`${def.title} sparad.`, 'success');
+            const kycMirror = def.kycKey ? document.getElementById(`kyc-${def.kycKey}`) : null;
+            if (kycMirror && kycMirror.tagName === 'TEXTAREA') kycMirror.value = this._htmlToPlainText(html);
+            this._updateKundresaDescProgress();
+            this._updateBeskrivningFieldCheck(def.id);
+            if (silent) {
+                this._setBeskrivningSaveStatus(def.id, 'saved');
+            } else {
+                this.toggleBeskrivningDelkortEdit(def.id);
+                this.showNotification(`${def.title} sparad.`, 'success');
+            }
+            return true;
+        } catch (_) {
+            if (silent) this._setBeskrivningSaveStatus(def.id, 'error');
+            return false;
         } finally {
-            if (saveBtn) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
+            if (!silent && saveBtn) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
         }
     }
 
@@ -11377,14 +11517,50 @@ class CustomerCardManager {
     }
 
     _unmountKundresaStep() {
+        if (this._beskrivningAutosaveTimers) {
+            Object.keys(this._beskrivningAutosaveTimers).forEach((k) => {
+                clearTimeout(this._beskrivningAutosaveTimers[k]);
+            });
+            this._beskrivningAutosaveTimers = {};
+        }
+        clearTimeout(this._kycStep2AutosaveTimer);
+        this._kycStep2AutosaveTimer = null;
+
+        const host = document.getElementById('kundresa-step-host');
+        if (host) host.classList.remove('kundresa-step2');
+
         const extras = this._kundresaMovedExtras;
         if (Array.isArray(extras) && extras.length) {
             extras.slice().reverse().forEach((entry) => {
-                if (!entry || !entry.node) return;
+                if (!entry) return;
                 if (entry.kind === 'title' && entry.titleEl) {
                     entry.titleEl.textContent = entry.prevText || entry.titleEl.textContent;
                     return;
                 }
+                if (entry.kind === 'html' && entry.node) {
+                    entry.node.innerHTML = entry.prevHtml || '';
+                    entry.node.classList.remove('kundresa-step2-field', 'kundresa-step2-enhanced');
+                    delete entry.node.dataset.kundresaStep2;
+                    if (entry.syncBeskrivningId) {
+                        this._syncBeskrivningDelkortDomFromFields(entry.syncBeskrivningId);
+                    }
+                    return;
+                }
+                if (entry.kind === 'remove' && entry.node) {
+                    entry.node.remove();
+                    return;
+                }
+                if (entry.kind === 'class' && entry.node) {
+                    (entry.add || []).forEach((c) => entry.node.classList.remove(c));
+                    (entry.remove || []).forEach((c) => entry.node.classList.add(c));
+                    return;
+                }
+                if (entry.kind === 'attr' && entry.node) {
+                    if (entry.prev == null) entry.node.removeAttribute(entry.name);
+                    else entry.node.setAttribute(entry.name, entry.prev);
+                    return;
+                }
+                if (!entry.node) return;
                 entry.node.classList.remove('kundresa-embed-section');
                 if (entry.parent && entry.parent.isConnected) {
                     if (entry.nextSibling && entry.nextSibling.parentNode === entry.parent) {
@@ -11601,16 +11777,13 @@ class CustomerCardManager {
                         }
                     } catch (_) { /* ignore */ }
                 }
-                if (focus === 'kyc_skicka') {
-                    const sendBtn = host.querySelector('button[onclick*="skickaKYCFormularTillKund"]');
-                    if (sendBtn) {
-                        sendBtn.classList.add('kundresa-highlight-cta');
-                        setTimeout(() => sendBtn.classList.remove('kundresa-highlight-cta'), 4000);
-                        sendBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    }
-                }
                 if (focus === 'beskrivning_fragor') {
-                    const desc = host.querySelector('.kyc-beskrivning-card, #beskrivning-card');
+                    try {
+                        this._enhanceKundresaStep2(host, movedExtras);
+                    } catch (e) {
+                        console.warn('_enhanceKundresaStep2:', e);
+                    }
+                    const desc = host.querySelector('#beskrivning-card, .kundresa-step2-beskrivning');
                     if (desc && desc.scrollIntoView) desc.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             }
@@ -11630,6 +11803,530 @@ class CustomerCardManager {
         }
     }
 
+    _syncBeskrivningDelkortDomFromFields(id) {
+        const def = this._beskrivningDelkortById(id);
+        if (!def || !this.customerData?.fields) return;
+        const html = def.id === 'verksamhet'
+            ? this._resolvedVerksamhetHtml(this.customerData.fields)
+            : this._kundFieldText(this.customerData.fields[def.field]);
+        const plain = this._htmlToPlainText(html);
+        const viewEl = document.getElementById(`ku-${def.id}-view`);
+        const inputEl = document.getElementById(`ku-${def.id}-input`);
+        if (viewEl) {
+            viewEl.innerHTML = plain ? html : '<span class="missing-data">Ej angiven</span>';
+        }
+        if (inputEl) {
+            if (inputEl.tagName === 'TEXTAREA') inputEl.value = plain;
+            else inputEl.innerHTML = html || '';
+        }
+    }
+
+    _autoGrowTextarea(ta, { minRows = 3, maxRows = 10 } = {}) {
+        if (!ta || ta.tagName !== 'TEXTAREA') return;
+        const cs = window.getComputedStyle(ta);
+        const line = parseFloat(cs.lineHeight) || 20;
+        const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+        const minH = minRows * line + pad;
+        const maxH = maxRows * line + pad;
+        ta.style.height = 'auto';
+        const next = Math.min(maxH, Math.max(minH, ta.scrollHeight));
+        ta.style.height = `${next}px`;
+        ta.style.overflowY = ta.scrollHeight > maxH + 1 ? 'auto' : 'hidden';
+    }
+
+    _updateBeskrivningFieldCheck(id) {
+        const check = document.querySelector(`[data-kundresa-field-check="${id}"]`);
+        const input = document.getElementById(`ku-${id}-input`);
+        if (!check) return;
+        const has = input
+            ? (input.tagName === 'TEXTAREA'
+                ? !!(input.value || '').trim()
+                : !!this._htmlToPlainText(input.innerHTML || ''))
+            : false;
+        check.hidden = !has;
+        check.classList.toggle('is-filled', has);
+    }
+
+    _updateKundresaDescProgress() {
+        const el = document.querySelector('[data-kundresa-desc-progress]');
+        if (!el) return;
+        let filled = 0;
+        KUND_BESKRIVNING_DELKORT.forEach((def) => {
+            const input = document.getElementById(`ku-${def.id}-input`);
+            let has = false;
+            if (input?.tagName === 'TEXTAREA') has = !!(input.value || '').trim();
+            else if (input) has = !!this._htmlToPlainText(input.innerHTML || '');
+            else if (this.customerData?.fields) {
+                const raw = def.id === 'verksamhet'
+                    ? this._resolvedVerksamhetHtml(this.customerData.fields)
+                    : this.customerData.fields[def.field];
+                has = !!this._htmlToPlainText(raw);
+            }
+            if (has) filled += 1;
+            this._updateBeskrivningFieldCheck(def.id);
+        });
+        el.textContent = `${filled} av 4 beskrivningar ifyllda`;
+    }
+
+    _updateKundresaKycProgress() {
+        const el = document.querySelector('[data-kundresa-kyc-progress]');
+        if (!el) return;
+        let filled = 0;
+        const total = KUNDRESA_STEP2_KYC_FRAGOR.length;
+        KUNDRESA_STEP2_KYC_FRAGOR.forEach((q) => {
+            let val = '';
+            if (q.selectId) val = document.getElementById(q.selectId)?.value || '';
+            else if (q.inputId) val = document.getElementById(q.inputId)?.value || '';
+            if (String(val).trim()) filled += 1;
+        });
+        el.textContent = `${filled} av ${total} frågor ifyllda`;
+    }
+
+    _updateBeskrivningChipMuted(id) {
+        const wrap = document.querySelector(`[data-kundresa-chips="${id}"]`);
+        const input = document.getElementById(`ku-${id}-input`);
+        if (!wrap || !input) return;
+        const text = (input.tagName === 'TEXTAREA' ? input.value : this._htmlToPlainText(input.innerHTML || '')).toLowerCase();
+        wrap.querySelectorAll('[data-kundresa-chip]').forEach((btn) => {
+            const label = (btn.getAttribute('data-chip-label') || btn.textContent || '').toLowerCase();
+            const prompt = (btn.getAttribute('data-chip-prompt') || '').replace(/:\s*$/, '').toLowerCase();
+            const used = !!(text && ((label && text.includes(label.replace(/\?$/, ''))) || (prompt && text.includes(prompt))));
+            btn.classList.toggle('is-used', used);
+        });
+    }
+
+    _scheduleBeskrivningAutosave(id) {
+        if (!this._beskrivningAutosaveTimers) this._beskrivningAutosaveTimers = {};
+        clearTimeout(this._beskrivningAutosaveTimers[id]);
+        this._beskrivningAutosaveTimers[id] = setTimeout(() => {
+            this.saveBeskrivningDelkort(id, { silent: true });
+        }, 1500);
+    }
+
+    _insertBeskrivningChip(id, prompt) {
+        const ta = document.getElementById(`ku-${id}-input`);
+        if (!ta || ta.tagName !== 'TEXTAREA') return;
+        const cur = ta.value || '';
+        const insertion = String(prompt || '');
+        const next = cur.trim() ? `${cur.replace(/\s*$/, '')}\n${insertion}` : insertion;
+        ta.value = next;
+        ta.focus();
+        const pos = next.length;
+        try { ta.setSelectionRange(pos, pos); } catch (_) { /* ignore */ }
+        this._autoGrowTextarea(ta);
+        this._updateBeskrivningChipMuted(id);
+        this._updateBeskrivningFieldCheck(id);
+        this._updateKundresaDescProgress();
+        this._scheduleBeskrivningAutosave(id);
+    }
+
+    _enhanceKundresaStep2(host, movedExtras) {
+        if (!host) return;
+        host.classList.add('kundresa-step2');
+        this._enhanceKundresaStep2Beskrivning(host, movedExtras);
+        this._enhanceKundresaStep2Kyc(host, movedExtras);
+    }
+
+    _enhanceKundresaStep2Beskrivning(host, movedExtras) {
+        const card = host.querySelector('#beskrivning-card');
+        if (!card || card.dataset.kundresaStep2 === '1') return;
+        card.dataset.kundresaStep2 = '1';
+        card.classList.add('kundresa-step2-beskrivning');
+
+        const helpBtn = card.querySelector('#beskrivning-help-btn');
+        if (helpBtn) {
+            movedExtras.push({ kind: 'remove', node: helpBtn });
+            helpBtn.remove();
+        }
+
+        const body = card.querySelector('.collapsible-body') || card;
+        const titleSpan = card.querySelector('.collapsible-title span');
+        if (titleSpan) {
+            movedExtras.push({ kind: 'title', titleEl: titleSpan, prevText: titleSpan.textContent });
+            titleSpan.textContent = 'Beskrivning av kunden';
+        }
+
+        const progress = document.createElement('p');
+        progress.className = 'kundresa-step2-progress';
+        progress.setAttribute('data-kundresa-desc-progress', '');
+        progress.setAttribute('role', 'status');
+        body.insertBefore(progress, body.firstChild);
+        movedExtras.push({ kind: 'remove', node: progress });
+
+        const heading = document.createElement('h3');
+        heading.className = 'kundresa-step2-heading';
+        heading.textContent = 'Beskrivning av kunden';
+        body.insertBefore(heading, progress.nextSibling);
+        movedExtras.push({ kind: 'remove', node: heading });
+
+        KUND_BESKRIVNING_DELKORT.forEach((def) => {
+            this._enhanceBeskrivningDelkortForStep2(def, movedExtras);
+        });
+        this._updateKundresaDescProgress();
+    }
+
+    _enhanceBeskrivningDelkortForStep2(def, movedExtras) {
+        const section = document.getElementById(`${def.id}-card`);
+        if (!section || section.dataset.kundresaStep2 === '1') return;
+        const prevHtml = section.innerHTML;
+        movedExtras.push({
+            kind: 'html',
+            node: section,
+            prevHtml,
+            syncBeskrivningId: def.id
+        });
+        section.dataset.kundresaStep2 = '1';
+        section.classList.add('kundresa-step2-field');
+
+        const existingInput = document.getElementById(`ku-${def.id}-input`);
+        const existingView = document.getElementById(`ku-${def.id}-view`);
+        const raw = existingInput
+            ? (existingInput.tagName === 'TEXTAREA' ? existingInput.value : existingInput.innerHTML)
+            : (existingView?.innerHTML || '');
+        const plain = this._htmlToPlainText(raw);
+        const chips = Array.isArray(def.chips) ? def.chips : [];
+        const chipHtml = chips.map((c) => `
+            <button type="button" class="kundresa-step2-chip" data-kundresa-chip
+                data-chip-label="${this._esc(c.label)}"
+                data-chip-prompt="${this._esc(c.prompt)}"
+                data-beskrivning-id="${this._esc(def.id)}">${this._esc(c.label)}</button>`).join('');
+
+        section.innerHTML = `
+            <div class="kundresa-step2-field-head">
+                <label class="kundresa-step2-field-title" for="ku-${this._esc(def.id)}-input">
+                    <span class="kundresa-step2-field-check" data-kundresa-field-check="${this._esc(def.id)}" hidden aria-hidden="true"><i class="fas fa-check"></i></span>
+                    ${this._esc(def.title)}
+                </label>
+                <span class="kundresa-step2-save-status" data-kundresa-save-status="${this._esc(def.id)}" aria-live="polite"></span>
+            </div>
+            <div class="kundresa-step2-chips" data-kundresa-chips="${this._esc(def.id)}">${chipHtml}</div>
+            <textarea id="ku-${this._esc(def.id)}-input" class="kundresa-step2-textarea uppdrag-input"
+                rows="3" placeholder="${this._esc(def.placeholder || '')}"
+                data-beskrivning-id="${this._esc(def.id)}"
+                aria-label="${this._esc(def.title)}">${this._esc(plain)}</textarea>
+        `;
+
+        const ta = document.getElementById(`ku-${def.id}-input`);
+        if (ta) {
+            this._autoGrowTextarea(ta);
+            ta.addEventListener('input', () => {
+                this._autoGrowTextarea(ta);
+                this._updateBeskrivningChipMuted(def.id);
+                this._updateBeskrivningFieldCheck(def.id);
+                this._updateKundresaDescProgress();
+                this._scheduleBeskrivningAutosave(def.id);
+            });
+            ta.addEventListener('blur', () => {
+                clearTimeout(this._beskrivningAutosaveTimers?.[def.id]);
+                this.saveBeskrivningDelkort(def.id, { silent: true });
+            });
+        }
+        section.querySelectorAll('[data-kundresa-chip]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this._insertBeskrivningChip(def.id, btn.getAttribute('data-chip-prompt') || '');
+            });
+        });
+        const statusEl = section.querySelector(`[data-kundresa-save-status="${def.id}"]`);
+        if (statusEl) {
+            statusEl.addEventListener('click', () => {
+                if (!statusEl.classList.contains('is-error')) return;
+                this.saveBeskrivningDelkort(def.id, { silent: true });
+            });
+            statusEl.addEventListener('keydown', (e) => {
+                if (!statusEl.classList.contains('is-error')) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.saveBeskrivningDelkort(def.id, { silent: true });
+                }
+            });
+        }
+        this._updateBeskrivningChipMuted(def.id);
+        this._updateBeskrivningFieldCheck(def.id);
+    }
+
+    _enhanceKundresaStep2Kyc(host, movedExtras) {
+        const kycRoot = host.querySelector('#kycformular-content');
+        if (!kycRoot || kycRoot.dataset.kundresaStep2 === '1') return;
+        kycRoot.dataset.kundresaStep2 = '1';
+        movedExtras.push({ kind: 'attr', node: kycRoot, name: 'data-kundresa-step2', prev: null });
+        kycRoot.classList.add('kundresa-step2-kyc');
+        movedExtras.push({ kind: 'class', node: kycRoot, add: ['kundresa-step2-kyc'] });
+
+        const form = kycRoot.querySelector('#kyc-formular-form') || kycRoot;
+        const panel = document.createElement('div');
+        panel.className = 'kundresa-step2-fragor';
+        panel.innerHTML = `
+            <div class="kundresa-step2-divider" aria-hidden="true"></div>
+            <p class="kundresa-step2-progress" data-kundresa-kyc-progress role="status"></p>
+            <h3 class="kundresa-step2-heading">Frågor om kunden</h3>
+            <div class="kundresa-step2-fragor-list" data-kundresa-fragor-list></div>
+        `;
+        form.insertBefore(panel, form.firstChild);
+        movedExtras.push({ kind: 'remove', node: panel });
+
+        const list = panel.querySelector('[data-kundresa-fragor-list]');
+        KUNDRESA_STEP2_KYC_FRAGOR.forEach((q) => {
+            const row = this._buildKundresaStep2KycRow(q, movedExtras);
+            if (row) list.appendChild(row);
+        });
+
+        kycRoot.querySelectorAll('.uppdrag-section, .uppdrag-doc-header, .uppdrag-banner, .uppdrag-actions, .kundformular-invite-box, .extern-cf-option, .inleed-sign-links')
+            .forEach((el) => {
+                if (panel.contains(el)) return;
+                el.classList.add('kundresa-step2-hide');
+                movedExtras.push({ kind: 'class', node: el, add: ['kundresa-step2-hide'] });
+            });
+
+        this._updateKundresaKycProgress();
+    }
+
+    _parkKundresaField(el, movedExtras) {
+        if (!el || !el.parentNode) return;
+        movedExtras.push({
+            kind: 'node',
+            node: el,
+            parent: el.parentNode,
+            nextSibling: el.nextSibling
+        });
+    }
+
+    _buildKundresaStep2KycRow(q, movedExtras) {
+        const row = document.createElement('div');
+        row.className = 'kundresa-step2-q';
+        row.setAttribute('data-kundresa-q', q.id);
+
+        const head = document.createElement('div');
+        head.className = 'kundresa-step2-q-main';
+
+        const label = document.createElement('div');
+        label.className = 'kundresa-step2-q-label';
+        label.textContent = q.label;
+        head.appendChild(label);
+
+        const controls = document.createElement('div');
+        controls.className = 'kundresa-step2-q-controls';
+
+        if (q.type === 'janej' && q.selectId) {
+            const sel = document.getElementById(q.selectId);
+            if (!sel) return null;
+            this._parkKundresaField(sel, movedExtras);
+            sel.classList.add('kundresa-step2-native-hidden');
+            movedExtras.push({ kind: 'class', node: sel, add: ['kundresa-step2-native-hidden'] });
+            const segs = document.createElement('div');
+            segs.className = 'kundresa-step2-segments';
+            segs.setAttribute('role', 'group');
+            segs.setAttribute('aria-label', q.label);
+            ['Ja', 'Nej'].forEach((v) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'kundresa-step2-seg' + (sel.value === v ? ' is-active' : '');
+                btn.setAttribute('data-kundresa-seg', v);
+                btn.setAttribute('aria-pressed', sel.value === v ? 'true' : 'false');
+                btn.textContent = v;
+                btn.addEventListener('click', () => {
+                    sel.value = v;
+                    segs.querySelectorAll('[data-kundresa-seg]').forEach((b) => {
+                        const on = b.getAttribute('data-kundresa-seg') === v;
+                        b.classList.toggle('is-active', on);
+                        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    });
+                    if (q.followUpId) {
+                        const wrap = document.getElementById(q.followUpId);
+                        if (wrap) wrap.style.display = v === q.followUpWhen ? 'block' : 'none';
+                    }
+                    if (q.onChange === 'verksamhet') {
+                        if (q.followUpId) this._onKycVerksamhetChanged(q.selectId, q.followUpWhen || 'Ja', q.followUpId);
+                        else this._onKycVerksamhetChanged(q.selectId);
+                    } else if (q.followUpId) {
+                        this._toggleKycConditional(q.selectId, q.followUpWhen || 'Ja', q.followUpId);
+                    }
+                    this._updateKundresaKycProgress();
+                    this._scheduleKycStep2Autosave();
+                });
+                segs.appendChild(btn);
+            });
+            controls.appendChild(segs);
+            controls.appendChild(sel);
+        } else if (q.type === 'textarea' && q.inputId) {
+            const ta = document.getElementById(q.inputId);
+            if (!ta) return null;
+            this._parkKundresaField(ta, movedExtras);
+            ta.classList.add('kundresa-step2-q-input');
+            movedExtras.push({ kind: 'class', node: ta, add: ['kundresa-step2-q-input'] });
+            if (q.placeholder) ta.setAttribute('placeholder', q.placeholder);
+            ta.addEventListener('input', () => {
+                this._autoGrowTextarea(ta, { minRows: 2, maxRows: 6 });
+                this._updateKundresaKycProgress();
+                this._scheduleKycStep2Autosave();
+            });
+            ta.addEventListener('blur', () => this._flushKycStep2Autosave());
+            this._autoGrowTextarea(ta, { minRows: 2, maxRows: 6 });
+            controls.appendChild(ta);
+        } else if (q.type === 'unit' && q.inputId) {
+            const inp = document.getElementById(q.inputId);
+            if (!inp) return null;
+            this._parkKundresaField(inp, movedExtras);
+            inp.classList.add('kundresa-step2-q-input', 'kundresa-step2-q-input--unit');
+            movedExtras.push({ kind: 'class', node: inp, add: ['kundresa-step2-q-input', 'kundresa-step2-q-input--unit'] });
+            const wrap = document.createElement('div');
+            wrap.className = 'kundresa-step2-unit';
+            wrap.appendChild(inp);
+            const unit = document.createElement('span');
+            unit.className = 'kundresa-step2-unit-label';
+            unit.textContent = q.unit || '';
+            wrap.appendChild(unit);
+            inp.addEventListener('input', () => {
+                this._updateKundresaKycProgress();
+                this._scheduleKycStep2Autosave();
+            });
+            inp.addEventListener('blur', () => this._flushKycStep2Autosave());
+            controls.appendChild(wrap);
+        } else if (q.type === 'omsattning' && q.inputId) {
+            const inp = document.getElementById(q.inputId);
+            if (!inp) return null;
+            this._parkKundresaField(inp, movedExtras);
+            const cur = String(inp.value || '').trim();
+            const isInterval = KUND_OMSATTNING_VAL.includes(cur);
+            if (!cur || isInterval) {
+                inp.classList.add('kundresa-step2-native-hidden');
+                movedExtras.push({ kind: 'class', node: inp, add: ['kundresa-step2-native-hidden'] });
+                const segs = document.createElement('div');
+                segs.className = 'kundresa-step2-segments kundresa-step2-segments--wrap';
+                segs.setAttribute('role', 'group');
+                segs.setAttribute('aria-label', q.label);
+                KUND_OMSATTNING_VAL.forEach((v) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'kundresa-step2-seg' + (cur === v ? ' is-active' : '');
+                    btn.setAttribute('aria-pressed', cur === v ? 'true' : 'false');
+                    btn.textContent = v;
+                    btn.addEventListener('click', () => {
+                        inp.value = v;
+                        segs.querySelectorAll('button').forEach((b) => {
+                            const on = b === btn;
+                            b.classList.toggle('is-active', on);
+                            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                        });
+                        this._updateKundresaKycProgress();
+                        this._scheduleKycStep2Autosave();
+                    });
+                    segs.appendChild(btn);
+                });
+                controls.appendChild(segs);
+                controls.appendChild(inp);
+            } else {
+                inp.classList.add('kundresa-step2-q-input', 'kundresa-step2-q-input--unit');
+                movedExtras.push({ kind: 'class', node: inp, add: ['kundresa-step2-q-input', 'kundresa-step2-q-input--unit'] });
+                const wrap = document.createElement('div');
+                wrap.className = 'kundresa-step2-unit';
+                wrap.appendChild(inp);
+                const unit = document.createElement('span');
+                unit.className = 'kundresa-step2-unit-label';
+                unit.textContent = 'kr';
+                wrap.appendChild(unit);
+                inp.addEventListener('input', () => {
+                    this._updateKundresaKycProgress();
+                    this._scheduleKycStep2Autosave();
+                });
+                inp.addEventListener('blur', () => this._flushKycStep2Autosave());
+                controls.appendChild(wrap);
+            }
+        } else {
+            return null;
+        }
+
+        head.appendChild(controls);
+        row.appendChild(head);
+
+        if (q.followUpId) {
+            const follow = document.getElementById(q.followUpId);
+            if (follow) {
+                follow.classList.add('kundresa-step2-followup');
+                movedExtras.push({ kind: 'class', node: follow, add: ['kundresa-step2-followup'] });
+                this._parkKundresaField(follow, movedExtras);
+                row.appendChild(follow);
+                follow.querySelectorAll('input, textarea, select').forEach((el) => {
+                    el.addEventListener('input', () => this._scheduleKycStep2Autosave());
+                    el.addEventListener('change', () => this._scheduleKycStep2Autosave());
+                    el.addEventListener('blur', () => this._flushKycStep2Autosave());
+                });
+            }
+        }
+
+        const status = document.createElement('span');
+        status.className = 'kundresa-step2-save-status kundresa-step2-save-status--q';
+        status.setAttribute('data-kundresa-kyc-save-status', q.id);
+        status.setAttribute('aria-live', 'polite');
+        row.appendChild(status);
+
+        return row;
+    }
+
+    _scheduleKycStep2Autosave() {
+        clearTimeout(this._kycStep2AutosaveTimer);
+        this._kycStep2AutosaveTimer = setTimeout(() => {
+            this._autosaveKycStep2();
+        }, 1500);
+    }
+
+    _flushKycStep2Autosave() {
+        clearTimeout(this._kycStep2AutosaveTimer);
+        this._kycStep2AutosaveTimer = null;
+        this._autosaveKycStep2();
+    }
+
+    _setKycStep2SaveStatus(state) {
+        document.querySelectorAll('[data-kundresa-kyc-save-status]').forEach((el) => {
+            el.classList.remove('is-saving', 'is-saved', 'is-error');
+            if (state === 'saving') {
+                el.classList.add('is-saving');
+                el.textContent = 'Sparar…';
+            } else if (state === 'saved') {
+                el.classList.add('is-saved');
+                el.textContent = 'Sparat';
+            } else if (state === 'error') {
+                el.classList.add('is-error');
+                el.textContent = 'Kunde inte spara – försök igen';
+                el.onclick = () => this._autosaveKycStep2();
+            } else {
+                el.textContent = '';
+                el.onclick = null;
+            }
+        });
+    }
+
+    async _autosaveKycStep2() {
+        if (!this.customerId) return;
+        const hemvistEl = document.getElementById('kyc-hemvist-foretag');
+        if (hemvistEl && !String(hemvistEl.value || '').trim()) {
+            hemvistEl.value = this._savedKycFormular?.skatterattslig_hemvist_foretag || 'Sverige';
+        }
+        this._setKycStep2SaveStatus('saving');
+        try {
+            const data = this._collectKYCFormularData();
+            if (!data.skatterattslig_hemvist_foretag) {
+                data.skatterattslig_hemvist_foretag = 'Sverige';
+            }
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const resp = await fetch(`${baseUrl}/api/kyc-formular/${this.customerId}`, {
+                method: 'POST',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify(data)
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${resp.status}`);
+            }
+            this._savedKycFormular = Object.assign({}, this._savedKycFormular || {}, data);
+            this._kycFormularFetched = true;
+            this._updateKundresaKycProgress();
+            this._setKycStep2SaveStatus('saved');
+        } catch (e) {
+            console.warn('KYC steg2 autosave:', e);
+            this._setKycStep2SaveStatus('error');
+        }
+    }
+
     _gotoKundresaStep(target) {
         const step = target && typeof target === 'object' ? target : { tab: target };
         const tab = step.tab || '';
@@ -11645,6 +12342,96 @@ class CustomerCardManager {
             return;
         }
         this._renderKundresa();
+    }
+
+    _mountKundresaKycSkickaStep(host) {
+        if (!host) return;
+        const ui = window.KundresaKycSkicka;
+        if (!ui || typeof ui.render !== 'function') {
+            host.innerHTML = '<p class="lead-empty">Kunde inte ladda KYC-skicka-steget.</p>';
+            return;
+        }
+        const fields = this.customerData?.fields || {};
+        const kyc = this._savedKycFormular || {};
+        const step4Send = this._buildKundresaStep4Send(this._kundresa || {});
+        const recipients = step4Send.recipients || [];
+        if (!this._kundresaKycRecipient && step4Send.defaultRecipient) {
+            this._kundresaKycRecipient = step4Send.defaultRecipient;
+        }
+        if (this._kundresaKycRecipient) {
+            const still = recipients.find((p) =>
+                String(p.epost || '') === String(this._kundresaKycRecipient.epost || '')
+                && String(p.namn || '') === String(this._kundresaKycRecipient.namn || '')
+            );
+            if (!still) this._kundresaKycRecipient = step4Send.defaultRecipient || recipients[0] || null;
+        }
+        const inviteUrl = this._kycInviteUrl || kyc._inviteUrl || '';
+        host.innerHTML = ui.render({
+            fields,
+            kyc,
+            kontaktPersoner: this._kontaktPersoner || [],
+            selectedRecipient: this._kundresaKycRecipient,
+            inviteUrl,
+            blockers: step4Send.blockers || [],
+            tjanster: typeof this._getAktivaTjansterNamn === 'function' ? this._getAktivaTjansterNamn() : ''
+        });
+        ui.bind(host, {
+            onRecipientChange: (idx) => {
+                const list = step4Send.recipients || [];
+                this._kundresaKycRecipient = list[idx] || null;
+                this._mountKundresaKycSkickaStep(host);
+            },
+            onSend: () => this._sendKycFromKundresa({ source: 'panel' }),
+            onCopy: () => this.copyKycInviteLink(),
+            onOpen: () => this._openKycAsCustomer(),
+            onGotoStep: (n) => {
+                const step = (this._kundresa?.steps || []).find((s) => Number(s.id) === Number(n) || Number(s.number) === Number(n));
+                if (step) this._gotoKundresaStep(step);
+            }
+        });
+    }
+
+    async _sendKycFromKundresa({ source } = {}) {
+        const step4Send = this._buildKundresaStep4Send(this._kundresa || {});
+        if (!step4Send.canSend) {
+            this.showNotification(step4Send.blockers[0] || 'Kan inte skicka ännu.', 'warning');
+            return;
+        }
+        const recipient = this._kundresaKycRecipient || step4Send.defaultRecipient;
+        if (!recipient?.epost) {
+            // Fallback: befintlig modal på kundkortet
+            return this.skickaKYCFormularTillKund();
+        }
+        // Återanvänd samma API-anrop som _genomforKYCSkickaTillKund, med förvald mottagare
+        this._kycKundInviteSignerare = [recipient];
+        const existing = document.getElementById('kyc-kund-invite-modal');
+        if (existing) existing.remove();
+
+        // Bygg en minimal modal-state så status-hjälpare fungerar, men skicka direkt
+        const modal = document.createElement('div');
+        modal.id = 'kyc-kund-invite-modal';
+        modal.className = 'modal-overlay';
+        modal.hidden = true;
+        modal.innerHTML = `<div class="modal-body"><div id="kyc-kund-invite-status-msg" style="display:none;"></div>
+          <input type="checkbox" name="kyc-kund-signerare-choice" value="0" checked hidden>
+          <button id="kyc-kund-invite-send-btn" type="button" hidden></button></div>`;
+        document.body.appendChild(modal);
+        try {
+            await this._genomforKYCSkickaTillKund();
+        } finally {
+            document.getElementById('kyc-kund-invite-modal')?.remove();
+            if (this._kundresaModalOpen) this._renderKundresa();
+            else if (source) { /* noop */ }
+        }
+    }
+
+    _openKycAsCustomer() {
+        const url = this._kycInviteUrl || '';
+        if (!url) {
+            this.showNotification('Skicka länken först för att öppna kundvyn.', 'warning');
+            return;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
     }
 
     _focusKundresaSurface(focus, tab) {
