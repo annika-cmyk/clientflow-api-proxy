@@ -25478,8 +25478,17 @@ body.kalender-detail-open { overflow: hidden; }
 #kundresa-step-host .kundresa-vh-box-titles .kundresa-hint {
   display: none;
 }
-#kundresa-step-host .kundresa-vh-block .kundresa-vh-label {
-  display: none; /* register shown as muted sub under question via list */
+#kundresa-step-host .kundresa-vh-register-line {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-vh-register-line strong {
+  font-weight: 600;
+}
+#kundresa-step-host .kundresa-vh-empty {
+  margin: 0;
 }
 #kundresa-step-host .kundresa-vh-form {
   width: 100%;
@@ -25526,21 +25535,37 @@ body.kalender-detail-open { overflow: hidden; }
   display: none;
 }
 
-/* Företagsfält: lugnare label/värde */
+/* Företagsfält: 3 kolumner, label ovanför värde (INTE label/värde som separata grid-barn) */
 #kundresa-step-host .lead-fields {
-  grid-template-columns: 90px minmax(0, 1fr) 90px minmax(0, 1fr);
-  column-gap: 12px;
-  row-gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 20px;
+}
+#kundresa-step-host .lead-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 0;
 }
 #kundresa-step-host .lead-field label,
 #kundresa-step-host .lead-section > label,
 #kundresa-step-host .kunduppgifter-form-row > label {
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: #5B6670;
-  margin-bottom: 0;
+  margin-bottom: 2px;
+}
+#kundresa-step-host .lead-field-label-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: nowrap;
 }
 #kundresa-step-host .lead-field span,
 #kundresa-step-host .lead-field .adress-utsatt-text,
@@ -25549,6 +25574,12 @@ body.kalender-detail-open { overflow: hidden; }
   font-size: 13px;
   line-height: 1.45;
   color: #18212B;
+  font-family: inherit;
+}
+#kundresa-step-host .sni-code-badge,
+#kundresa-step-host .lead-sni .sni-code-badge {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
 }
 #kundresa-step-host .lead-status,
 #kundresa-step-host .sni-code-badge,
@@ -25603,7 +25634,14 @@ body.kalender-detail-open { overflow: hidden; }
   display: none;
 }
 #kundresa-step-host .roller-person-name-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 0.1rem;
+  min-width: 0;
+}
+#kundresa-step-host .roller-col-kontakt[hidden] {
+  display: none !important;
 }
 #kundresa-step-host .roller-person-name {
   font-size: 14px;
@@ -25642,9 +25680,29 @@ body.kalender-detail-open { overflow: hidden; }
   content: ', ';
   color: #3E4A55;
 }
-#kundresa-step-host .roller-person-kontakt,
 #kundresa-step-host .roller-col-kontroller {
-  display: none; /* kontakt/kontroller sammanfattas i submeta / footer */
+  display: none; /* kontroller sammanfattas i submeta / footer */
+}
+#kundresa-step-host .roller-person-kontakt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.2rem;
+}
+#kundresa-step-host .roller-person-kontakt .roller-kontakt-line {
+  color: #5B6670;
+  font-size: 12px;
+  font-weight: 400;
+}
+#kundresa-step-host .roller-person-kontakt .roller-detail-missing,
+#kundresa-step-host .roller-detail-missing {
+  color: #8A4105;
+  font-weight: 500;
+  font-size: 12px;
+  background: transparent;
+  padding: 0;
+  border: none;
+  cursor: pointer;
 }
 #kundresa-step-host .roller-person-actions .btn-icon-note {
   width: auto;
@@ -25741,19 +25799,22 @@ body.kalender-detail-open { overflow: hidden; }
   color: #fff;
   font-weight: 600;
 }
-#kundresa-step-host .kundresa-vh-saved-hint,
 #kundresa-step-host .kundresa-vh-kyc-note,
 #kundresa-step-host .kundresa-vh-status-banner {
   display: none;
 }
-#kundresa-step-host .kundresa-vh-save-btn {
-  height: 34px;
-  padding: 0 14px;
-  border: 1px solid #CDD4DA;
-  background: #fff;
-  border-radius: 8px;
-  color: #18212B;
+#kundresa-step-host .kundresa-vh-saved-hint {
+  display: inline-block;
+  margin: 0;
+  font-size: 12px;
   font-weight: 500;
+  color: #5B6670;
+}
+#kundresa-step-host .kundresa-vh-saved-hint[hidden] {
+  display: none;
+}
+#kundresa-step-host .kundresa-vh-save-btn {
+  display: none; /* Ja/Osäker/Nej sparar direkt */
 }
 #kundresa-step-host .roller-screening-toolbar {
   padding-top: 16px;
@@ -25829,7 +25890,8 @@ body.kalender-detail-open { overflow: hidden; }
     padding-right: 20px;
   }
   #kundresa-step-host .lead-fields {
-    grid-template-columns: 90px minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
   }
   #kundresa-step-host .roller-person-item--row {
     flex-direction: column;

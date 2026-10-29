@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v16.70', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v16.82', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -7241,6 +7241,7 @@ class CustomerCardManager {
                 }).join('')
                 : '';
 
+            const personnrDisplay = p.personnr ? this._formatPersonnrDisplay(p.personnr) : '';
             const kontaktHtml = `
                 <div class="roller-person-kontakt">
                     ${p.epost
@@ -7248,9 +7249,9 @@ class CustomerCardManager {
                         : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas${needsContact ? ' (krävs för VH)' : ''}</span>`}
                     ${telefon
                         ? `<span class="roller-kontakt-line"><i class="fas fa-phone"></i> ${this._esc(telefon)}</span>`
-                        : `<button type="button" class="roller-add-phone-btn" data-idx="${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.editRollePerson(${idx});">
-                            <i class="fas fa-plus"></i> Lägg till telefon${needsContact ? ' (krävs för VH)' : ''}
-                          </button>`}
+                        : `<span class="roller-detail-chip roller-detail-missing" role="button" tabindex="0" data-idx="${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.editRollePerson(${idx});">
+                            <i class="fas fa-phone"></i> Telefon saknas${needsContact ? ' (krävs för VH)' : ''}
+                          </span>`}
                 </div>`;
 
             const kontrollerHtml = (() => {
@@ -7293,11 +7294,12 @@ class CustomerCardManager {
                         <span class="roller-avatar-initials" aria-hidden="true">${this._esc(initials)}</span>
                         <span class="roller-person-name-stack">
                             <span class="roller-person-name">${this._esc(p.namn || 'Namnlös')}</span>
-                            <span class="roller-person-submeta">${p.personnr ? this._esc(p.personnr) : this._esc(idMissing)}${pepMarked ? ' · PEP' : ''}</span>
+                            <span class="roller-person-submeta">${personnrDisplay ? this._esc(personnrDisplay) : this._esc(idMissing)}${pepMarked ? ' · PEP' : ''}</span>
+                            ${kontaktHtml}
                         </span>
                     </div>
                     <div class="roller-col-roles">${roleChips || '<span class="text-muted">—</span>'}</div>
-                    <div class="roller-col-kontakt">${kontaktHtml}</div>
+                    <div class="roller-col-kontakt" hidden aria-hidden="true">${kontaktHtml}</div>
                     <div class="roller-col-kontroller">${kontrollerHtml}</div>
                     <div class="roller-person-actions">
                         <a href="javascript:void(0)" role="button" class="btn-icon-note btn-pep-screen" title="${screenTitle}" data-idx="${idx}" id="pep-btn-${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.pepScreening(${idx});return false;">
@@ -7322,7 +7324,7 @@ class CustomerCardManager {
                     <div class="roller-person-details">
                         ${p.epost ? `<span class="roller-detail-chip"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas${needsContact ? ' (krävs för VH)' : ''}</span>`}
                         ${telefon ? `<span class="roller-detail-chip"><i class="fas fa-phone"></i> ${this._esc(telefon)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-phone"></i> Telefon saknas${needsContact ? ' (krävs för VH)' : ''}</span>`}
-                        ${p.personnr ? `<span class="roller-detail-chip"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-id-card"></i> ${idMissing}</span>`}
+                        ${personnrDisplay ? `<span class="roller-detail-chip"><i class="fas fa-id-card"></i> ${this._esc(personnrDisplay)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-id-card"></i> ${idMissing}</span>`}
                         ${(() => {
                             if (isForetag) return '';
                             const Id = window.IdentitetKontroll;
@@ -11524,11 +11526,14 @@ class CustomerCardManager {
         const kf = this._kundformularSummary || {};
         const fields = this.customerData?.fields || {};
         const step4Send = this._buildKundresaStep4Send(summary);
+        const fromKontakt = this._vhRegisterFromKontakt();
         const enriched = {
             ...summary,
             byraVhBekraftelse: kf.byraVhBekraftelse || summary.byraVhBekraftelse || '',
             byraVhNote: kf.byraVhNote || summary.byraVhNote || '',
-            vhRegister: summary.vhRegister || summary.vhAlignment?.register || [],
+            vhRegister: fromKontakt.length
+                ? fromKontakt
+                : (summary.vhRegister || summary.vhAlignment?.register || []),
             vhAlignment: summary.vhAlignment || null,
             step4Status: summary.step4Status || null,
             step4Send
@@ -13007,10 +13012,36 @@ class CustomerCardManager {
         }
     }
 
-    async _onKundresaVhSave(payload, btn) {
+    /** VH-register från personlistan (samma källa som «Verklig huvudman»-chip). */
+    _vhRegisterFromKontakt() {
+        const list = Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner : [];
+        return list
+            .filter((p) => this._getRollerList(p).some((r) => /verklig\s+huvudman/i.test(String(r || ''))))
+            .map((p) => ({
+                namn: String(p?.namn || '').trim(),
+                personnr: String(p?.personnr || '').trim(),
+                hemvist: String(p?.hemvist || p?.hemland || p?.skatterattslig_hemvist || '').trim()
+            }))
+            .filter((p) => p.namn);
+    }
+
+    /** Visa personnummer som ÅÅÅÅMMDD-XXXX (display only). */
+    _formatPersonnrDisplay(raw) {
+        const s = String(raw == null ? '' : raw).trim();
+        if (!s) return '';
+        const digits = s.replace(/\D/g, '');
+        if (digits.length === 12) return `${digits.slice(0, 8)}-${digits.slice(8)}`;
+        if (digits.length === 10) return `${digits.slice(0, 6)}-${digits.slice(6)}`;
+        return s;
+    }
+
+    async _onKundresaVhSave(payload, statusEl) {
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-        const orig = btn?.innerHTML;
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; }
+        if (statusEl) {
+            statusEl.hidden = false;
+            statusEl.classList.add('is-saved');
+            statusEl.textContent = 'Sparar…';
+        }
         try {
             const res = await fetch(`${baseUrl}/api/kundformular/${encodeURIComponent(this.customerId)}`, {
                 method: 'PUT',
@@ -13044,8 +13075,10 @@ class CustomerCardManager {
         } catch (e) {
             console.error('_onKundresaVhSave:', e);
             this.showNotification(`Kunde inte spara VH: ${e.message}`, 'error');
-        } finally {
-            if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+            if (statusEl) {
+                statusEl.hidden = false;
+                statusEl.textContent = 'Kunde inte spara';
+            }
         }
     }
 

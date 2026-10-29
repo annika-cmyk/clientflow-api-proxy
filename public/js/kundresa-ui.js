@@ -67,9 +67,11 @@
   function renderRegisterList(register) {
     const list = Array.isArray(register) ? register.filter((p) => p && p.namn) : [];
     if (!list.length) {
-      return `<p class="kundresa-vh-empty">Ingen VH i formuläret ännu. Lägg till verklig huvudman under Personer ovan.</p>`;
+      return `<p class="kundresa-vh-empty">Ingen VH registrerad ännu. Lägg till verklig huvudman under Personer ovan.</p>`;
     }
-    return `<ul class="kundresa-vh-register">
+    const names = list.map((p) => p.namn).join(', ');
+    return `<p class="kundresa-vh-register-line">Registrerad VH: <strong>${esc(names)}</strong></p>
+      <ul class="kundresa-vh-register" hidden aria-hidden="true">
       ${list.map((p) => `<li>
         <strong>${esc(p.namn)}</strong>
         ${p.personnr ? `<span class="kundresa-vh-meta">${esc(p.personnr)}</span>` : ''}
@@ -187,8 +189,8 @@
         ? `<span class="kundresa-vh-badge is-attention">${esc(labelVh(byraVal))}</span>`
         : '');
     const savedHint = byraVal
-      ? `<span class="kundresa-vh-saved-hint">Sparas direkt${byraVal === 'Ja' ? ' · bekräftat' : ''}</span>`
-      : '<span class="kundresa-vh-saved-hint">Sparas direkt</span>';
+      ? `<span class="kundresa-vh-saved-hint is-saved" data-kundresa-vh-saved>Sparat</span>`
+      : `<span class="kundresa-vh-saved-hint" data-kundresa-vh-saved hidden>Sparat</span>`;
 
     container.innerHTML = `
       <div class="kundresa-popup-layout tjanst-modal-layout kundresa-popup-layout--embed">
@@ -267,7 +269,6 @@
               </div>` : ''}
               <div class="kundresa-vh-layout">
                 <div class="kundresa-vh-block">
-                  <p class="kundresa-vh-label">Registrerad VH</p>
                   ${renderRegisterList(register)}
                 </div>
                 <div class="kundresa-vh-form">
@@ -287,9 +288,6 @@
                       <option value="Osaker"${byraVal === 'Osaker' ? ' selected' : ''}>Osäker</option>
                       <option value="Nej"${byraVal === 'Nej' ? ' selected' : ''}>Nej</option>
                     </select>
-                    <button type="button" class="btn btn-primary btn-sm kundresa-vh-save-btn" data-kundresa-vh-save${byraVal === 'Ja' ? ' hidden' : ''}>
-                      <i class="fas fa-save"></i> Spara
-                    </button>
                     ${savedHint}
                   </div>
                   <label class="kundresa-vh-field kundresa-vh-note-field"${showNote ? '' : ' hidden'} data-kundresa-vh-note-wrap>
@@ -341,14 +339,7 @@
 
     const noteWrap = container.querySelector('[data-kundresa-vh-note-wrap]');
     const vhSelect = container.querySelector('[data-kundresa-vh]');
-    const saveBtn = container.querySelector('[data-kundresa-vh-save]');
-
-    function maybeToggleSaveBtn() {
-      if (!saveBtn || !vhSelect) return;
-      const v = vhSelect.value;
-      // Ja sparas direkt; Osäker/Nej behöver ofta anteckning → visa Spara
-      saveBtn.hidden = v === 'Ja';
-    }
+    const savedEl = container.querySelector('[data-kundresa-vh-saved]');
 
     if (vhSelect && noteWrap) {
       vhSelect.addEventListener('change', () => {
@@ -356,18 +347,25 @@
         const need = v === 'Osaker' || v === 'Nej' || !!(container.querySelector('[data-kundresa-vh-note]')?.value || '').trim();
         noteWrap.hidden = !need;
         syncVhSegments(container);
-        maybeToggleSaveBtn();
       });
     }
 
+    function markVhSaved() {
+      if (!savedEl) return;
+      savedEl.hidden = false;
+      savedEl.classList.add('is-saved');
+      savedEl.textContent = 'Sparat';
+    }
+
     function emitVhSave() {
-      if (!onVhSave || !saveBtn) return;
+      if (!onVhSave) return;
       const sel = container.querySelector('[data-kundresa-vh]');
       const note = container.querySelector('[data-kundresa-vh-note]');
       onVhSave({
         byraVhBekraftelse: sel ? sel.value : '',
         byraVhNote: note ? note.value : ''
-      }, saveBtn);
+      }, savedEl);
+      markVhSaved();
     }
 
     container.querySelectorAll('[data-kundresa-vh-seg]').forEach((btn) => {
@@ -377,12 +375,11 @@
         const val = btn.getAttribute('data-kundresa-vh-seg') || '';
         sel.value = val;
         sel.dispatchEvent(new Event('change', { bubbles: true }));
-        // Förslag 1: «Sparas direkt» — Ja sparas omedelbart
-        if (val === 'Ja') emitVhSave();
+        // Ja / Osäker / Nej sparas direkt (ingen separat Spara-knapp)
+        emitVhSave();
       });
     });
     syncVhSegments(container);
-    maybeToggleSaveBtn();
 
     function emitStep(stepLike) {
       if (!stepLike || stepLike.gated) return;
@@ -443,10 +440,6 @@
     }
     if (klarBtn && onClose) {
       klarBtn.addEventListener('click', () => onClose());
-    }
-
-    if (saveBtn && onVhSave) {
-      saveBtn.addEventListener('click', () => emitVhSave());
     }
 
     if (onReady) {
