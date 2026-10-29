@@ -561,6 +561,18 @@
     return String(ev.meetingUrl || ev.hangoutLink || '').trim();
   }
 
+  /**
+   * Visuell mötesstil (mild cerise): CF-mötesbokning, Google med meeting:-nyckel,
+   * eller Google/overlay med videomöteslänk. Påverkar inte detaljpanel-routing.
+   */
+  function usesMeetingStyle(ev) {
+    if (!ev) return false;
+    if (isMeetingEvent(ev)) return true;
+    if (String(ev.clientflowKey || '').startsWith('meeting:')) return true;
+    if (isOverlayCalendarEvent(ev) && eventMeetingUrl(ev)) return true;
+    return false;
+  }
+
   function meetLinkChipHtml(ev) {
     const url = eventMeetingUrl(ev);
     if (!url) return '';
@@ -1231,15 +1243,18 @@
 
   function chip(ev) {
     if (isOverlayCalendarEvent(ev)) {
-      const name = String(ev.summary || ev.record?.fields?.Kundnamn || (isMeetingEvent(ev) ? 'Möte' : 'Google'));
+      const meetingStyle = usesMeetingStyle(ev);
+      const name = String(ev.summary || ev.record?.fields?.Kundnamn || (meetingStyle ? 'Möte' : 'Google'));
       const sched = scheduleOf(ev);
-      const kind = isMeetingEvent(ev) ? 'Möte' : 'Google';
+      const kind = meetingStyle ? 'Möte' : 'Google';
       const timeBit = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : (ev.allDay ? 'Heldag · ' : '');
       const meetUrl = eventMeetingUrl(ev);
       const title = `${timeBit}${name} · ${kind}${meetUrl ? ` · ${meetUrl}` : ''}`;
-      const cls = isMeetingEvent(ev) ? 'kalender-chip--meeting' : 'kalender-chip--google';
+      const cls = meetingStyle ? 'kalender-chip--meeting' : 'kalender-chip--google';
       return `<button type="button" class="kalender-chip ${cls}" data-key="${esc(ev.key)}" title="${esc(title)}">
-        ${isGoogleEvent(ev) ? googleColorDotHtml(ev) : '<i class="fas fa-video kalender-chip-meet-icon" aria-hidden="true"></i>'}
+        ${meetingStyle
+          ? '<i class="fas fa-video kalender-chip-meet-icon" aria-hidden="true"></i>'
+          : googleColorDotHtml(ev)}
         <span class="kalender-chip-name">${esc(name)}</span>
         ${meetUrl ? '<i class="fas fa-link kalender-chip-meet-icon" aria-hidden="true" title="Möteslänk"></i>' : ''}
         ${sched ? `<span class="kalender-chip-time">${esc(KV.fmtTimeLabel(sched.startMin))}</span>` : ''}
@@ -1361,19 +1376,20 @@
 
   function timedBlockHtml(ev, laneInfo) {
     if (isOverlayCalendarEvent(ev)) {
-      const name = String(ev.summary || ev.record?.fields?.Kundnamn || (isMeetingEvent(ev) ? 'Möte' : 'Google'));
+      const meetingStyle = usesMeetingStyle(ev);
+      const name = String(ev.summary || ev.record?.fields?.Kundnamn || (meetingStyle ? 'Möte' : 'Google'));
       const sched = scheduleOf(ev);
       if (!sched) return '';
       const layout = KV.blockLayout(sched.startMin, sched.endMin, laneInfo);
-      const kind = isMeetingEvent(ev) ? 'Möte' : 'Google';
+      const kind = meetingStyle ? 'Möte' : 'Google';
       const meetUrl = eventMeetingUrl(ev);
-      const blockCls = isMeetingEvent(ev) ? 'kalender-block--meeting' : 'kalender-block--google';
+      const blockCls = meetingStyle ? 'kalender-block--meeting' : 'kalender-block--google';
       const title = `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name} · ${kind}${meetUrl ? ` · ${meetUrl}` : ''}`;
       return `<div class="kalender-block ${blockCls}" data-key="${esc(ev.key)}" data-timed="1"
         style="${KV.blockPositionStyleAttr(layout)}"
         title="${esc(title)}">
         <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}">
-          <span class="kalender-block-name">${isGoogleEvent(ev) ? googleColorDotHtml(ev) : ''}${esc(name)}</span>
+          <span class="kalender-block-name">${!meetingStyle && isGoogleEvent(ev) ? googleColorDotHtml(ev) : ''}${esc(name)}</span>
           <span class="kalender-block-time">${esc(kind)} · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
           ${meetLinkChipHtml(ev)}
         </button>
@@ -2453,8 +2469,9 @@
         aria-haspopup="dialog" title="${esc(`${n} deadline${n === 1 ? '' : 's'}`)}">${esc(String(n))} deadline${n === 1 ? '' : 's'}</button>`);
     }
     overlayAllDay.forEach((ev) => {
-      const name = String(ev.summary || (isMeetingEvent(ev) ? 'Möte' : 'Google'));
-      const cls = isMeetingEvent(ev) ? 'kalender-allday-meeting' : 'kalender-allday-gcal';
+      const meetingStyle = usesMeetingStyle(ev);
+      const name = String(ev.summary || (meetingStyle ? 'Möte' : 'Google'));
+      const cls = meetingStyle ? 'kalender-allday-meeting' : 'kalender-allday-gcal';
       parts.push(`<button type="button" class="${cls}" data-key="${esc(ev.key)}" title="${esc(name)}">${esc(name)}</button>`);
     });
     return `<div class="kalender-untimed${iso === t ? ' is-today' : ''}" data-date="${esc(iso)}">
@@ -3092,6 +3109,7 @@
       : (ev.allDay ? 'Heldag' : '—');
     const siblings = Array.isArray(group) && group.length > 1 ? group : null;
     const timed = !!(sched && !ev.allDay);
+    const meetingStyle = usesMeetingStyle(ev);
     openDetailKey = String(ev.key || '');
 
     const GA = window.KalenderGcalActions;
@@ -3102,7 +3120,9 @@
 
     if (el.detailTitle) el.detailTitle.textContent = name;
     el.detailBody.innerHTML = `
-      <div class="kalender-detail-status kalender-detail-status--google">${googleColorDotHtml(ev)} Google-kalender</div>
+      <div class="kalender-detail-status ${meetingStyle ? 'kalender-detail-status--meeting' : 'kalender-detail-status--google'}">${meetingStyle
+        ? '<i class="fas fa-video" aria-hidden="true"></i> Möte · Google-kalender'
+        : `${googleColorDotHtml(ev)} Google-kalender`}</div>
       <dl class="kalender-detail-dl">
         <div><dt>Titel</dt><dd>${esc(name)}</dd></div>
         <div><dt>Datum</dt><dd>${esc(dateIso || '—')}</dd></div>
@@ -3148,8 +3168,16 @@
       </div>
       ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
         ${siblings.map((s) => {
-          const label = isGoogleEvent(s) ? (s.summary || 'Google') : String(s.record?.fields?.Kundnamn || s.key);
-          return `<button type="button" class="kalender-side-item${isGoogleEvent(s) ? ' kalender-side-item--google' : ''}" data-key="${esc(s.key)}"><span class="kalender-side-name">${isGoogleEvent(s) ? googleColorDotHtml(s) : ''}${esc(label)}</span></button>`;
+          const label = isOverlayCalendarEvent(s)
+            ? (s.summary || (usesMeetingStyle(s) ? 'Möte' : 'Google'))
+            : String(s.record?.fields?.Kundnamn || s.key);
+          const sideCls = usesMeetingStyle(s)
+            ? ' kalender-side-item--meeting'
+            : (isGoogleEvent(s) ? ' kalender-side-item--google' : '');
+          const prefix = usesMeetingStyle(s)
+            ? '<i class="fas fa-video kalender-chip-meet-icon" aria-hidden="true"></i>'
+            : (isGoogleEvent(s) ? googleColorDotHtml(s) : '');
+          return `<button type="button" class="kalender-side-item${sideCls}" data-key="${esc(s.key)}"><span class="kalender-side-name">${prefix}${esc(label)}</span></button>`;
         }).join('')}
       </div>` : ''}`;
     el.detail.hidden = false;
@@ -3197,9 +3225,9 @@
       ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
         ${siblings.map((s) => {
           const label = isOverlayCalendarEvent(s)
-            ? (s.summary || (isMeetingEvent(s) ? 'Möte' : 'Google'))
+            ? (s.summary || (usesMeetingStyle(s) ? 'Möte' : 'Google'))
             : String(s.record?.fields?.Kundnamn || s.key);
-          const sideCls = isMeetingEvent(s)
+          const sideCls = usesMeetingStyle(s)
             ? ' kalender-side-item--meeting'
             : (isGoogleEvent(s) ? ' kalender-side-item--google' : '');
           return `<button type="button" class="kalender-side-item${sideCls}" data-key="${esc(s.key)}"><span class="kalender-side-name">${esc(label)}</span></button>`;

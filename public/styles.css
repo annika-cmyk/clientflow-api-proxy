@@ -61,6 +61,12 @@
   --text-secondary: var(--text);
   --text-accent:   var(--accent);
   --text-muted:    var(--ink-3);
+
+  /* Kalender: bokade möten (mötesbokning / Meet) – mild cerise */
+  --kal-meeting:        #c45d8c;
+  --kal-meeting-bg:     #fceef5;
+  --kal-meeting-border: #efd0e0;
+  --kal-meeting-text:   #5a2840;
 }
 
 /* Varm temperatur för kundvända ytor (underlags-formuläret).
@@ -23460,6 +23466,7 @@ a.byra-profil-chip:hover {
 .kalender-dot--pagande { background: var(--warning, #b07414); }
 .kalender-dot--planerad { background: var(--accent, #13505c); }
 .kalender-dot--sen { background: var(--error, #b42318); }
+.kalender-dot--meeting { background: var(--kal-meeting, #c45d8c); }
 .kalender-dot--google { background: #9aa3ab; }
 
 .kalender-layout {
@@ -23593,13 +23600,13 @@ a.byra-profil-chip:hover {
     color: #3e4a55;
 }
 .kalender-block--meeting {
-    border-color: #c5d9dc;
-    border-left: 3px solid #13505c;
-    background: #eef6f7;
+    border-color: var(--kal-meeting-border, #efd0e0);
+    border-left: 3px solid var(--kal-meeting, #c45d8c);
+    background: var(--kal-meeting-bg, #fceef5);
     box-shadow: none;
 }
 .kalender-block--meeting .kalender-block-main {
-    color: #1a3f46;
+    color: var(--kal-meeting-text, #5a2840);
 }
 .kalender-block-meet {
     display: inline-flex;
@@ -23615,11 +23622,14 @@ a.byra-profil-chip:hover {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.kalender-block--meeting .kalender-block-meet {
+    color: var(--kal-meeting, #c45d8c);
+}
 .kalender-block-meet:hover { text-decoration: underline; }
 .kalender-chip--meeting {
-    border-left-color: #13505c;
-    background: #eef6f7;
-    color: #1a3f46;
+    border-left-color: var(--kal-meeting, #c45d8c);
+    background: var(--kal-meeting-bg, #fceef5);
+    color: var(--kal-meeting-text, #5a2840);
 }
 .kalender-chip-meet-icon {
     font-size: 0.65rem;
@@ -23627,18 +23637,18 @@ a.byra-profil-chip:hover {
     margin-right: 0.2rem;
 }
 .kalender-detail-status--meeting {
-    color: #1a3f46;
-    background: #eef6f7;
+    color: var(--kal-meeting-text, #5a2840);
+    background: var(--kal-meeting-bg, #fceef5);
 }
-.kalender-side-item--meeting { border-left-color: #13505c; }
+.kalender-side-item--meeting { border-left-color: var(--kal-meeting, #c45d8c); }
 .kalender-allday-meeting {
     display: block;
     width: 100%;
     text-align: left;
     border: none;
-    background: #eef6f7;
-    color: #1a3f46;
-    border-left: 3px solid #13505c;
+    background: var(--kal-meeting-bg, #fceef5);
+    color: var(--kal-meeting-text, #5a2840);
+    border-left: 3px solid var(--kal-meeting, #c45d8c);
     font-size: 0.72rem;
     padding: 0.2rem 0.35rem;
     margin: 0.1rem 0;
@@ -24036,7 +24046,7 @@ a.byra-profil-chip:hover {
     overflow: auto;
 }
 .kalender-meet-link {
-    color: var(--accent, #13505c);
+    color: var(--kal-meeting, #c45d8c);
     word-break: break-all;
     text-decoration: none;
     font-weight: 600;
