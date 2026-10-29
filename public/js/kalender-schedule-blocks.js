@@ -82,6 +82,16 @@
     return st === 'klar' || st === 'avslutad' || st === 'done' || st === 'completed';
   }
 
+  const NOTE_MAX_LEN = 2000;
+
+  /** Kort anteckning per tidblock (t.ex. vad som ska göras just då). */
+  function normalizeNote(raw) {
+    if (raw == null) return '';
+    const s = String(raw).replace(/\r\n/g, '\n').trim();
+    if (!s) return '';
+    return s.length > NOTE_MAX_LEN ? s.slice(0, NOTE_MAX_LEN) : s;
+  }
+
   function normalizeBlock(raw, fallbackId) {
     if (!raw || typeof raw !== 'object') return null;
     const start = trimIso(raw.start);
@@ -93,6 +103,8 @@
     const id = String(raw.id || fallbackId || '').trim() || newBlockId();
     const block = { id, start, end };
     if (isBlockDone(raw)) block.done = true;
+    const note = normalizeNote(raw.note);
+    if (note) block.note = note;
     return block;
   }
 
@@ -145,6 +157,7 @@
     return JSON.stringify(list.map((b) => {
       const row = { id: b.id, start: b.start, end: b.end };
       if (b.done) row.done = true;
+      if (b.note) row.note = b.note;
       return row;
     }));
   }
@@ -158,7 +171,7 @@
   /**
    * Mutera blocklista.
    * @param {Array} current
-   * @param {{ mode?: string, blockId?: string|null, start?: string|null, end?: string|null, done?: boolean }} mutation
+   * @param {{ mode?: string, blockId?: string|null, start?: string|null, end?: string|null, done?: boolean, note?: string|null }} mutation
    *   mode: 'set' (ersätt allt med ett block / rensa), 'add', 'update', 'remove',
    *         'complete' / 'done' (markera tillfälle som klart — behålls i kalendern)
    */
@@ -170,6 +183,7 @@
     const hasStart = Object.prototype.hasOwnProperty.call(mutation || {}, 'start');
     const hasEnd = Object.prototype.hasOwnProperty.call(mutation || {}, 'end');
     const hasDone = Object.prototype.hasOwnProperty.call(mutation || {}, 'done');
+    const hasNote = Object.prototype.hasOwnProperty.call(mutation || {}, 'note');
     const startVal = hasStart ? (mutation.start == null || mutation.start === '' ? null : trimIso(mutation.start)) : undefined;
     const endVal = hasEnd ? (mutation.end == null || mutation.end === '' ? null : trimIso(mutation.end)) : undefined;
 
@@ -202,7 +216,12 @@
         throw new Error('Slut måste vara efter start');
       }
       const id = blockId || newBlockId();
-      blocks.push({ id, start: startVal, end: endVal });
+      const next = { id, start: startVal, end: endVal };
+      if (hasNote) {
+        const note = normalizeNote(mutation.note);
+        if (note) next.note = note;
+      }
+      blocks.push(next);
       return sortBlocks(blocks);
     }
 
@@ -210,8 +229,18 @@
       if (!blockId) throw new Error('blockId krävs för att uppdatera tidblock');
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx < 0) throw new Error('Tidblocket hittades inte');
-      const nextStart = hasStart ? startVal : blocks[idx].start;
-      const nextEnd = hasEnd ? endVal : blocks[idx].end;
+      const prev = blocks[idx];
+      // Note-only: behåll tider utan att kräva start/end i mutationen
+      if (hasNote && !hasStart && !hasEnd && !hasDone) {
+        const note = normalizeNote(mutation.note);
+        const next = { id: blockId, start: prev.start, end: prev.end };
+        if (prev.done) next.done = true;
+        if (note) next.note = note;
+        blocks[idx] = next;
+        return sortBlocks(blocks);
+      }
+      const nextStart = hasStart ? startVal : prev.start;
+      const nextEnd = hasEnd ? endVal : prev.end;
       if (nextStart == null || nextEnd == null) {
         // null = ta bort
         blocks.splice(idx, 1);
@@ -221,8 +250,14 @@
         throw new Error('Slut måste vara efter start');
       }
       const next = { id: blockId, start: nextStart, end: nextEnd };
-      const nextDone = hasDone ? !!mutation.done : !!blocks[idx].done;
+      const nextDone = hasDone ? !!mutation.done : !!prev.done;
       if (nextDone) next.done = true;
+      if (hasNote) {
+        const note = normalizeNote(mutation.note);
+        if (note) next.note = note;
+      } else if (prev.note) {
+        next.note = prev.note;
+      }
       blocks[idx] = next;
       return sortBlocks(blocks);
     }
@@ -291,6 +326,7 @@
           scheduledEnd: b.end,
           scheduleBlocks: blocks,
           blockDone,
+          blockNote: b.note || '',
           // Tillfälle som klarmarkerats syns kvar som Klar i rutnätet
           status: blockDone ? 'Klar' : ev.status
         });
@@ -362,6 +398,8 @@
     newBlockId,
     sortBlocks,
     isBlockDone,
+    NOTE_MAX_LEN,
+    normalizeNote,
     normalizeBlock,
     parseBlocksFromFields,
     serializeBlocks,

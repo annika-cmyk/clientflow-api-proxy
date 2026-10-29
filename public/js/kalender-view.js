@@ -361,6 +361,15 @@
     return { startMin: s, endMin: e };
   }
 
+  /** Förläng/korta från övre kanten — ändrar start, behåller slut. */
+  function resizeBlockStart(newStartMin, endMin) {
+    const gridStart = dayStartMinutes();
+    const e = Number(endMin) || dayEndMinutes();
+    let s = snapMinutes(newStartMin, SNAP_MINUTES);
+    s = clamp(s, gridStart, e - SNAP_MINUTES);
+    return { startMin: s, endMin: e };
+  }
+
   /** Kalenderdag för placering: planerad start om satt, annars deadline. */
   function placementDate(scheduledStart, deadlineIso) {
     const sched = normalizeSchedule(scheduledStart, null);
@@ -538,6 +547,7 @@
     yToMinutes,
     moveBlock,
     resizeBlock,
+    resizeBlockStart,
     placementDate,
     inVisibleRangeForEvent,
     EVENT_MODES,
