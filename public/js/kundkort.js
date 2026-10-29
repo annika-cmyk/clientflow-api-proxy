@@ -6922,9 +6922,15 @@ class CustomerCardManager {
         }
     }
 
-    async saveRedovisning() {
+    async saveRedovisning(opts = {}) {
+        const silent = !!(opts && opts.silent);
+        const keepEditing = !!(opts && opts.keepEditing);
         const customerId = this.customerId;
-        if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
+        if (!customerId) {
+            if (silent) this._setKundresaRedovisningStatus('Kunde inte spara – försök igen');
+            else this.showNotification('Kund-ID saknas', 'error');
+            return false;
+        }
 
         const metod = document.getElementById('redov-metod-input')?.value || '';
         const period = document.getElementById('redov-period-input')?.value || '';
@@ -6935,7 +6941,8 @@ class CustomerCardManager {
 
         const saveBtn = document.querySelector('#redovisning-edit .btn-primary');
         const orig = saveBtn?.innerHTML;
-        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+        if (saveBtn && !silent) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+        if (silent) this._setKundresaRedovisningStatus('Sparar…');
 
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -6978,17 +6985,28 @@ class CustomerCardManager {
                 this.customerData.fields['Bokforingsprogram'] = bokforing;
                 this.customerData.fields['Bank'] = bank;
                 if (omsattning) this.customerData.fields['Omsättning'] = omsattning;
+                else if (Object.prototype.hasOwnProperty.call(fields, 'Omsättning') === false) {
+                    /* empty omsättning not sent — leave prior */
+                }
             }
-            if (omsattning) {
+            if (omsattning && !silent) {
                 this.renderOvrigKYCBase();
                 this.loadServices();
             }
-            this.toggleRedovisningEdit();
-            this.showNotification('Redovisningsuppgifter sparade!', 'success');
+            if (!keepEditing) this.toggleRedovisningEdit();
+            if (silent) {
+                this._setKundresaRedovisningStatus('Sparat');
+                this._refreshKundresaStep3Remaining();
+            } else {
+                this.showNotification('Redovisningsuppgifter sparade!', 'success');
+            }
+            return true;
         } catch (error) {
-            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+            if (silent) this._setKundresaRedovisningStatus('Kunde inte spara – försök igen');
+            else this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+            return false;
         } finally {
-            if (saveBtn) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
+            if (saveBtn && !silent) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
         }
     }
 
@@ -10715,6 +10733,12 @@ class CustomerCardManager {
             return;
         }
 
+        // Popup steg 3: kompakt flerval (påverkar inte kundkortet utanför #kundresa-step-host)
+        if (targetId === 'nykund-tjanster' && content.closest('#kundresa-step-host')) {
+            this._renderTjansterKundresaCompact(content, alla, aktSet, isTjanstAktiv);
+            return;
+        }
+
         const riskBadge = (t) => this._riskSkalaPillsHtml(this._scoredFromTjanst(t));
         const forutsattningFlag = (t) => {
             const item = this._effectiveTjanstItem(t);
@@ -11516,6 +11540,385 @@ class CustomerCardManager {
         }
     }
 
+
+    // ─── Kundresa steg 3: redovisning + tjänster (popup only) ───────────────
+
+    _setKundresaRedovisningStatus(msg) {
+        const el = document.getElementById('kundresa-redovisning-status');
+        if (!el) return;
+        el.textContent = msg || '';
+        el.classList.toggle('is-error', /kunde inte/i.test(msg || ''));
+        el.classList.toggle('is-ok', /^Sparat/i.test(msg || ''));
+        el.classList.toggle('is-busy', /Sparar/i.test(msg || ''));
+    }
+
+    _refreshKundresaStep3Remaining() {
+        if (!this._kundresa || !this.customerData?.fields) return;
+        try {
+            const fields = this.customerData.fields;
+            const defs = [
+                { keys: ['Redovisningsmetod'], label: 'redovisningsmetod' },
+                { keys: ['Redovisningsperiod'], label: 'momsperiod' },
+                { keys: ['Räkenskapsår'], label: 'räkenskapsår' },
+                { keys: ['Bokforingsprogram', 'Bokföringsprogram'], label: 'bokföringsprogram' },
+                { keys: ['Bank'], label: 'bank' },
+                { keys: ['Omsättning'], label: 'omsättning' }
+            ];
+            const remaining = [];
+            defs.forEach((d) => {
+                const filled = d.keys.some((k) => String(fields[k] || '').trim());
+                if (!filled) remaining.push(d.label);
+            });
+            const raw = fields['Kundens utvalda tjänster'];
+            const hasT = Array.isArray(raw) ? raw.length > 0 : !!(raw && String(raw).trim());
+            if (!hasT) remaining.push('välj minst en tjänst');
+            this._kundresa.step3Substatus = {
+                remaining,
+                remainingLabel: remaining.length ? `Kvar: ${remaining.join(' · ')}` : '',
+                emptyFieldCount: Math.max(0, remaining.length - (hasT ? 0 : 1)),
+                hasTjanster: hasT
+            };
+            const foot = document.querySelector('.kundresa-step-remaining');
+            if (foot && this._activeKundresaFocus === 'redovisning_tjanster') {
+                if (remaining.length) {
+                    foot.classList.remove('is-ok');
+                    foot.innerHTML = `<i class="fas fa-exclamation-circle" aria-hidden="true"></i> Kvar: ${remaining.map((r) => this._esc(r)).join(' · ')}`;
+                } else {
+                    foot.classList.add('is-ok');
+                    foot.textContent = '';
+                }
+            }
+            const step = (this._kundresa.steps || []).find((s) => Number(s.id) === 3);
+            if (step && !step.done) {
+                const n = remaining.length;
+                if (n > 0) {
+                    step.label = n === 1 ? '1 sak kvar' : `${n} saker kvar`;
+                    const tabStatus = document.querySelector('.tjanst-tab[data-kundresa-step-id="3"] .kundresa-tab-status');
+                    if (tabStatus) tabStatus.textContent = step.label;
+                }
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    _enhanceKundresaStep3() {
+        this._kundresaStep3Active = true;
+        this._enhanceKundresaRedovisning();
+        if (document.getElementById('nykund-tjanster')) {
+            const byraHighRisk = this.customerData?.fields?.['Lookup Byråns högrisktjänster'] || [];
+            this.renderTjanster(this._aktivaTjansterIds || new Set(), byraHighRisk, 'nykund-tjanster');
+        }
+        const tCard = document.getElementById('nykund-tjanster-card');
+        if (tCard) {
+            const titleSpan = tCard.querySelector('.collapsible-title span');
+            if (titleSpan && !titleSpan.dataset.kundresaPrevTitle) {
+                titleSpan.dataset.kundresaPrevTitle = titleSpan.textContent;
+                titleSpan.textContent = 'Tjänster';
+            }
+            tCard.querySelectorAll('.collapsible-body > .kundresa-hint, .collapsible-body > p.kundresa-hint').forEach((hint) => {
+                if (hint.id === 'kundresa-tjanster-help') return;
+                hint.hidden = true;
+                hint.dataset.kundresaHiddenHint = '1';
+            });
+        }
+        this._refreshKundresaStep3Remaining();
+    }
+
+    _teardownKundresaStep3() {
+        this._teardownKundresaRedovisning();
+        const tCard = document.getElementById('nykund-tjanster-card');
+        if (tCard) {
+            const titleSpan = tCard.querySelector('.collapsible-title span');
+            if (titleSpan && titleSpan.dataset.kundresaPrevTitle) {
+                titleSpan.textContent = titleSpan.dataset.kundresaPrevTitle;
+                delete titleSpan.dataset.kundresaPrevTitle;
+            }
+            tCard.querySelectorAll('[data-kundresa-hidden-hint="1"]').forEach((el) => {
+                el.hidden = false;
+                delete el.dataset.kundresaHiddenHint;
+            });
+        }
+        const host = document.getElementById('nykund-tjanster');
+        if (host && !host.closest('#kundresa-step-host') && this._byransTjanster) {
+            const byraHighRisk = this.customerData?.fields?.['Lookup Byråns högrisktjänster'] || [];
+            this.renderTjanster(this._aktivaTjansterIds || new Set(), byraHighRisk, 'nykund-tjanster');
+        }
+        this._kundresaStep3Active = false;
+        this._kundresaTjansterOnlySelected = false;
+    }
+
+    _enhanceKundresaRedovisning() {
+        const card = document.getElementById('redovisning-card');
+        const view = document.getElementById('redovisning-view');
+        const edit = document.getElementById('redovisning-edit');
+        const fab = document.getElementById('redovisning-edit-btn');
+        if (!card || !view || !edit) return;
+
+        this._kundresaRedovisningLive = true;
+        card.classList.add('kundresa-redovisning-live');
+        view.style.display = 'none';
+        edit.style.display = '';
+        if (fab) fab.style.display = 'none';
+        const actions = edit.querySelector('.kunduppgifter-actions');
+        if (actions) actions.style.display = 'none';
+
+        const titleSpan = card.querySelector('.collapsible-title span');
+        if (titleSpan && !titleSpan.dataset.kundresaPrevTitle) {
+            titleSpan.dataset.kundresaPrevTitle = titleSpan.textContent;
+            titleSpan.textContent = 'Redovisning';
+        }
+
+        let status = document.getElementById('kundresa-redovisning-status');
+        if (!status) {
+            const titleWrap = card.querySelector('.collapsible-title');
+            status = document.createElement('span');
+            status.id = 'kundresa-redovisning-status';
+            status.className = 'kundresa-save-status';
+            status.setAttribute('aria-live', 'polite');
+            if (titleWrap) titleWrap.appendChild(status);
+        }
+
+        const labelMap = {
+            'redov-metod-input': 'Redovisningsmetod',
+            'redov-period-input': 'Momsperiod',
+            'redov-rakenskapsår-input': 'Räkenskapsår',
+            'redov-bokforing-input': 'Bokföringsprogram',
+            'redov-bank-input': 'Bank',
+            'redov-omsattning-input': 'Omsättning'
+        };
+        Object.entries(labelMap).forEach(([id, label]) => {
+            const input = document.getElementById(id);
+            const row = input?.closest('.kunduppgifter-form-row');
+            const lab = row?.querySelector('label');
+            if (lab && !lab.dataset.kundresaPrevLabel) {
+                lab.dataset.kundresaPrevLabel = lab.textContent;
+                lab.textContent = label;
+            }
+            if (input && input.tagName === 'SELECT') {
+                const empty = input.querySelector('option[value=""]');
+                if (empty && !empty.dataset.kundresaPrevText) {
+                    empty.dataset.kundresaPrevText = empty.textContent;
+                    empty.textContent = 'Välj…';
+                }
+            }
+        });
+
+        if (!this._kundresaRedovisningBound) {
+            this._kundresaRedovisningBound = true;
+            this._kundresaRedovisningOnChange = (e) => {
+                if (!this._kundresaRedovisningLive) return;
+                const t = e.target;
+                if (!t || !t.id || !String(t.id).startsWith('redov-')) return;
+                if (!edit.contains(t)) return;
+                clearTimeout(this._kundresaRedovisningTimer);
+                this._kundresaRedovisningTimer = setTimeout(() => {
+                    this.saveRedovisning({ silent: true, keepEditing: true });
+                }, 180);
+            };
+            edit.addEventListener('change', this._kundresaRedovisningOnChange);
+        }
+    }
+
+    _teardownKundresaRedovisning() {
+        const card = document.getElementById('redovisning-card');
+        const view = document.getElementById('redovisning-view');
+        const edit = document.getElementById('redovisning-edit');
+        const fab = document.getElementById('redovisning-edit-btn');
+        if (edit && this._kundresaRedovisningOnChange) {
+            edit.removeEventListener('change', this._kundresaRedovisningOnChange);
+        }
+        this._kundresaRedovisningBound = false;
+        this._kundresaRedovisningOnChange = null;
+        clearTimeout(this._kundresaRedovisningTimer);
+        this._kundresaRedovisningLive = false;
+
+        if (card) {
+            card.classList.remove('kundresa-redovisning-live');
+            const titleSpan = card.querySelector('.collapsible-title span');
+            if (titleSpan && titleSpan.dataset.kundresaPrevTitle) {
+                titleSpan.textContent = titleSpan.dataset.kundresaPrevTitle;
+                delete titleSpan.dataset.kundresaPrevTitle;
+            }
+        }
+        const status = document.getElementById('kundresa-redovisning-status');
+        if (status) status.remove();
+
+        if (edit) {
+            edit.querySelectorAll('label[data-kundresa-prev-label]').forEach((lab) => {
+                lab.textContent = lab.dataset.kundresaPrevLabel;
+                delete lab.dataset.kundresaPrevLabel;
+            });
+            edit.querySelectorAll('option[data-kundresa-prev-text]').forEach((opt) => {
+                opt.textContent = opt.dataset.kundresaPrevText;
+                delete opt.dataset.kundresaPrevText;
+            });
+            const actions = edit.querySelector('.kunduppgifter-actions');
+            if (actions) actions.style.display = '';
+            edit.style.display = 'none';
+        }
+        if (view) view.style.display = '';
+        if (fab) {
+            fab.style.display = '';
+            fab.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+        }
+    }
+
+    _kundresaResidualRiskHtml(t) {
+        const scored = this._scoredFromTjanst(t) || {};
+        const residual = this._riskLabel(scored.residualLevel);
+        if (!residual) return '';
+        const product = scored.residualProduct;
+        const title = product != null && product !== ''
+            ? `Residualrisk S×K = ${product} enligt byråns riskbedömning`
+            : 'Residualrisk enligt byråns riskbedömning';
+        const key = (window.RiskSkala && RiskSkala.normalizeRiskKey)
+            ? RiskSkala.normalizeRiskKey(residual)
+            : '';
+        const isLow = key === 'low' || residual === 'Låg';
+        if (isLow) {
+            const txt = product != null && product !== '' ? `Låg ${product}` : 'Låg';
+            return `<span class="kundresa-tjanst-risk kundresa-tjanst-risk--low" title="${this._esc(title)}">${this._esc(txt)}</span>`;
+        }
+        const cls = (window.RiskSkala && RiskSkala.riskPillClass(residual)) || 'risk-pill--normal';
+        return `<span class="risk-skala-pills kundresa-tjanst-risk-badge"><span class="risk-pill ${cls}" title="${this._esc(title)}">${this._esc(residual)}</span></span>`;
+    }
+
+    _renderTjansterKundresaCompact(content, alla, aktSet, isTjanstAktiv) {
+        const p = 'nykund-tjanster';
+        const onlySelected = !!this._kundresaTjansterOnlySelected;
+        const selectedCount = alla.filter((t) => isTjanstAktiv(t)).length;
+        const list = onlySelected ? alla.filter((t) => isTjanstAktiv(t)) : alla;
+        const unmatched = this._unmatchedTjanster();
+        const unmatchedHtml = unmatched.length
+            ? `<div class="tjanster-unmatched-warn" role="status">Tjänster utanför katalogen: ${unmatched.map((n) => `<strong>${this._esc(n)}</strong>`).join(', ')}.</div>`
+            : '';
+
+        const rows = list.length === 0
+            ? `<p class="lead-empty">${onlySelected ? 'Inga valda tjänster.' : 'Inga tjänster i katalogen.'}</p>`
+            : `<div class="kundresa-tjanster-grid" role="group" aria-label="Byråns tjänster">
+                ${list.map((t) => {
+                    const checked = isTjanstAktiv(t);
+                    return `<label class="kundresa-tjanst-row${checked ? ' is-selected' : ''}">
+                        <input type="checkbox" name="tjanst-${p}" value="${this._esc(t.id)}" ${checked ? 'checked' : ''}
+                            data-kundresa-tjanst-id="${this._esc(t.id)}">
+                        <span class="kundresa-tjanst-name">${this._esc(t.namn)}</span>
+                        ${this._kundresaResidualRiskHtml(t)}
+                    </label>`;
+                }).join('')}
+            </div>`;
+
+        content.innerHTML = `
+            <p class="kundresa-tjanster-help" id="kundresa-tjanster-help">Välj de tjänster byrån ska utföra. Valen används i riskbedömningen.</p>
+            <div class="kundresa-tjanster-toolbar">
+                <span class="kundresa-tjanster-count" id="kundresa-tjanster-count">${selectedCount} valda</span>
+                <button type="button" class="kundresa-tjanster-filter-link" id="kundresa-tjanster-filter"
+                    aria-pressed="${onlySelected ? 'true' : 'false'}">${onlySelected ? 'Visa alla' : 'Visa bara valda'}</button>
+            </div>
+            ${unmatchedHtml}
+            ${rows}
+            <div class="kundresa-tjanster-save-status" id="kundresa-tjanster-save-status" aria-live="polite"></div>
+        `;
+
+        const tjanstBody = content.closest('.collapsible-body');
+        if (tjanstBody) {
+            const fab = tjanstBody.querySelector(`#tjanster-edit-btn-${p}`);
+            if (fab) fab.style.display = 'none';
+        }
+
+        const filterBtn = content.querySelector('#kundresa-tjanster-filter');
+        if (filterBtn) {
+            filterBtn.addEventListener('click', () => {
+                this._kundresaTjansterOnlySelected = !this._kundresaTjansterOnlySelected;
+                const akt = this._aktivaTjansterIds || aktSet;
+                const isAkt = (t) => this._tjanstIdMatchSet(t).some((id) => akt.has(id));
+                this._renderTjansterKundresaCompact(content, alla, akt, isAkt);
+            });
+        }
+
+        content.querySelectorAll(`input[name="tjanst-${p}"]`).forEach((cb) => {
+            cb.addEventListener('change', () => {
+                this._autosaveKundresaTjanster(content, cb);
+            });
+        });
+    }
+
+    async _autosaveKundresaTjanster(content, changedCb) {
+        const customerId = this.customerId;
+        const statusEl = document.getElementById('kundresa-tjanster-save-status');
+        const setStatus = (msg, kind) => {
+            if (!statusEl) return;
+            statusEl.textContent = msg || '';
+            statusEl.classList.toggle('is-error', kind === 'error');
+            statusEl.classList.toggle('is-ok', kind === 'ok');
+        };
+        if (!customerId) {
+            if (changedCb) changedCb.checked = !changedCb.checked;
+            setStatus('Kunde inte spara – försök igen', 'error');
+            return;
+        }
+
+        const checkedIds = [...content.querySelectorAll('input[name="tjanst-nykund-tjanster"]:checked')]
+            .map((cb) => cb.value);
+        const TK = window.TjanstKatalog;
+        const existing = this.customerData?.fields?.['Kundens utvalda tjänster'] || [];
+        const toSave = TK && TK.mergeSaveValues
+            ? TK.mergeSaveValues(existing, checkedIds, this._byransTjanster || [], this._tjanstKatalogOpts())
+            : checkedIds;
+
+        const prevAktiva = this._aktivaTjansterIds;
+        this._aktivaTjansterIds = new Set(toSave);
+        const countEl = document.getElementById('kundresa-tjanster-count');
+        if (countEl) {
+            const n = (this._byransTjanster || []).filter((t) => this._tjanstIdMatchSet(t).some((id) => this._aktivaTjansterIds.has(id))).length;
+            countEl.textContent = `${n} valda`;
+        }
+        content.querySelectorAll('.kundresa-tjanst-row').forEach((row) => {
+            const inp = row.querySelector('input[type="checkbox"]');
+            row.classList.toggle('is-selected', !!(inp && inp.checked));
+        });
+
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ fields: { 'Kundens utvalda tjänster': toSave } })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            const saved = await response.json().catch(() => ({}));
+            if (saved.record?.fields && this.customerData?.fields) {
+                Object.assign(this.customerData.fields, saved.record.fields);
+            }
+            if (this.customerData?.fields) {
+                this.customerData.fields['Kundens utvalda tjänster'] = toSave;
+            }
+            const byraHighRisk = this.customerData?.fields?.['Lookup Byråns högrisktjänster'] || [];
+            ['services-content', 'ovrigkyc-tjanster'].forEach((tid) => {
+                if (document.getElementById(tid)) this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, tid);
+            });
+            try { await this._syncKycTjansterFromAktiva(); } catch (_) { /* ignore */ }
+            if (typeof this._refreshRiskprofilForeslagenUi === 'function') this._refreshRiskprofilForeslagenUi();
+            this._refreshKundresaStep3Remaining();
+            setStatus('', 'ok');
+        } catch (error) {
+            console.error('kundresa tjänster autosave:', error);
+            this._aktivaTjansterIds = prevAktiva instanceof Set ? prevAktiva : new Set(prevAktiva || []);
+            if (changedCb) changedCb.checked = !changedCb.checked;
+            content.querySelectorAll('.kundresa-tjanst-row').forEach((row) => {
+                const inp = row.querySelector('input[type="checkbox"]');
+                row.classList.toggle('is-selected', !!(inp && inp.checked));
+            });
+            if (countEl) {
+                const n = (this._byransTjanster || []).filter((t) => this._tjanstIdMatchSet(t).some((id) => this._aktivaTjansterIds.has(id))).length;
+                countEl.textContent = `${n} valda`;
+            }
+            setStatus('Kunde inte spara – försök igen', 'error');
+        }
+    }
+
+
     _unmountKundresaStep() {
         if (this._beskrivningAutosaveTimers) {
             Object.keys(this._beskrivningAutosaveTimers).forEach((k) => {
@@ -11529,6 +11932,7 @@ class CustomerCardManager {
         const host = document.getElementById('kundresa-step-host');
         if (host) host.classList.remove('kundresa-step2');
 
+        try { this._teardownKundresaStep3(); } catch (_) { /* ignore */ }
         const extras = this._kundresaMovedExtras;
         if (Array.isArray(extras) && extras.length) {
             extras.slice().reverse().forEach((entry) => {
@@ -11767,14 +12171,7 @@ class CustomerCardManager {
                 // Steg-specifika UX-justeringar
                 if (focus === 'redovisning_tjanster') {
                     try {
-                        if (typeof this.toggleTjansterEdit === 'function') {
-                            const edit = document.getElementById('tjanster-edit-nykund-tjanster');
-                            if (edit && edit.style.display === 'none') this.toggleTjansterEdit('nykund-tjanster');
-                        }
-                        if (typeof this.toggleRedovisningEdit === 'function') {
-                            const edit = document.getElementById('redovisning-edit');
-                            if (edit && edit.style.display === 'none') this.toggleRedovisningEdit();
-                        }
+                        this._enhanceKundresaStep3();
                     } catch (_) { /* ignore */ }
                 }
                 if (focus === 'beskrivning_fragor') {

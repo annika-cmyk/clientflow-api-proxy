@@ -89,6 +89,13 @@
     return isVhStep(step);
   }
 
+  function isStep3(step) {
+    if (!step) return false;
+    return step.focus === 'redovisning_tjanster'
+      || step.key === 'redovisning_tjanster'
+      || Number(step.id) === 3;
+  }
+
   function syncVhSegments(container) {
     const sel = container.querySelector('[data-kundresa-vh]');
     if (!sel) return;
@@ -144,8 +151,11 @@
     const showVhPanel = gate.relevant !== false
       && (isVhStep(activeStep) || gate.blocked || Number(activeStepId) === 1);
     const step1Sub = s.step1Substatus || null;
+    const step3Sub = s.step3Substatus || null;
     const showChecklist = isStep1(activeStep) && step1Sub && Array.isArray(step1Sub.items) && step1Sub.items.length;
-    const remainingLabel = isStep1(activeStep) ? (step1Sub?.remainingLabel || '') : '';
+    const remainingLabel = isStep1(activeStep)
+      ? (step1Sub?.remainingLabel || '')
+      : (isStep3(activeStep) ? (step3Sub?.remainingLabel || '') : '');
     const totalSteps = steps.length || Number(s.total) || 4;
     const stepNum = activeStep
       ? (activeStep.number != null ? activeStep.number : activeStep.id)
