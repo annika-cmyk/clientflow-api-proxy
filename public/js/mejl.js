@@ -1024,11 +1024,62 @@
     renderList();
   }
 
+  function resetMejlItemMenuPanel(panel) {
+    if (!panel) return;
+    panel.classList.remove('is-fixed');
+    panel.style.top = '';
+    panel.style.left = '';
+    panel.style.right = '';
+    panel.style.bottom = '';
+    panel.style.maxHeight = '';
+  }
+
+  function positionMejlItemMenuPanel(toggle, panel) {
+    if (!toggle || !panel) return;
+    panel.classList.add('is-fixed');
+    panel.style.top = '0px';
+    panel.style.left = '0px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.maxHeight = '';
+    // Mät efter att panel syns (hidden=false) — annars blir höjd 0.
+    const btnRect = toggle.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const gap = 4;
+    const margin = 8;
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    let top = btnRect.bottom + gap;
+    let left = btnRect.right - panelRect.width;
+    if (left < margin) left = margin;
+    if (left + panelRect.width > vw - margin) {
+      left = Math.max(margin, vw - margin - panelRect.width);
+    }
+    const spaceBelow = vh - btnRect.bottom - gap - margin;
+    const spaceAbove = btnRect.top - gap - margin;
+    if (panelRect.height > spaceBelow && spaceAbove > spaceBelow) {
+      top = Math.max(margin, btnRect.top - gap - panelRect.height);
+    } else if (top + panelRect.height > vh - margin) {
+      top = Math.max(margin, vh - margin - panelRect.height);
+    }
+    const maxH = Math.max(120, vh - top - margin);
+    panel.style.top = Math.round(top) + 'px';
+    panel.style.left = Math.round(left) + 'px';
+    panel.style.maxHeight = Math.round(maxH) + 'px';
+    panel.style.overflowY = 'auto';
+  }
+
   function closeAllMejlItemMenus() {
     document.querySelectorAll('.mejl-item-menu.is-open').forEach((menu) => {
       menu.classList.remove('is-open');
+      const item = menu.closest('.mejl-item');
+      if (item) item.classList.remove('has-menu-open');
       const panel = menu.querySelector('.mejl-item-menu-panel');
-      if (panel) panel.hidden = true;
+      if (panel) {
+        panel.hidden = true;
+        resetMejlItemMenuPanel(panel);
+        panel.style.overflowY = '';
+      }
       const toggle = menu.querySelector('[data-mejl-menu-toggle]');
       if (toggle) toggle.setAttribute('aria-expanded', 'false');
     });
@@ -2574,9 +2625,12 @@
       const wasOpen = menu && menu.classList.contains('is-open');
       closeAllMejlItemMenus();
       if (!wasOpen && menu && panel) {
+        const item = menu.closest('.mejl-item');
         menu.classList.add('is-open');
+        if (item) item.classList.add('has-menu-open');
         panel.hidden = false;
         menuToggle.setAttribute('aria-expanded', 'true');
+        positionMejlItemMenuPanel(menuToggle, panel);
       }
       return;
     }
@@ -2618,6 +2672,23 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeAllMejlItemMenus();
   });
+  // Fast meny följer inte scroll — stäng vid scroll i listan.
+  if (els.list) {
+    els.list.addEventListener(
+      'scroll',
+      () => {
+        closeAllMejlItemMenus();
+      },
+      { passive: true }
+    );
+  }
+  window.addEventListener(
+    'resize',
+    () => {
+      closeAllMejlItemMenus();
+    },
+    { passive: true }
+  );
 
   // Panel tabs + compose/sidfot listeners (DOM already present; bind once after load)
   if (els.tabInbox) els.tabInbox.addEventListener('click', () => showMejlPanel('inbox'));
