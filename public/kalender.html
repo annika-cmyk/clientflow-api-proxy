@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20261029resize-top2">
+    <link rel="stylesheet" href="styles.css?v=20261029veckovy-ab">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -26,43 +26,54 @@
                                     <div class="uppdragboard-month" id="kal-month">September 2026</div>
                                     <button type="button" class="uppdragboard-navbtn" id="kal-next" title="Nästa månad" aria-label="Nästa månad"><i class="fas fa-chevron-right"></i></button>
                                     <button type="button" class="btn btn-ghost btn-sm" id="kal-today">Idag</button>
-                                    <div class="kalender-view-toggle" role="tablist" aria-label="Kalendervy">
-                                        <button type="button" class="uppdragboard-tab is-active" role="tab" id="kal-view-month" data-kal-view="month" aria-selected="true"><span>Månad</span></button>
-                                        <button type="button" class="uppdragboard-tab" role="tab" id="kal-view-week" data-kal-view="week" aria-selected="false"><span>Vecka</span></button>
-                                        <button type="button" class="uppdragboard-tab" role="tab" id="kal-view-day" data-kal-view="day" aria-selected="false"><span>Dag</span></button>
-                                    </div>
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="uppdragboard-tabs kalender-toolbar-row" role="tablist" aria-label="Kalenderfilter">
-                            <button type="button" class="uppdragboard-tab" id="kal-scope-mine" title="Visa bara mina uppdrag"><span><i class="fas fa-user"></i> Mina</span></button>
-                            <button type="button" class="uppdragboard-tab is-active" id="kal-scope-byra" title="Visa byråns uppdrag"><span><i class="fas fa-building"></i> Byrån</span></button>
-                            <span class="uppdragboard-sep" aria-hidden="true">|</span>
-                            <button type="button" class="uppdragboard-tab is-active" id="kal-mode-deadline" title="Visa körningar på deadline eller avsatt tid"><span><i class="fas fa-calendar"></i> Deadline</span></button>
-                            <button type="button" class="uppdragboard-tab" id="kal-mode-open" title="Visa öppna körningar som går att göra nu i perioden"><span><i class="fas fa-list"></i> Öppna</span></button>
-                            <span class="uppdragboard-sep" aria-hidden="true">|</span>
-                            <button type="button" class="uppdragboard-tab is-active" data-kal-typ="Alla"><span>Alla</span></button>
-                            <button type="button" class="uppdragboard-tab" data-kal-typ="Löneuppdrag"><span>Lön</span></button>
-                            <button type="button" class="uppdragboard-tab" data-kal-typ="Momsredovisning"><span>Moms</span></button>
-                            <button type="button" class="uppdragboard-tab" data-kal-typ="Bokslut"><span>Bokslut</span></button>
-                            <button type="button" class="uppdragboard-tab" data-kal-typ="Deklaration"><span>Deklaration</span></button>
-                            <button type="button" class="uppdragboard-tab" data-kal-typ="Övriga"><span>Övriga</span></button>
-                            <span class="uppdragboard-sep" aria-hidden="true">|</span>
-                            <button type="button" class="uppdragboard-tab is-active" id="kal-status-open" title="Visa ej klara"><span>Ej klara</span></button>
-                            <button type="button" class="uppdragboard-tab is-active" id="kal-status-done" title="Visa klara"><span><i class="fas fa-check"></i> Klara</span></button>
-                            <div class="kalender-toolbar-search">
-                                <input type="text" class="kunduppgifter-input" id="kal-search" placeholder="Sök klient..." aria-label="Sök klient">
-                            </div>
-                        </div>
-
-                        <div class="uppdragboard-filters kalender-filters-legend">
-                            <div class="kalender-legend" aria-hidden="true">
-                                <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--klar"></i> Klar</span>
-                                <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--pagande"></i> Pågående</span>
-                                <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--planerad"></i> Planerad</span>
-                                <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--sen"></i> Försenad</span>
-                                <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--google"></i> Google</span>
+                            <div class="kalender-toolbar-controls">
+                                <div class="kalender-seg" role="tablist" aria-label="Omfattning">
+                                    <button type="button" class="kalender-seg-btn" id="kal-scope-mine" title="Visa bara mina uppdrag"><span><i class="fas fa-user"></i> Mina</span></button>
+                                    <button type="button" class="kalender-seg-btn is-active" id="kal-scope-byra" title="Visa byråns uppdrag"><span><i class="fas fa-building"></i> Byrån</span></button>
+                                </div>
+                                <div class="kalender-seg kalender-view-toggle" role="tablist" aria-label="Kalendervy">
+                                    <button type="button" class="kalender-seg-btn is-active" role="tab" id="kal-view-month" data-kal-view="month" aria-selected="true"><span>Månad</span></button>
+                                    <button type="button" class="kalender-seg-btn" role="tab" id="kal-view-week" data-kal-view="week" aria-selected="false"><span>Vecka</span></button>
+                                    <button type="button" class="kalender-seg-btn" role="tab" id="kal-view-day" data-kal-view="day" aria-selected="false"><span>Dag</span></button>
+                                </div>
+                                <div class="kalender-toolbar-search">
+                                    <input type="text" class="kunduppgifter-input" id="kal-search" placeholder="Sök klient..." aria-label="Sök klient">
+                                </div>
+                                <div class="kalender-filter-wrap">
+                                    <button type="button" class="btn btn-ghost btn-sm kalender-filter-btn" id="kal-filter-btn" aria-haspopup="true" aria-expanded="false" aria-controls="kal-filter-menu">
+                                        <i class="fas fa-sliders" aria-hidden="true"></i> Filter
+                                        <span class="kalender-filter-badge" id="kal-filter-badge" hidden>0</span>
+                                    </button>
+                                    <div class="kalender-filter-menu" id="kal-filter-menu" hidden role="dialog" aria-label="Kalenderfilter">
+                                        <div class="kalender-filter-section">
+                                            <div class="kalender-filter-heading">Typ</div>
+                                            <div class="kalender-filter-types" role="group" aria-label="Uppdragstyp">
+                                                <button type="button" class="uppdragboard-tab is-active" data-kal-typ="Alla"><span>Alla</span></button>
+                                                <button type="button" class="uppdragboard-tab" data-kal-typ="Löneuppdrag"><span>Lön</span></button>
+                                                <button type="button" class="uppdragboard-tab" data-kal-typ="Momsredovisning"><span>Moms</span></button>
+                                                <button type="button" class="uppdragboard-tab" data-kal-typ="Bokslut"><span>Bokslut</span></button>
+                                                <button type="button" class="uppdragboard-tab" data-kal-typ="Deklaration"><span>Deklaration</span></button>
+                                                <button type="button" class="uppdragboard-tab" data-kal-typ="Övriga"><span>Övriga</span></button>
+                                            </div>
+                                        </div>
+                                        <div class="kalender-filter-section">
+                                            <div class="kalender-filter-heading">Status</div>
+                                            <div class="kalender-filter-status" role="group" aria-label="Statusfilter">
+                                                <button type="button" class="uppdragboard-tab is-active" id="kal-status-open" title="Visa ej klara"><span>Ej klara</span></button>
+                                                <button type="button" class="uppdragboard-tab is-active" id="kal-status-done" title="Visa klara"><span><i class="fas fa-check"></i> Klara</span></button>
+                                            </div>
+                                        </div>
+                                        <div class="kalender-legend" aria-hidden="true">
+                                            <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--klar"></i> Klar</span>
+                                            <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--pagande"></i> Pågående</span>
+                                            <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--planerad"></i> Planerad</span>
+                                            <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--sen"></i> Försenad</span>
+                                            <span class="kalender-legend-item"><i class="kalender-dot kalender-dot--google"></i> Google</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -82,8 +93,18 @@
                         </div>
                         <div class="kalender-grid" id="kal-grid" role="grid" aria-label="Månadskalender"></div>
                     </div>
-                    <aside class="kalender-side" id="kal-side" aria-label="Körningar i perioden">
-                        <h2 class="kalender-side-title"><span id="kal-side-label">Deadlines</span> <span id="kal-side-count" class="kalender-side-count"></span></h2>
+                    <aside class="kalender-side" id="kal-side" aria-label="Att planera">
+                        <div class="kalender-side-header">
+                            <div class="kalender-side-title-row">
+                                <h2 class="kalender-side-title">Att planera <span id="kal-side-count" class="kalender-side-count"></span></h2>
+                                <span class="kalender-side-hint">Dra in i kalendern</span>
+                            </div>
+                            <div class="kalender-seg kalender-side-mode" role="tablist" aria-label="Planeringsläge">
+                                <button type="button" class="kalender-seg-btn" id="kal-mode-open" title="Visa öppna körningar som går att göra nu i perioden"><span>Kan göras nu</span></button>
+                                <button type="button" class="kalender-seg-btn is-active" id="kal-mode-deadline" title="Visa körningar efter deadline"><span>Efter deadline</span></button>
+                            </div>
+                            <span id="kal-side-label" class="visually-hidden">Efter deadline</span>
+                        </div>
                         <div id="kal-side-list" class="kalender-side-list"></div>
                     </aside>
                 </div>
@@ -111,13 +132,13 @@
     <script src="js/yearly-uppdrag-runs.js?v=1" defer></script>
     <script src="js/koring-visibility.js?v=1.1" defer></script>
     <script src="js/uppdrag-typ.js?v=3" defer></script>
-    <script src="js/kalender-view.js?v=resize-up1" defer></script>
+    <script src="js/kalender-view.js?v=veckovy-ab1" defer></script>
     <script src="js/kalender-schedule-blocks.js?v=note1" defer></script>
     <script src="js/kalender-events.js?v=3" defer></script>
     <script src="js/kalender-klar-tid.js?v=1" defer></script>
     <script src="js/kalender-gcal-actions.js?v=2" defer></script>
     <script src="js/mejl-handle-status.js?v=20260916task" defer></script>
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
-    <script src="js/kalender.js?v=create-slot2" defer></script>
+    <script src="js/kalender.js?v=veckovy-ab1" defer></script>
 </body>
 </html>

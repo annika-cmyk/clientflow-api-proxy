@@ -427,7 +427,8 @@ async function getAirtableUser(email) {
         byraIds: fields['Byråer'] || fields['Byraer'] || [],
         logo: fields['Logga'] || '',
         isCfa: cfa.readIsCfa(fields),
-        cfaConfirmedAt: cfa.readConfirmedAt(fields)
+        cfaConfirmedAt: cfa.readConfirmedAt(fields),
+        workHoursPerDay: readWorkHoursPerDay(fields)
       };
       
       console.log(`🔍 User fields keys: ${Object.keys(fields).join(', ')}`);
@@ -580,12 +581,31 @@ function mapApplicationUserRecord(r) {
     byra: f['Byrå'] || f.fldcZZOiC9y5BKFWf || '',
     byraId: f['Byrå ID i text 2'] || f['Byra ID i text 2'] || '',
     isCfa: cfa.readIsCfa(f),
-    cfaConfirmedAt: cfa.readConfirmedAt(f)
+    cfaConfirmedAt: cfa.readConfirmedAt(f),
+    workHoursPerDay: readWorkHoursPerDay(f)
   };
 }
 
+const USER_WORK_HOURS_FIELD = 'Arbetstid per dag (t)';
+const USER_WORK_HOURS_SCHEMA = [
+  {
+    name: USER_WORK_HOURS_FIELD,
+    type: 'number',
+    description: 'Kapacitet i kalendern (Mina): arbetstid per dag i timmar. Tomt = 8.',
+    options: { precision: 2 }
+  }
+];
+
 async function ensureCfaUserFields(airtableToken, baseId) {
-  return ensureAirtableTableFields(airtableToken, baseId, USERS_TABLE, cfa.SCHEMA_FIELDS);
+  await ensureAirtableTableFields(airtableToken, baseId, USERS_TABLE, cfa.SCHEMA_FIELDS);
+  return ensureAirtableTableFields(airtableToken, baseId, USERS_TABLE, USER_WORK_HOURS_SCHEMA);
+}
+
+function readWorkHoursPerDay(fields) {
+  const raw = fields && fields[USER_WORK_HOURS_FIELD];
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
 }
 
 async function airtableListAllRecords(url, headers, extraParams = {}) {
@@ -15540,6 +15560,16 @@ app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
     };
     if (password) fields['password'] = password;
     try { await ensureCfaUserFields(airtableAccessToken, airtableBaseId); } catch (_) {}
+    if (body.workHoursPerDay !== undefined || body.arbetstidPerDag !== undefined) {
+      const raw = body.workHoursPerDay !== undefined ? body.workHoursPerDay : body.arbetstidPerDag;
+      if (raw !== '' && raw != null) {
+        const n = Number(String(raw).replace(',', '.'));
+        if (!Number.isFinite(n) || n <= 0) {
+          return res.status(400).json({ error: 'Arbetstid per dag måste vara ett positivt tal' });
+        }
+        fields[USER_WORK_HOURS_FIELD] = Math.round(n * 100) / 100;
+      }
+    }
     Object.assign(fields, cfa.cfaFieldsFromBody(body, { assignNow: true }));
     const linkField = 'Byråer';
     try {
@@ -15560,15 +15590,7 @@ app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
     res.status(201).json({
       success: true,
       id: record.id,
-      user: {
-        id: record.id,
-        email: fields['Email'],
-        name: fields['Full Name'],
-        role: fields['Role'],
-        byraId,
-        isCfa: cfa.readIsCfa(fields),
-        cfaConfirmedAt: cfa.readConfirmedAt(fields)
-      }
+      user: mapApplicationUserRecord(record)
     });
   } catch (error) {
     console.error('❌ POST /api/byra/anvandare:', error.response?.data || error.message);
@@ -15603,6 +15625,18 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
     if (body.fullName !== undefined) fields['Full Name'] = String(body.fullName).trim();
     if (body.role !== undefined) fields['Role'] = String(body.role).trim();
     if (body.password !== undefined && body.password !== '') fields['password'] = String(body.password);
+    if (body.workHoursPerDay !== undefined || body.arbetstidPerDag !== undefined) {
+      const raw = body.workHoursPerDay !== undefined ? body.workHoursPerDay : body.arbetstidPerDag;
+      if (raw === '' || raw == null) {
+        fields[USER_WORK_HOURS_FIELD] = null;
+      } else {
+        const n = Number(String(raw).replace(',', '.'));
+        if (!Number.isFinite(n) || n <= 0) {
+          return res.status(400).json({ error: 'Arbetstid per dag måste vara ett positivt tal' });
+        }
+        fields[USER_WORK_HOURS_FIELD] = Math.round(n * 100) / 100;
+      }
+    }
     Object.assign(fields, cfa.cfaFieldsFromBody(body, { assignNow: true }));
     if (body.isCfa !== undefined && !cfa.truthyFlag(body.isCfa)) {
       const peers = await listByraUsersByByraId(byraId, airtableAccessToken, airtableBaseId, {

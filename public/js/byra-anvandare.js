@@ -1615,7 +1615,8 @@ class ByraAnvandareManager {
         lastLogin: '—',
         byra: u.byra || '',
         isCfa: !!u.isCfa,
-        cfaConfirmedAt: u.cfaConfirmedAt || ''
+        cfaConfirmedAt: u.cfaConfirmedAt || '',
+        workHoursPerDay: u.workHoursPerDay != null ? u.workHoursPerDay : null
       }));
       this.filteredUsers = [...this.users];
       this.updateManageUi();
@@ -1640,6 +1641,7 @@ class ByraAnvandareManager {
     const rollEl = document.getElementById('anvandare-roll');
     const passwordWrap = document.getElementById('anvandare-password-wrap');
     const passwordEl = document.getElementById('anvandare-password');
+    const arbetstidEl = document.getElementById('anvandare-arbetstid');
     const cfaEl = document.getElementById('anvandare-is-cfa');
     if (!modal) return;
     if (user) {
@@ -1650,6 +1652,7 @@ class ByraAnvandareManager {
       namnEl.value = user.name || '';
       rollEl.value = user.role === 'Användare' ? 'Anställd' : (user.role || 'Anställd');
       passwordEl.value = '';
+      if (arbetstidEl) arbetstidEl.value = user.workHoursPerDay != null ? user.workHoursPerDay : '';
       if (passwordWrap) passwordWrap.style.display = 'block';
       if (cfaEl) cfaEl.checked = !!user.isCfa;
     } else {
@@ -1660,6 +1663,7 @@ class ByraAnvandareManager {
       namnEl.value = '';
       rollEl.value = 'Anställd';
       passwordEl.value = '';
+      if (arbetstidEl) arbetstidEl.value = '';
       if (passwordWrap) passwordWrap.style.display = 'block';
       if (cfaEl) cfaEl.checked = false;
     }
@@ -1677,11 +1681,12 @@ class ByraAnvandareManager {
     const name = document.getElementById('anvandare-namn')?.value?.trim();
     const role = document.getElementById('anvandare-roll')?.value?.trim();
     const password = document.getElementById('anvandare-password')?.value;
+    const arbetstidRaw = document.getElementById('anvandare-arbetstid')?.value;
     const isCfa = !!document.getElementById('anvandare-is-cfa')?.checked;
     if (!email) return;
     try {
       if (id) {
-        const body = { email, name, role, isCfa };
+        const body = { email, name, role, isCfa, workHoursPerDay: arbetstidRaw === '' ? null : arbetstidRaw };
         if (password) body.password = password;
         const res = await fetch(getBaseUrl() + '/api/byra/anvandare/' + encodeURIComponent(id), getAuthOpts('PUT', body));
         if (!res.ok) {
@@ -1691,6 +1696,7 @@ class ByraAnvandareManager {
       } else {
         const body = { email, name, role, isCfa };
         if (password) body.password = password;
+        if (arbetstidRaw !== '' && arbetstidRaw != null) body.workHoursPerDay = arbetstidRaw;
         const res = await fetch(getBaseUrl() + '/api/byra/anvandare', getAuthOpts('POST', body));
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
