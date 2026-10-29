@@ -20637,6 +20637,27 @@ body.byra-resa-page .risk-header h1 {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-1px); }
 }
+.kundresa-orgnr-missing {
+  margin: 0.75rem 0 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-2, var(--panel-2));
+  color: var(--ink-3, #64748b);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+#kundresa-step-host .kundresa-orgnr-missing {
+  margin-left: 0;
+  margin-right: 0;
+}
+/* Roller-/PEP-modal ovanpå kunduppläggningspopupen */
+#rolle-person-modal.modal-overlay,
+#screen-all-result-modal,
+#pep-result-modal,
+#entity-result-modal {
+  z-index: 12000 !important;
+}
 .roller-ledamoter-placeholder {
   margin: 0 0 0.75rem;
   padding: 0.55rem 0.75rem;
