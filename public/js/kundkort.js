@@ -11449,6 +11449,25 @@ class CustomerCardManager {
         });
     }
 
+    _buildKundresaStep4Send(summary) {
+        const personer = Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner : [];
+        const withEmail = personer.filter((p) => String(p?.epost || '').trim());
+        const blockers = [];
+        if (!withEmail.length) blockers.push('Mottagare saknar e-post');
+        const gate = summary?.vhGate || {};
+        if (gate.relevant !== false && gate.value !== 'Ja' && !gate.complete) {
+            blockers.push('VH ej bekräftad i steg 1');
+        }
+        const picked = window.KundresaKycSkicka?.pickRecipients?.(personer)
+            || { recipients: withEmail, defaultRecipient: withEmail[0] || null };
+        return {
+            canSend: blockers.length === 0,
+            blockers,
+            recipients: picked.recipients || withEmail,
+            defaultRecipient: picked.defaultRecipient || summary?.step4Send?.defaultRecipient || null
+        };
+    }
+
     _kundresaCardIdsForFocus(focus, key, step) {
         if (Array.isArray(step?.cardIds) && step.cardIds.length) {
             return step.cardIds.slice();
