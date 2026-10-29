@@ -1389,10 +1389,11 @@
     const done = st === 'Klar' || st === 'Avslutad';
     const canDrag = !!ev.runRec?.id && !done;
     const note = String(ev.blockNote || (focusBlockNoteOf(ev)) || '').trim();
+    const typLabel = done ? 'Klar' : typShort(ev.typ);
     const titleParts = [
       name,
+      typLabel,
       `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`,
-      done ? 'Klar' : '',
       note
     ].filter(Boolean);
     return `<div class="kalender-block kalender-block--${cls}${canDrag ? ' is-draggable' : ''}"
@@ -1402,9 +1403,9 @@
       ${canDrag ? '<span class="kalender-block-resize kalender-block-resize--start" data-resize="start" title="Ändra start" aria-hidden="true"></span>' : ''}
       <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}">
         <span class="kalender-block-name">${esc(name)}</span>
+        <span class="kalender-block-typ">${esc(typLabel)}</span>
         <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
         ${note ? `<span class="kalender-block-note">${esc(note)}</span>` : ''}
-        <span class="kalender-block-typ">${esc(done ? 'Klar' : typShort(ev.typ))}</span>
       </button>
       ${canDrag ? '<span class="kalender-block-resize kalender-block-resize--end" data-resize="end" title="Ändra slut" aria-hidden="true"></span>' : ''}
     </div>`;
