@@ -1,6 +1,7 @@
 /**
  * Kundresa-UI — popup «Din resa» (analyskorts-design) med INBÄDDAT steg-innehåll.
  * Stegytan (#kundresa-step-host) fylls av CustomerCardManager via reparent av befintliga kort.
+ * Layout speglar Förslag 1 · Företag & personer (checklist, kortsektioner, kvar-footer).
  */
 (function (global) {
   function esc(s) {
@@ -34,7 +35,7 @@
     const classes = [];
     if (Number(step.id) === Number(activeStepId)) classes.push('is-active');
     if (step.status === 'done' || step.done) classes.push('is-done');
-    if (step.status === 'attention') classes.push('is-attention');
+    if (step.status === 'attention' || step.attention) classes.push('is-attention');
     if (step.status === 'gated' || step.gated) classes.push('is-gated');
     if (step.status === 'next') classes.push('is-next');
     return classes.join(' ');
@@ -84,6 +85,10 @@
       || Number(step.id) === 1;
   }
 
+  function isStep1(step) {
+    return isVhStep(step);
+  }
+
   function syncVhSegments(container) {
     const sel = container.querySelector('[data-kundresa-vh]');
     if (!sel) return;
@@ -93,6 +98,26 @@
       btn.classList.toggle('is-active', on);
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+  }
+
+  function renderStep1Checklist(sub) {
+    const items = Array.isArray(sub?.items) ? sub.items : [];
+    if (!items.length) return '';
+    return `<nav class="kundresa-step1-checklist" aria-label="Checklistor för steg 1">
+      ${items.map((it) => {
+        const st = it.status === 'done' ? 'is-done' : (it.status === 'attention' ? 'is-attention' : 'is-pending');
+        const icon = it.status === 'done'
+          ? '<i class="fas fa-check-circle" aria-hidden="true"></i>'
+          : '<i class="fas fa-exclamation-circle" aria-hidden="true"></i>';
+        return `<a href="#kundresa-sec-${esc(it.anchor || it.key)}" class="kundresa-step1-check ${st}" data-kundresa-check="${esc(it.anchor || it.key)}">
+          <span class="kundresa-step1-check-icon">${icon}</span>
+          <span class="kundresa-step1-check-text">
+            <span class="kundresa-step1-check-title">${esc(it.title)}</span>
+            <span class="kundresa-step1-check-detail">${esc(it.detail || '')}</span>
+          </span>
+        </a>`;
+      }).join('')}
+    </nav>`;
   }
 
   function render(container, summary, opts) {
@@ -118,15 +143,36 @@
       && (align.status !== 'pending' || !byraVal);
     const showVhPanel = gate.relevant !== false
       && (isVhStep(activeStep) || gate.blocked || Number(activeStepId) === 1);
+    const step1Sub = s.step1Substatus || null;
+    const showChecklist = isStep1(activeStep) && step1Sub && Array.isArray(step1Sub.items) && step1Sub.items.length;
+    const remainingLabel = isStep1(activeStep) ? (step1Sub?.remainingLabel || '') : '';
+    const totalSteps = steps.length || Number(s.total) || 4;
+    const stepNum = activeStep
+      ? (activeStep.number != null ? activeStep.number : activeStep.id)
+      : '';
+    const companyLabel = [s.customerName, s.customerOrgnr].filter(Boolean).join(' · ');
+    const progress = progressMeta(s);
+    const vhBadge = byraVal === 'Ja' || align.status === 'byra_only' || align.status === 'match'
+      ? '<span class="kundresa-vh-badge is-done">Byrån klar</span>'
+      : (byraVal === 'Osaker' || byraVal === 'Nej'
+        ? `<span class="kundresa-vh-badge is-attention">${esc(labelVh(byraVal))}</span>`
+        : '');
+    const savedHint = byraVal
+      ? `<span class="kundresa-vh-saved-hint">Sparas direkt${byraVal === 'Ja' ? ' · bekräftat' : ''}</span>`
+      : '<span class="kundresa-vh-saved-hint">Sparas direkt</span>';
 
     container.innerHTML = `
       <div class="kundresa-popup-layout tjanst-modal-layout kundresa-popup-layout--embed">
-        <nav class="tjanst-tabs kundresa-popup-tabs" role="tablist" aria-label="Kunduppläggning">
+        <nav class="tjanst-tabs kundresa-popup-tabs" role="tablist" aria-label="Din resa">
           <p class="tjanst-tabs-kicker">Din resa</p>
           <div class="tjanst-tabs-steps">
             ${steps.map((step) => {
               const displayNum = step.number != null ? step.number : step.id;
               const disabled = step.gated ? 'disabled' : '';
+              const done = step.status === 'done' || step.done;
+              const blob = done
+                ? '<i class="fas fa-check" aria-hidden="true"></i>'
+                : esc(String(displayNum));
               return `
               <button type="button" class="tjanst-tab ${tabStateClass(step, activeStepId)}"
                 role="tab"
@@ -137,10 +183,9 @@
                 data-kundresa-key="${esc(step.key || '')}"
                 ${disabled}
                 title="${esc(step.gated ? 'Blockerad tills VH är bekräftad' : step.title)}">
-                <span class="tjanst-tab-dot" data-resa-blob="${esc(String(step.id))}" aria-hidden="true"></span>
-                <span class="tjanst-tab-label">
-                  <span class="kundresa-tab-num">${esc(String(displayNum))}.</span>
-                  ${esc(step.title)}
+                <span class="tjanst-tab-dot kundresa-tab-blob" data-resa-blob="${esc(String(step.id))}" aria-hidden="true">${blob}</span>
+                <span class="tjanst-tab-label kundresa-tab-label">
+                  <span class="kundresa-tab-title">${esc(step.title)}</span>
                   <span class="kundresa-tab-status">${esc(step.label || '')}</span>
                 </span>
               </button>`;
@@ -153,12 +198,15 @@
           </div>` : ''}
 
           ${activeStep ? `<header class="kundresa-popup-stepinfo kundresa-popup-stepinfo--compact">
-            <p class="kundresa-popup-stepmeta">${esc(String(activeStep.number != null ? activeStep.number : activeStep.id))} · ${esc(activeStep.label || '')}</p>
+            <p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>
             <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
+            ${companyLabel ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
             <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
           </header>` : ''}
 
           <div class="kundresa-popup-scroll" data-kundresa-scroll>
+            ${showChecklist ? renderStep1Checklist(step1Sub) : ''}
+
             <div id="kundresa-step-host" class="kundresa-step-host" data-kundresa-step-host
               data-active-focus="${esc(activeStep?.focus || '')}"
               data-active-key="${esc(activeStep?.key || '')}"
@@ -168,10 +216,16 @@
               </div>
             </div>
 
-            ${gate.relevant !== false ? `<div class="kundresa-vh-box"${showVhPanel ? '' : ' hidden'} id="kundresa-vh-panel" data-kundresa-vh-panel>
+            ${gate.relevant !== false ? `<div class="kundresa-vh-box"${showVhPanel ? '' : ' hidden'} id="kundresa-vh-panel" data-kundresa-vh-panel data-kundresa-sec="vh">
               <div class="kundresa-vh-box-head">
-                <h4>Verifiera verklig huvudman</h4>
-                <p class="kundresa-hint">Gäller aktiebolag. Lägg till VH med e-post och telefon under Personer ovan, screena, och bekräfta listan här.</p>
+                <div class="kundresa-vh-box-lead">
+                  <div class="kundresa-sec-icon" aria-hidden="true"><i class="fas fa-shield-alt"></i></div>
+                  <div class="kundresa-vh-box-titles">
+                    <h4>Verifiera verklig huvudman</h4>
+                    <p class="kundresa-hint">Aktiebolag · jämför personerna med rollen VH ovan mot Bolagsverkets register</p>
+                  </div>
+                </div>
+                ${vhBadge}
               </div>
               ${showAlign ? `<div class="kundresa-vh-align kundresa-vh-status-banner ${alignmentClass(align.status)}" role="status">
                 <strong>${esc(alignTitle(align.status))}</strong>
@@ -200,9 +254,10 @@
                       <option value="Osaker"${byraVal === 'Osaker' ? ' selected' : ''}>Osäker</option>
                       <option value="Nej"${byraVal === 'Nej' ? ' selected' : ''}>Nej</option>
                     </select>
-                    <button type="button" class="btn btn-primary btn-sm" data-kundresa-vh-save>
+                    <button type="button" class="btn btn-primary btn-sm kundresa-vh-save-btn" data-kundresa-vh-save${byraVal === 'Ja' ? ' hidden' : ''}>
                       <i class="fas fa-save"></i> Spara
                     </button>
+                    ${savedHint}
                   </div>
                   <label class="kundresa-vh-field kundresa-vh-note-field"${showNote ? '' : ' hidden'} data-kundresa-vh-note-wrap>
                     <span>Anteckning${byraVal === 'Osaker' || byraVal === 'Nej' ? '' : ' (valfritt)'}</span>
@@ -212,6 +267,7 @@
                   </label>
                 </div>
               </div>
+              <p class="kundresa-vh-kyc-note">Kundens eget intygande om verklig huvudman samlas in i KYC-formuläret (steg 4).</p>
             </div>` : ''}
           </div>
 
@@ -221,6 +277,10 @@
               data-kundresa-step-id="${esc(String(activeStep.id))}">
               <i class="fas fa-arrow-left"></i> Föregående
             </button>
+            ${remainingLabel ? `<span class="kundresa-step-remaining" role="status">
+              <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+              ${esc(remainingLabel)}
+            </span>` : `<span class="kundresa-step-remaining is-ok" role="status">${esc(progress.complete ? 'Alla steg klara' : '')}</span>`}
             <button type="button" class="btn btn-primary btn-sm" data-kundresa-next
               ${!steps.some((st) => Number(st.number) === Number(activeStep.number) + 1) ? 'disabled' : ''}
               data-kundresa-step-id="${esc(String(activeStep.id))}">
@@ -233,24 +293,48 @@
 
     const noteWrap = container.querySelector('[data-kundresa-vh-note-wrap]');
     const vhSelect = container.querySelector('[data-kundresa-vh]');
+    const saveBtn = container.querySelector('[data-kundresa-vh-save]');
+
+    function maybeToggleSaveBtn() {
+      if (!saveBtn || !vhSelect) return;
+      const v = vhSelect.value;
+      // Ja sparas direkt; Osäker/Nej behöver ofta anteckning → visa Spara
+      saveBtn.hidden = v === 'Ja';
+    }
+
     if (vhSelect && noteWrap) {
       vhSelect.addEventListener('change', () => {
         const v = vhSelect.value;
         const need = v === 'Osaker' || v === 'Nej' || !!(container.querySelector('[data-kundresa-vh-note]')?.value || '').trim();
         noteWrap.hidden = !need;
         syncVhSegments(container);
+        maybeToggleSaveBtn();
       });
+    }
+
+    function emitVhSave() {
+      if (!onVhSave || !saveBtn) return;
+      const sel = container.querySelector('[data-kundresa-vh]');
+      const note = container.querySelector('[data-kundresa-vh-note]');
+      onVhSave({
+        byraVhBekraftelse: sel ? sel.value : '',
+        byraVhNote: note ? note.value : ''
+      }, saveBtn);
     }
 
     container.querySelectorAll('[data-kundresa-vh-seg]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const sel = container.querySelector('[data-kundresa-vh]');
         if (!sel) return;
-        sel.value = btn.getAttribute('data-kundresa-vh-seg') || '';
+        const val = btn.getAttribute('data-kundresa-vh-seg') || '';
+        sel.value = val;
         sel.dispatchEvent(new Event('change', { bubbles: true }));
+        // Förslag 1: «Sparas direkt» — Ja sparas omedelbart
+        if (val === 'Ja') emitVhSave();
       });
     });
     syncVhSegments(container);
+    maybeToggleSaveBtn();
 
     function emitStep(stepLike) {
       if (!stepLike || stepLike.gated) return;
@@ -278,6 +362,18 @@
       });
     });
 
+    container.querySelectorAll('[data-kundresa-check]').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const key = a.getAttribute('data-kundresa-check') || '';
+        const target = container.querySelector(`[data-kundresa-sec="${key}"]`)
+          || document.querySelector(`[data-kundresa-sec="${key}"]`);
+        if (target && target.scrollIntoView) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
     const prevBtn = container.querySelector('[data-kundresa-prev]');
     const nextBtn = container.querySelector('[data-kundresa-next]');
     if (prevBtn && activeStep) {
@@ -293,16 +389,8 @@
       });
     }
 
-    const saveBtn = container.querySelector('[data-kundresa-vh-save]');
     if (saveBtn && onVhSave) {
-      saveBtn.addEventListener('click', () => {
-        const sel = container.querySelector('[data-kundresa-vh]');
-        const note = container.querySelector('[data-kundresa-vh-note]');
-        onVhSave({
-          byraVhBekraftelse: sel ? sel.value : '',
-          byraVhNote: note ? note.value : ''
-        }, saveBtn);
-      });
+      saveBtn.addEventListener('click', () => emitVhSave());
     }
 
     if (onReady) {
