@@ -24798,6 +24798,15 @@ body.kalender-detail-open { overflow: hidden; }
     color: #94a3b8;
     font-weight: 400;
 }
+.mb-description-editor {
+    min-height: 7.5rem;
+}
+.mb-desc-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-weight: 400;
+}
 .mb-host-slug {
   font-size: 0.9rem; background: #f1f5f9; padding: 0.2rem 0.5rem;
   border-radius: 6px; color: #1a73e8;

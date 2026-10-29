@@ -94,6 +94,87 @@
       .replace(/"/g, '&quot;');
   }
 
+  function looksLikeHtml(s) {
+    return /<\/?[a-z][\s\S]*>/i.test(String(s || ''));
+  }
+
+  function htmlToPlainText(html) {
+    return String(html || '')
+      .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      .replace(/<\/\s*(p|div|li|h[1-6])\s*>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  /** Enkel tillåten HTML för beskrivning (samma idé som servern). */
+  function sanitizeDescriptionHtml(raw) {
+    const input = String(raw || '').trim();
+    if (!input) return '';
+    if (!looksLikeHtml(input)) {
+      return esc(input).replace(/\r\n|\r|\n/g, '<br>');
+    }
+    const tmp = document.createElement('div');
+    tmp.innerHTML = input
+      .replace(/<\s*(script|style|iframe|object|embed|form)[\s\S]*?>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+      .replace(/on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    const walk = (node, out) => {
+      node.childNodes.forEach((child) => {
+        if (child.nodeType === 3) {
+          out.appendChild(document.createTextNode(child.textContent || ''));
+          return;
+        }
+        if (child.nodeType !== 1) return;
+        const tag = child.tagName.toLowerCase();
+        if (tag === 'br') {
+          out.appendChild(document.createElement('br'));
+          return;
+        }
+        if (['b', 'strong', 'i', 'em', 'u', 'p', 'div', 'ul', 'ol', 'li', 'span'].includes(tag)) {
+          const el = document.createElement(tag === 'span' ? 'span' : tag);
+          walk(child, el);
+          out.appendChild(el);
+          return;
+        }
+        if (tag === 'a') {
+          const href = String(child.getAttribute('href') || '').trim();
+          if (/^https?:\/\//i.test(href)) {
+            const a = document.createElement('a');
+            a.href = href;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            walk(child, a);
+            out.appendChild(a);
+            return;
+          }
+        }
+        walk(child, out);
+      });
+    };
+    const clean = document.createElement('div');
+    walk(tmp, clean);
+    return (clean.innerHTML || '').trim();
+  }
+
+  function getDescriptionHtml() {
+    const box = document.getElementById('mb-description');
+    if (!box) return '';
+    return sanitizeDescriptionHtml(box.innerHTML || '');
+  }
+
+  function setDescriptionHtml(html) {
+    const box = document.getElementById('mb-description');
+    if (!box) return;
+    const safe = sanitizeDescriptionHtml(html || '');
+    box.innerHTML = safe;
+  }
+
   function fmtDurations(arr) {
     return (arr || [])
       .map((n) => {
@@ -176,7 +257,7 @@
           <span class="mb-link-icon" style="background:${color}"><i class="fas ${icon}"></i></span>
         </div>
         <h3 class="mb-link-title">${esc(link.title)}</h3>
-        <p class="mb-link-desc">${esc(link.description || '')}</p>
+        <p class="mb-link-desc">${esc(htmlToPlainText(link.description || ''))}</p>
         <div class="mb-link-meta">
           <div><i class="far fa-clock"></i> ${esc(fmtDurations(link.durations))}</div>
           <div><i class="fas fa-video"></i> ${esc(locLabel(link.locations))}</div>
@@ -501,7 +582,7 @@
     return {
       title: document.getElementById('mb-title')?.value || 'Möte',
       slug: document.getElementById('mb-slug')?.value || '',
-      description: document.getElementById('mb-description')?.value || '',
+      description: getDescriptionHtml(),
       priority: Number(document.getElementById('mb-priority')?.value || 2),
       visible: document.getElementById('mb-visible')?.value !== '0',
       durations: checkedValues('mb-durations'),
@@ -526,7 +607,7 @@
     el.modalTitle.textContent = link?.id ? 'Redigera möteslänk' : 'Ny möteslänk';
     document.getElementById('mb-title').value = link?.title || 'Möte';
     document.getElementById('mb-slug').value = link?.slug || '';
-    document.getElementById('mb-description').value = link?.description || '';
+    setDescriptionHtml(link?.description || '');
     document.getElementById('mb-priority').value = String(link?.priority || 2);
     document.getElementById('mb-visible').value = link && link.visible === false ? '0' : '1';
     setChecked('mb-durations', link?.durations || [30, 60]);
@@ -717,6 +798,25 @@
       btn.addEventListener('click', () => setTab(btn.getAttribute('data-tab')));
     });
     bindDayToggles();
+    document.getElementById('mb-desc-toolbar')?.addEventListener('mousedown', (e) => {
+      const btn = e.target.closest('[data-cmd]');
+      if (!btn) return;
+      e.preventDefault();
+      const cmd = btn.getAttribute('data-cmd');
+      const editor = document.getElementById('mb-description');
+      if (editor) editor.focus();
+      if (cmd === 'createLink') {
+        const url = window.prompt('Länk (https://…)', 'https://');
+        if (!url || !/^https?:\/\//i.test(url.trim())) return;
+        try {
+          document.execCommand('createLink', false, url.trim());
+        } catch (_) { /* ignore */ }
+        return;
+      }
+      try {
+        document.execCommand(cmd, false, null);
+      } catch (_) { /* ignore */ }
+    });
     el.newBtn?.addEventListener('click', () => openEdit(null));
     document.querySelectorAll('[data-mb-close]').forEach((n) => n.addEventListener('click', closeModal));
     document.querySelectorAll('[data-mb-share-close]').forEach((n) => n.addEventListener('click', closeShare));

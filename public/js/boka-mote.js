@@ -130,6 +130,40 @@
     return `boka-mote.html?host=${encodeURIComponent(key)}`;
   }
 
+  function looksLikeHtml(s) {
+    return /<\/?[a-z][\s\S]*>/i.test(String(s || ''));
+  }
+
+  function htmlToPlainText(html) {
+    return String(html || '')
+      .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      .replace(/<\/\s*(p|div|li|h[1-6])\s*>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  /** Visa beskrivning som HTML (servern har redan sanerat). Fallback: radbryt vanlig text. */
+  function setDescriptionHtml(node, raw) {
+    if (!node) return;
+    const s = String(raw || '').trim();
+    if (!s) {
+      node.innerHTML = '';
+      return;
+    }
+    if (looksLikeHtml(s)) {
+      node.innerHTML = s;
+      return;
+    }
+    node.innerHTML = esc(s).replace(/\r\n|\r|\n/g, '<br>');
+  }
+
   function setManageMsg(okText, errText) {
     if (el.manageOk) {
       el.manageOk.textContent = okText || '';
@@ -523,7 +557,7 @@
       linkState.hostAgenda = String(linkState.link.defaultAgenda || '');
     }
     if (el.linkTitle) el.linkTitle.textContent = linkState.link.title || 'Möte';
-    if (el.linkDesc) el.linkDesc.textContent = linkState.link.description || '';
+    if (el.linkDesc) setDescriptionHtml(el.linkDesc, linkState.link.description || '');
     if (el.linkHost) {
       const host = linkState.link.hostEmail || '';
       el.linkHost.textContent = host ? `med ${host.split('@')[0]}` : '';
@@ -812,7 +846,7 @@
         el.hubList.innerHTML = list.map((link) => {
           const icon = HUB_ICONS[link.icon] || 'fa-bolt';
           const color = esc(link.color || '#13505c');
-          const desc = String(link.description || '').trim();
+          const desc = htmlToPlainText(link.description || '');
           const meta = [fmtDurationsList(link.durations), locLabel(link.locations)].filter(Boolean).join(' · ');
           const href = link.url
             || `boka-mote.html?lank=${encodeURIComponent(link.slug)}&host=${encodeURIComponent(host.key || hostKey)}`;

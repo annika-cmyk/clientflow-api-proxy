@@ -102,10 +102,18 @@
                         <span>Slug (URL-del)</span>
                         <input type="text" id="mb-slug" class="kunduppgifter-input" placeholder="t.ex. snabbmote">
                     </label>
-                    <label class="moten-field">
+                    <div class="moten-field">
                         <span>Beskrivning</span>
-                        <textarea id="mb-description" class="kunduppgifter-input" rows="2" placeholder="Välkommen att boka in ditt möte här..."></textarea>
-                    </label>
+                        <div class="richtext-toolbar" id="mb-desc-toolbar" role="toolbar" aria-label="Formatera beskrivning">
+                            <button type="button" data-cmd="bold" title="Fet"><b>B</b></button>
+                            <button type="button" data-cmd="italic" title="Kursiv"><i>I</i></button>
+                            <button type="button" data-cmd="insertUnorderedList" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                            <button type="button" data-cmd="createLink" title="Länk"><i class="fas fa-link"></i></button>
+                        </div>
+                        <div id="mb-description" class="kunduppgifter-richtext mb-description-editor" contenteditable="true"
+                             role="textbox" aria-multiline="true" data-placeholder="Välkommen att boka in ditt möte här..."></div>
+                        <p class="mb-desc-hint">Fetstil, kursiv, punktlista och länkar syns på bokningssidan.</p>
+                    </div>
 
                     <div class="moten-row">
                         <label class="moten-field">
@@ -293,6 +301,6 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.7" defer></script>
-    <script src="js/motesbokning-admin.js?v=5" defer></script>
+    <script src="js/motesbokning-admin.js?v=6" defer></script>
 </body>
 </html>
