@@ -22681,6 +22681,8 @@ app.post('/api/uppdrag/ensure-runs', authenticateToken, async (req, res) => {
 //   { start, end, blockId, mode: 'update' } — flytta/ändra ett block
 //   { blockId, note, mode: 'update' } — anteckning-only (utan start/end)
 //   { blockId, mode: 'remove' } — ta bort ett block
+//   { blockId, mode: 'uncomplete' } — ångra klarmarkering på ett tillfälle
+//   { mode: 'uncomplete-all' } — ångra klarmarkering på alla tillfällen
 app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, res) => {
   try {
     const { runId } = req.params || {};
@@ -22695,7 +22697,9 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
     const hasNote = Object.prototype.hasOwnProperty.call(body, 'note');
     const modeRaw = String(body.mode || '').trim().toLowerCase();
     const modeNeedsNoTimes = modeRaw === 'remove' || modeRaw === 'complete' || modeRaw === 'done'
-      || modeRaw === 'complete-all' || modeRaw === 'done-all';
+      || modeRaw === 'complete-all' || modeRaw === 'done-all'
+      || modeRaw === 'uncomplete' || modeRaw === 'reopen' || modeRaw === 'undone'
+      || modeRaw === 'uncomplete-all' || modeRaw === 'reopen-all' || modeRaw === 'undone-all';
     const noteOnlyUpdate = hasNote && hasBlockId && body.blockId && (modeRaw === 'update' || (!modeRaw && !hasStart && !hasEnd));
     if (!hasStart && !hasEnd && !modeNeedsNoTimes && !noteOnlyUpdate) {
       return res.status(400).json({ error: 'Ange start och/eller end (ISO-datetime), eller null för att rensa.' });
@@ -22704,7 +22708,8 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
     let mode = modeRaw || 'set';
     if (!modeRaw && hasBlockId && body.blockId) mode = 'update';
     if (noteOnlyUpdate) mode = 'update';
-    if ((mode === 'remove' || mode === 'complete' || mode === 'done') && !body.blockId) {
+    if ((mode === 'remove' || mode === 'complete' || mode === 'done'
+      || mode === 'uncomplete' || mode === 'reopen' || mode === 'undone') && !body.blockId) {
       return res.status(400).json({ error: `blockId krävs för mode=${mode}` });
     }
 

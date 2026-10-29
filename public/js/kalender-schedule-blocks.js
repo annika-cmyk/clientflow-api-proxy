@@ -126,6 +126,31 @@
     });
   }
 
+  /** Ta bort done-flagga från ett eller alla tillfällen (ångra klarmarkering). */
+  function clearBlockDone(block) {
+    if (!block || typeof block !== 'object') return block;
+    const next = { id: block.id, start: block.start, end: block.end };
+    if (block.note) next.note = block.note;
+    return next;
+  }
+
+  function markBlocksUndone(blocks, onlyBlockId) {
+    const list = sortBlocks((blocks || []).map((b) => normalizeBlock(b)).filter(Boolean));
+    const wantId = onlyBlockId != null && onlyBlockId !== ''
+      ? String(onlyBlockId).trim()
+      : null;
+    if (!wantId) {
+      return list.map((b) => clearBlockDone(b));
+    }
+    const anyTracked = list.some((b) => isBlockDone(b));
+    // Legacy: körning Klar utan per-block done — materialisera övriga som done
+    // så bara det ångrade tillfället öppnas.
+    if (!anyTracked && list.length > 1) {
+      return list.map((b) => (b.id === wantId ? clearBlockDone(b) : { ...b, done: true }));
+    }
+    return list.map((b) => (b.id === wantId ? clearBlockDone(b) : { ...b }));
+  }
+
   const NOTE_MAX_LEN = 2000;
 
   /** Kort anteckning per tidblock (t.ex. vad som ska göras just då). */
@@ -218,7 +243,9 @@
    * @param {{ mode?: string, blockId?: string|null, start?: string|null, end?: string|null, done?: boolean, note?: string|null }} mutation
    *   mode: 'set' (ersätt allt med ett block / rensa), 'add', 'update', 'remove',
    *         'complete' / 'done' (markera tillfälle som klart — behålls i kalendern),
-   *         'complete-all' (markera alla tillfällen som klara)
+   *         'complete-all' (markera alla tillfällen som klara),
+   *         'uncomplete' / 'reopen' (ångra klarmarkering på ett tillfälle),
+   *         'uncomplete-all' / 'reopen-all' (ångra alla tillfällens klarmarkering)
    */
   function applyMutation(current, mutation) {
     const mode = String(mutation?.mode || 'set').trim().toLowerCase();
@@ -245,12 +272,23 @@
       return markBlocksDone(blocks, null);
     }
 
+    if (mode === 'uncomplete-all' || mode === 'reopen-all' || mode === 'undone-all') {
+      return markBlocksUndone(blocks, null);
+    }
+
     if (mode === 'complete' || mode === 'done') {
       if (!blockId) throw new Error('blockId krävs för att klarmarkera tidblock');
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx < 0) throw new Error('Tidblocket hittades inte');
       blocks[idx] = { ...blocks[idx], done: true };
       return sortBlocks(blocks);
+    }
+
+    if (mode === 'uncomplete' || mode === 'reopen' || mode === 'undone') {
+      if (!blockId) throw new Error('blockId krävs för att ångra klarmarkering');
+      const idx = blocks.findIndex((b) => b.id === blockId);
+      if (idx < 0) throw new Error('Tidblocket hittades inte');
+      return markBlocksUndone(blocks, blockId);
     }
 
     if (mode === 'remove') {
@@ -347,7 +385,8 @@
     const out = [];
     (events || []).forEach((ev) => {
       if (!ev) return;
-      if (ev.source === 'google' || String(ev.key || '').startsWith('gcal:')) {
+      if (ev.source === 'google' || String(ev.key || '').startsWith('gcal:')
+        || ev.source === 'meeting' || String(ev.key || '').startsWith('meeting:')) {
         out.push(ev);
         return;
       }
@@ -451,6 +490,7 @@
     allBlocksDone,
     instanceStatus,
     markBlocksDone,
+    markBlocksUndone,
     NOTE_MAX_LEN,
     normalizeNote,
     normalizeBlock,

@@ -362,6 +362,106 @@
   }
 
   /**
+   * Ångra klarmarkering av ETT tillfälle (clear block.done).
+   * Om körningen var Klar och inte alla tillfällen längre är klara → Status Pågående.
+   */
+  async function angraKlarTillfalle(ev, opts) {
+    const options = opts || {};
+    const blockId = String(options.blockId || ev.blockId || '').trim();
+    if (!blockId) {
+      showSaveToast('Välj ett tillfälle i kalendern först.', true);
+      return;
+    }
+    const block = blocksOf(ev).find((b) => b.id === blockId);
+    if (!block) {
+      showSaveToast('Tillfället hittades inte.', true);
+      return;
+    }
+    const runId = String(ev.runRec?.id || '').trim();
+    if (!runId) {
+      showSaveToast('Saknar uppdragskörning.', true);
+      return;
+    }
+
+    try {
+      const ok = await persistSchedule(ev, null, null, { mode: 'uncomplete', blockId });
+      if (!ok) return;
+      const nextBlocks = blocksOf(ev);
+      const everyDone = typeof SB.allBlocksDone === 'function'
+        ? SB.allBlocksDone(nextBlocks)
+        : nextBlocks.every((b) => SB.isBlockDone(b));
+      const runStatus = String(ev.runRec?.fields?.Status || '').trim();
+      if (!everyDone && (runStatus === 'Klar' || runStatus === 'Avslutad')) {
+        try {
+          await patchRunStatus(ev, runId, 'Pågående');
+          ev.status = 'Pågående';
+          const runKey = String(ev.runKey || String(ev.key || '').split('#')[0] || '').trim();
+          if (runKey) {
+            events.forEach((e) => {
+              if (String(e.runKey || String(e.key || '').split('#')[0] || '') !== runKey) return;
+              if (e.runRec) {
+                e.runRec.fields = { ...(e.runRec.fields || {}), Status: 'Pågående' };
+              }
+            });
+          }
+        } catch (_) { /* best-effort */ }
+      }
+      showSaveToast('Klarmarkering ångrad');
+      render();
+      refreshOpenDetail();
+    } catch (err) {
+      console.error('Kalender ångra klar tillfälle:', err);
+      showSaveToast((err && err.message) || 'Kunde inte ångra', true);
+    }
+  }
+
+  /** Ångra hela körningens klarmarkering (alla tillfällen öppna + Status Pågående). */
+  async function angraKlarHela(ev) {
+    const runId = String(ev.runRec?.id || '').trim();
+    if (!runId) {
+      showSaveToast('Saknar uppdragskörning.', true);
+      return;
+    }
+    try {
+      const list = blocksOf(ev);
+      if (list.length) {
+        const ok = await persistSchedule(ev, null, null, { mode: 'uncomplete-all' });
+        if (!ok) return;
+      }
+      const runStatus = String(ev.runRec?.fields?.Status || '').trim();
+      if (runStatus === 'Klar' || runStatus === 'Avslutad' || !list.length) {
+        await patchRunStatus(ev, runId, 'Pågående');
+      }
+      ev.status = 'Pågående';
+      const runKey = String(ev.runKey || String(ev.key || '').split('#')[0] || '').trim();
+      if (runKey) {
+        events.forEach((e) => {
+          if (String(e.runKey || String(e.key || '').split('#')[0] || '') !== runKey) return;
+          e.status = 'Pågående';
+          e.blockDone = false;
+          if (e.runRec) {
+            e.runRec.fields = { ...(e.runRec.fields || {}), Status: 'Pågående' };
+          }
+          if (Array.isArray(e.scheduleBlocks)) {
+            e.scheduleBlocks = e.scheduleBlocks.map((b) => {
+              if (!b || typeof b !== 'object') return b;
+              const next = { id: b.id, start: b.start, end: b.end };
+              if (b.note) next.note = b.note;
+              return next;
+            });
+          }
+        });
+      }
+      showSaveToast('Klarmarkering ångrad');
+      render();
+      refreshOpenDetail();
+    } catch (err) {
+      console.error('Kalender ångra klar hela:', err);
+      showSaveToast((err && err.message) || 'Kunde inte ångra', true);
+    }
+  }
+
+  /**
    * Delvis: klarmarkera ETT tillfälle (block.done).
    * Körningens Status blir Klar först när ALLA tillfällen är klara.
    */
@@ -982,11 +1082,14 @@
     if (blockId) body.blockId = blockId;
     if (hasNote) body.note = options.note;
     if (mode === 'remove' || mode === 'complete' || mode === 'done'
-      || mode === 'complete-all' || mode === 'done-all') {
+      || mode === 'complete-all' || mode === 'done-all'
+      || mode === 'uncomplete' || mode === 'reopen' || mode === 'undone'
+      || mode === 'uncomplete-all' || mode === 'reopen-all' || mode === 'undone-all') {
       delete body.start;
       delete body.end;
     }
-    if (mode === 'complete-all' || mode === 'done-all') {
+    if (mode === 'complete-all' || mode === 'done-all'
+      || mode === 'uncomplete-all' || mode === 'reopen-all' || mode === 'undone-all') {
       delete body.blockId;
     }
     if (hasNote && mode === 'update' && (startIso == null || startIso === '') && (endIso == null || endIso === '')) {
@@ -1022,6 +1125,12 @@
       } else if (mode === 'complete-all' || mode === 'done-all') {
         ev.blockDone = true;
         ev.status = 'Klar';
+      } else if (mode === 'uncomplete' || mode === 'reopen' || mode === 'undone') {
+        const saved = nextBlocks.find((b) => b.id === blockId);
+        ev.blockDone = !!(saved && SB.isBlockDone(saved));
+        ev.status = ev.blockDone ? 'Klar' : (String(ev.runRec?.fields?.Status || '').trim() || 'Pågående');
+      } else if (mode === 'uncomplete-all' || mode === 'reopen-all' || mode === 'undone-all') {
+        ev.blockDone = false;
       } else if (hasNote && !startIso && !endIso) {
         const saved = nextBlocks.find((b) => b.id === blockId);
         ev.blockNote = saved && saved.note ? saved.note : '';
@@ -2885,6 +2994,9 @@
     const canEditNote = !!focusSched && !!focusBlockId && !!ev.runRec?.id;
     // Ta bort bokning = bara detta tillfälle, även om det är klarmarkerat (så länge körningen är öppen)
     const canRemoveTillfalle = canKlar && !!focusSched && !!focusBlockId && !!ev.runRec?.id;
+    // Ångra klarmarkering även när hela körningen är Klar (öppnar tillfället + körningen igen)
+    const canAngraTillfalle = isKlar && !!focusSched && !!focusBlockId && !!ev.runRec?.id;
+    const canAngraHela = isRunKlar && !!ev.runRec?.id;
     const noteHtml = canEditNote
       ? `<div class="kalender-detail-note">
           <label for="kal-block-note">Anteckning</label>
@@ -2899,7 +3011,7 @@
         ? `<p class="kalender-detail-note-readonly">${esc(focusNote)}</p>`
         : '');
     let tillfalleActions = '';
-    if (canKlarTillfalle || canRemoveTillfalle) {
+    if (canKlarTillfalle || canRemoveTillfalle || canAngraTillfalle) {
       const klarBtns = canKlarTillfalle
         ? `<button type="button" class="btn btn-ghost btn-sm" data-klar-tillfalle>
             <i class="fas fa-check"></i> Klarmarkera tillfälle
@@ -2907,7 +3019,12 @@
           ${canKlarTillfalleTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tillfalle-tid ${hasFocusHours ? '' : 'disabled'}>
             <i class="fas fa-check"></i> Klarmarkera tillfälle & tid (${esc(String(focusSched.hours))} t)
           </button>` : ''}`
-        : (isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>` : '');
+        : (canAngraTillfalle
+          ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>
+            <button type="button" class="btn btn-ghost btn-sm" data-angra-klar-tillfalle>
+              <i class="fas fa-undo"></i> Ångra klarmarkering
+            </button>`
+          : '');
       const removeBtn = canRemoveTillfalle
         ? `<button type="button" class="btn btn-danger btn-sm" data-remove-tillfalle>
             <i class="fas fa-trash-alt"></i> Ta bort detta tillfälle
@@ -2918,7 +3035,12 @@
           ${removeBtn}
         </div>`;
     } else if (isKlar) {
-      tillfalleActions = `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>`;
+      tillfalleActions = `<div class="kalender-detail-actions kalender-detail-actions--scope">
+          <span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>
+          ${canAngraTillfalle ? `<button type="button" class="btn btn-ghost btn-sm" data-angra-klar-tillfalle>
+            <i class="fas fa-undo"></i> Ångra klarmarkering
+          </button>` : ''}
+        </div>`;
     }
     const tillfalleHtml = focusSched
       ? `<div class="kalender-detail-scope">
@@ -2974,7 +3096,10 @@
           ${canKlarTid ? `<button type="button" class="${klarTidCls}" data-klar-tid ${hasHours ? '' : 'disabled'}>
             <i class="fas fa-check"></i> ${isUppgiftOnly ? 'Klarmarkera & tid' : 'Klarmarkera hela & tid'}${hasHours ? ` (${esc(String(totalH))} t)` : ''}
           </button>` : ''}
-          ${isRunKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> ${isUppgiftOnly ? 'Klarmarkerad' : 'Hela körningen klarmarkerad'}</span>` : ''}
+          ${isRunKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> ${isUppgiftOnly ? 'Klarmarkerad' : 'Hela körningen klarmarkerad'}</span>
+            ${canAngraHela ? `<button type="button" class="btn btn-ghost btn-sm" data-angra-klar-hela>
+              <i class="fas fa-undo"></i> Ångra klarmarkering
+            </button>` : ''}` : ''}
           <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
         </div>
       </div>
@@ -3017,6 +3142,18 @@
     if (klarTillfalleTidBtn) {
       klarTillfalleTidBtn.addEventListener('click', () => {
         klarTillfalle(ev, { blockId: focusBlockId, withTid: true });
+      });
+    }
+    const angraKlarTillfalleBtn = el.detailBody.querySelector('[data-angra-klar-tillfalle]');
+    if (angraKlarTillfalleBtn) {
+      angraKlarTillfalleBtn.addEventListener('click', () => {
+        angraKlarTillfalle(ev, { blockId: focusBlockId });
+      });
+    }
+    const angraKlarHelaBtn = el.detailBody.querySelector('[data-angra-klar-hela]');
+    if (angraKlarHelaBtn) {
+      angraKlarHelaBtn.addEventListener('click', () => {
+        angraKlarHela(ev);
       });
     }
     const saveEstBtn = el.detailBody.querySelector('[data-save-estimate]');
