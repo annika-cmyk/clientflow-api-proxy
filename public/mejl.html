@@ -7,129 +7,129 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260913mejl-compose-cards">
+    <link rel="stylesheet" href="styles.css?v=20261029mejl-compact">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+      /* —— Mejl compact UI —— */
+      .mejl-page { --mejl-accent: var(--accent, #13505c); --mejl-accent-tint: var(--accent-tint, #e3eef0); --mejl-orange: #c2410c; --mejl-orange-bg: #fff7ed; --mejl-muted: #64748b; --mejl-line: #e2e8f0; }
+      .mejl-page .content-header.risk-header,
+      .mejl-page .mejl-topbar-wrap { margin: 0; padding: 0; box-shadow: none; border-radius: 0; background: transparent; }
+      .mejl-topbar {
+        display: flex; align-items: center; gap: 0.65rem 0.85rem; flex-wrap: wrap;
+        min-height: 56px; padding: 0.35rem 0; margin: 0 0 0.5rem;
+        border-bottom: 1px solid var(--mejl-line);
+      }
+      .mejl-page-title {
+        margin: 0; flex: 0 0 auto;
+        font-family: var(--title-font), "Schibsted Grotesk", system-ui, sans-serif;
+        font-size: 1.15rem; font-weight: 700; letter-spacing: 0; text-transform: none;
+        color: var(--title-text, #0f172a); line-height: 1.2;
+      }
+      .mejl-topbar-controls {
+        display: flex; align-items: center; gap: 0.45rem 0.55rem; flex: 1 1 auto;
+        flex-wrap: wrap; min-width: 0;
+      }
+      .mejl-topbar .mejl-filter { min-width: 10rem; max-width: 14rem; flex: 0 1 14rem; }
+      .mejl-topbar .mejl-filter .form-input,
+      .mejl-topbar .mejl-filter .form-select { padding: 0.35rem 0.55rem; font-size: 0.85rem; min-height: 2rem; }
+      .mejl-folders {
+        display: inline-flex; gap: 0; margin: 0; padding: 2px; list-style: none;
+        background: #f1f5f9; border-radius: 8px; border: 1px solid var(--mejl-line);
+      }
+      .mejl-folder-btn {
+        border: 0; background: transparent; color: #64748b;
+        font: inherit; font-size: 0.8rem; font-weight: 600; padding: 0.32rem 0.65rem;
+        border-radius: 6px; cursor: pointer; white-space: nowrap; line-height: 1.2;
+      }
+      .mejl-folder-btn:hover { color: #0f172a; }
+      .mejl-folder-btn.is-active {
+        color: #fff; background: var(--mejl-accent); box-shadow: 0 1px 2px rgba(19,80,92,0.2);
+      }
+      .mejl-folder-btn .mejl-folder-count {
+        display: inline-block; margin-left: 0.2rem;
+        font-size: 0.7rem; font-weight: 700; opacity: 0.85;
+      }
+      .mejl-list-search {
+        flex: 1 1 9rem; min-width: 7rem; max-width: 14rem;
+        padding: 0.35rem 0.6rem; font-size: 0.85rem; min-height: 2rem;
+      }
+      .mejl-icon-btn {
+        width: 2rem; height: 2rem; padding: 0 !important;
+        display: inline-flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+      .mejl-topbar-end { display: inline-flex; align-items: center; gap: 0.4rem; margin-left: auto; }
+      .mejl-reconnect-banner {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem 0.75rem;
+        margin: 0 0 0.65rem; padding: 0.55rem 0.75rem;
+        background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px;
+        color: #92400e; font-size: 0.88rem; font-weight: 500;
+      }
+      .mejl-reconnect-banner[hidden] { display: none !important; }
+      .mejl-reconnect-banner .mejl-banner-text { flex: 1 1 12rem; min-width: 0; }
+      .mejl-sync-status {
+        font-size: 0.78rem; color: #64748b; margin: 0 0 0.4rem;
+        display: flex; align-items: center; gap: 0.35rem; min-height: 1rem;
+      }
+      .mejl-sync-status[hidden] { display: none !important; }
 
-      .mejl-page-tabs { display:flex; gap:0.35rem; margin:0.85rem 0 0; padding:0; list-style:none; }
-      .mejl-page-tab { border:1px solid transparent; background:transparent; color:#64748b; font:inherit; font-size:0.92rem; font-weight:600; padding:0.4rem 0.85rem; border-radius:8px; cursor:pointer; }
-      .mejl-page-tab:hover { color:#0f172a; background:#f1f5f9; }
-      .mejl-page-tab.is-active { color:#0f172a; background:#e2e8f0; border-color:#cbd5e1; }
+      /* Compose / signature (keep) */
       .mejl-panel[hidden] { display:none !important; }
       .mejl-compose-tools { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; margin:0.35rem 0 0.65rem; }
       .mejl-compose-cards { display:flex; flex-direction:column; gap:0.85rem; }
       .mejl-compose-card {
-        border: 1px solid var(--line, #e8eaee);
-        border-radius: 10px;
-        background: var(--surface-2, #fafbfc);
-        padding: 0.9rem 1rem 1rem;
+        border: 1px solid var(--line, #e8eaee); border-radius: 10px;
+        background: var(--surface-2, #fafbfc); padding: 0.9rem 1rem 1rem;
       }
       .mejl-compose-card__title {
-        margin: 0 0 0.7rem;
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: var(--label, #9aa1ab);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
+        margin: 0 0 0.7rem; font-size: 0.72rem; font-weight: 700;
+        color: var(--label, #9aa1ab); text-transform: uppercase; letter-spacing: 0.04em;
+        display: flex; align-items: center; gap: 0.4rem;
       }
       .mejl-compose-card__title i { font-size: 0.78rem; opacity: 0.85; }
-      .mejl-compose-card__row {
-        display: grid;
-        gap: 0.75rem;
-        grid-template-columns: 1fr;
-      }
+      .mejl-compose-card__row { display: grid; gap: 0.75rem; grid-template-columns: 1fr; }
       @media (min-width: 720px) {
         .mejl-compose-card__row--2 { grid-template-columns: 1fr 1fr; }
       }
       .mejl-compose-card .form-group { margin: 0; }
       .mejl-compose-card .form-group + .form-group { margin-top: 0.75rem; }
       .mejl-compose-card--protected {
-        /* Warning tone — samma tokens som risk/ofullständig (--warning / --warning-tint) */
-        --bg-warning: var(--warning-tint, #f8eed7);
-        --border-warning: #e0c88a;
-        background: var(--bg-warning);
-        border-color: var(--border-warning);
+        --bg-warning: var(--warning-tint, #f8eed7); --border-warning: #e0c88a;
+        background: var(--bg-warning); border-color: var(--border-warning);
       }
-      .mejl-compose-card--protected .mejl-compose-card__title {
-        color: var(--warning, #b07414);
-      }
+      .mejl-compose-card--protected .mejl-compose-card__title { color: var(--warning, #b07414); }
       .mejl-protected-box {
-        border: 1px dashed #e0c88a;
-        background: rgba(255, 255, 255, 0.55);
-        border-radius: 10px;
-        padding: 0.75rem 0.9rem;
-        margin-top: 0.35rem;
+        border: 1px dashed #e0c88a; background: rgba(255,255,255,0.55);
+        border-radius: 10px; padding: 0.75rem 0.9rem; margin-top: 0.35rem;
       }
       .mejl-protected-box[hidden] { display:none !important; }
       .mejl-attach-pick { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; }
       .mejl-attach-list,.mejl-q-list { display:flex; flex-direction:column; gap:0.4rem; margin-top:0.45rem; }
       .mejl-attach-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.45rem 0.65rem;
-        align-items: center;
-        justify-content: space-between;
-        font-size: 0.85rem;
-        color: #334155;
-        padding: 0.35rem 0;
-        border-bottom: 1px solid var(--line, #e8eaee);
+        display: flex; flex-wrap: wrap; gap: 0.45rem 0.65rem; align-items: center;
+        justify-content: space-between; font-size: 0.85rem; color: #334155;
+        padding: 0.35rem 0; border-bottom: 1px solid var(--line, #e8eaee);
       }
       .mejl-attach-row:last-child { border-bottom: 0; }
       .mejl-attach-name { flex: 1 1 8rem; min-width: 0; word-break: break-word; }
-      .mejl-attach-row-actions {
-        display: inline-flex;
-        flex-wrap: wrap;
-        gap: 0.4rem;
-        align-items: center;
-      }
+      .mejl-attach-row-actions { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
       .mejl-attach-bankid-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.28rem;
-        font-size: 0.72rem;
-        font-weight: 600;
-        padding: 0.15rem 0.5rem;
-        border-radius: 6px;
-        border: 1px solid var(--line, #e8eaee);
-        background: #f8fafc;
-        color: #64748b;
-        cursor: pointer;
-        user-select: none;
-        margin: 0;
+        display: inline-flex; align-items: center; gap: 0.28rem;
+        font-size: 0.72rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 6px;
+        border: 1px solid var(--line, #e8eaee); background: #f8fafc; color: #64748b; cursor: pointer; user-select: none; margin: 0;
       }
-      .mejl-attach-bankid-badge.is-bankid {
-        color: #0f766e;
-        background: #f0fdfa;
-        border-color: #99f6e4;
-      }
+      .mejl-attach-bankid-badge.is-bankid { color: #0f766e; background: #f0fdfa; border-color: #99f6e4; }
       .mejl-attach-bankid-badge.is-open { color: #94a3b8; font-weight: 500; }
       .mejl-attach-remove {
-        border: 0;
-        background: transparent;
-        color: #94a3b8;
-        font: inherit;
-        font-size: 0.78rem;
-        font-weight: 500;
-        cursor: pointer;
-        padding: 0.15rem 0.25rem;
-        text-decoration: underline;
-        text-underline-offset: 2px;
+        border: 0; background: transparent; color: #94a3b8; font: inherit; font-size: 0.78rem;
+        font-weight: 500; cursor: pointer; padding: 0.15rem 0.25rem; text-decoration: underline; text-underline-offset: 2px;
       }
       .mejl-attach-remove:hover { color: #b91c1c; }
       .mejl-q-row { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; font-size:0.85rem; color:#334155; }
       .mejl-compose-card__header-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.55rem;
+        display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.55rem;
       }
       .mejl-compose-card__header-row .mejl-compose-card__title { margin: 0; }
-      
       .mejl-sig-grid { display:grid; gap:0.85rem; grid-template-columns:1fr; }
       @media (min-width:900px){ .mejl-sig-grid { grid-template-columns:1fr 1fr; align-items:start; } }
       .mejl-sig-preview { border:1px solid #e2e8f0; border-radius:12px; background:#fff; padding:1rem 1.1rem; min-height:180px; color:#000; }
@@ -137,476 +137,197 @@
       .mejl-layout-cards { display:grid; gap:0.5rem; grid-template-columns:1fr 1fr; }
       .mejl-layout-card { border:1px solid #e2e8f0; border-radius:10px; padding:0.65rem 0.75rem; cursor:pointer; background:#fff; text-align:left; font:inherit; font-size:0.82rem; }
       .mejl-layout-card.is-active { border-color:#64748b; background:#f8fafc; box-shadow:0 0 0 1px #94a3b8; }
+      .mejl-settings-back { margin: 0 0 0.75rem; }
+      .mejl-settings-disconnect { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--mejl-line); }
 
-      /* Split panes: isolate tracks so list content cannot bleed under detail.
-         Each pane scrolls on its own when the pointer is over it (overflow + overscroll contain). */
+      /* Split panes */
       .mejl-layout {
-        display: flex; flex-direction: column; gap: 1.25rem; margin-top: 0.75rem;
+        display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.25rem;
         width: 100%; min-width: 0; box-sizing: border-box;
+        height: calc(100vh - 7.5rem); min-height: 420px;
       }
       .mejl-layout > .mejl-pane { min-width: 0; max-width: 100%; box-sizing: border-box; }
-      .mejl-pane--list {
-        display: flex; flex-direction: column; min-height: 0; overflow: hidden;
-      }
+      .mejl-pane--list { display: flex; flex-direction: column; min-height: 0; overflow: hidden; flex: 1 1 auto; }
       .mejl-pane--list .mejl-list {
-        max-height: min(50vh, 28rem);
-        overflow-x: hidden;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
+        flex: 1 1 auto; min-height: 0; max-height: none;
+        overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
       }
-      .mejl-pane--detail {
-        display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
-      }
+      .mejl-pane--detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; flex: 1 1 auto; }
       .mejl-pane--detail > .mejl-detail {
-        max-height: min(70vh, 40rem);
-        overflow-x: auto;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
+        flex: 1 1 auto; min-height: 0; max-height: none;
+        overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
       }
       @media (min-width: 960px) {
-        .mejl-layout {
-          flex-direction: row; align-items: stretch;
-          gap: 1.5rem;
-          height: min(78vh, 920px);
-          min-height: 360px;
-        }
+        .mejl-layout { flex-direction: row; align-items: stretch; gap: 0; }
         .mejl-pane--list {
-          flex: 0 0 clamp(260px, 32%, 360px);
-          width: clamp(260px, 32%, 360px);
-          max-width: 360px;
-          height: 100%;
+          flex: 0 0 clamp(240px, 30%, 340px); width: clamp(240px, 30%, 340px); max-width: 340px; height: 100%;
+          border-right: 1px solid var(--mejl-line); padding-right: 0;
         }
-        .mejl-pane--list .mejl-list {
-          flex: 1 1 auto;
-          min-height: 0;
-          max-height: none;
-        }
-        .mejl-pane--detail {
-          flex: 1 1 0;
-          min-width: 0;
-          max-width: 100%;
-          height: 100%;
-        }
-        .mejl-pane--detail > .mejl-detail {
-          flex: 1 1 auto;
-          min-height: 0;
-          max-height: none;
-        }
+        .mejl-pane--list .mejl-list { border-radius: 0; }
+        .mejl-pane--detail { flex: 1 1 0; min-width: 0; max-width: 100%; height: 100%; }
       }
-      .mejl-header-bar {
-        display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center;
-        margin-top: 0.75rem; padding: 0.35rem 0;
-      }
-      .mejl-header-bar .mejl-hint { margin: 0; flex: 1 1 12rem; }
-      .mejl-connect-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
-      .mejl-status-pill {
-        display: inline-flex; align-items: center; gap: 0.35rem;
-        font-size: 0.75rem; font-weight: 600; color: #166534;
-        background: #dcfce7; border-radius: 999px; padding: 0.2rem 0.55rem;
-      }
-      .mejl-status-pill.is-off { color: #9a3412; background: #ffedd5; }
-      .mejl-folders {
-        display: flex; gap: 0.35rem; margin: 0 0 0.75rem; padding: 0;
-        list-style: none;
-      }
-      .mejl-folder-btn {
-        border: 1px solid transparent; background: transparent; color: #64748b;
-        font: inherit; font-size: 0.92rem; font-weight: 600; padding: 0.35rem 0.7rem;
-        border-radius: 8px; cursor: pointer;
-      }
-      .mejl-folder-btn:hover { color: #0f172a; background: #f1f5f9; }
-      .mejl-folder-btn.is-active {
-        color: #0f172a; background: #e2e8f0; border-color: #cbd5e1;
-      }
-      .mejl-folder-btn .mejl-folder-count {
-        display: inline-block; margin-left: 0.25rem;
-        font-size: 0.72rem; font-weight: 700; color: #64748b;
-      }
-      .mejl-item-shared-badge {
-        display: inline-flex; align-items: center; gap: 0.25rem;
-        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
-        text-transform: uppercase; color: #0f766e; background: #f0fdfa;
-        border: 1px solid #99f6e4; border-radius: 6px; padding: 0.1rem 0.4rem;
-        margin-top: 0.35rem;
-      }
-      .mejl-list { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+
+      /* List rows */
+      .mejl-list { display: flex; flex-direction: column; gap: 0; min-width: 0; }
       .mejl-item {
         text-align: left; width: 100%; max-width: 100%; box-sizing: border-box;
-        border: 1px solid #e2e8f0; background: #fff;
-        border-radius: 10px; padding: 0.85rem 1rem; cursor: pointer;
-        transition: border-color .15s, box-shadow .15s;
-        overflow: visible;
+        border: 0; border-bottom: 1px solid var(--mejl-line); background: #fff;
+        border-radius: 0; padding: 0.55rem 0.75rem 0.55rem 0.9rem; cursor: pointer;
+        transition: background .12s; overflow: hidden; position: relative;
+      }
+      .mejl-item::before {
+        content: ''; position: absolute; left: 0.28rem; top: 0.85rem;
+        width: 6px; height: 6px; border-radius: 50%; background: transparent;
+      }
+      .mejl-item:hover { background: #f8fafc; }
+      .mejl-item.is-active {
+        background: var(--mejl-accent-tint);
+        box-shadow: inset 2px 0 0 var(--mejl-accent);
+      }
+      .mejl-item.is-unhandled::before { background: var(--mejl-accent); }
+      .mejl-item.is-handled {
+        background: transparent; color: #94a3b8;
+      }
+      .mejl-item.is-handled .mejl-item-customer,
+      .mejl-item.is-handled .mejl-item-customer-link,
+      .mejl-item.is-handled .mejl-item-from-subj,
+      .mejl-item.is-handled .mejl-item-snippet,
+      .mejl-item.is-handled .mejl-item-date { color: #94a3b8; font-weight: 500; }
+      .mejl-item.is-handled::before { background: transparent; }
+      .mejl-item.is-handled.is-active { background: #f1f5f9; box-shadow: inset 2px 0 0 #94a3b8; }
+      .mejl-item.is-todo, .mejl-item.is-task-created { background: #fff; }
+      .mejl-item-top {
+        display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; min-width: 0;
+      }
+      .mejl-item-top-right { display: flex; align-items: center; gap: 0.28rem; flex-shrink: 0; }
+      .mejl-item-attach, .mejl-item-replied {
+        display: inline-flex; align-items: center; color: #94a3b8; font-size: 0.72rem; line-height: 1;
+      }
+      .mejl-item-attach-count { font-variant-numeric: tabular-nums; margin-left: 0.1rem; font-size: 0.68rem; }
+      .mejl-item-customer, a.mejl-item-customer-link {
+        font-weight: 700; color: #0f172a; font-size: 0.86rem; line-height: 1.25;
+        min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none;
+      }
+      .mejl-item.is-unhandled .mejl-item-customer,
+      .mejl-item.is-unhandled a.mejl-item-customer-link { font-weight: 700; }
+      a.mejl-item-customer-link:hover { color: var(--mejl-accent); text-decoration: underline; }
+      .mejl-item-customer-row {
+        display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.35rem; min-width: 0; flex: 1 1 auto; overflow: hidden;
+      }
+      .mejl-item-unmatched-text {
+        font-size: 0.72rem; font-weight: 600; color: var(--mejl-orange); white-space: nowrap; flex-shrink: 0;
+      }
+      .mejl-item-date { color: #94a3b8; font-size: 0.72rem; white-space: nowrap; }
+      .mejl-item-from-subj {
+        font-size: 0.8rem; color: #475569; margin-top: 0.12rem;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .mejl-item-from-subj .mejl-item-nosubject { color: #94a3b8; }
+      .mejl-item-snippet {
+        font-size: 0.76rem; color: #94a3b8; margin-top: 0.1rem;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .mejl-item-shared-badge {
+        display: inline-flex; align-items: center; gap: 0.2rem;
+        font-size: 0.65rem; font-weight: 600; color: #0f766e; margin-top: 0.15rem;
+      }
+
+      /* Detail */
+      .mejl-detail {
+        border: 0; border-radius: 0; background: #fff; min-height: 200px;
+        padding: 0.85rem 1.1rem 1.25rem; min-width: 0; max-width: 100%; box-sizing: border-box;
         position: relative;
       }
-      .mejl-item:hover, .mejl-item.is-active {
-        border-color: #94a3b8; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+      .mejl-detail-empty { color: #94a3b8; padding: 2rem 0.5rem; }
+      .mejl-detail-subject {
+        margin: 0; font-size: 1.2rem; font-weight: 700; color: #0f172a; line-height: 1.3;
+        overflow-wrap: anywhere;
       }
-      .mejl-item-top {
-        display: flex; justify-content: space-between; gap: 0.75rem;
-        margin-bottom: 0.2rem; min-width: 0; align-items: flex-start;
+      .mejl-detail-meta-row {
+        display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline;
+        margin-top: 0.35rem; flex-wrap: wrap;
       }
-      .mejl-item-top-right {
-        display: flex; align-items: center; gap: 0.15rem; flex-shrink: 0;
+      .mejl-detail-meta { font-size: 0.78rem; color: #64748b; line-height: 1.4; min-width: 0; }
+      .mejl-detail-date { font-size: 0.78rem; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+      .mejl-customer-chip-row { margin-top: 0.55rem; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+      .mejl-customer-chip {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        font-size: 0.8rem; font-weight: 600; padding: 0.22rem 0.55rem; border-radius: 6px;
+        border: 1px solid #c5d4e8; background: #e8eef6; color: #1e3a5f; cursor: pointer; font: inherit;
       }
-      .mejl-item-attach {
-        display: inline-flex; align-items: center; gap: 0.15rem;
-        color: #64748b; font-size: 0.78rem; font-weight: 600;
-        margin-right: 0.2rem; line-height: 1;
+      .mejl-customer-chip:hover { border-color: var(--mejl-accent); }
+      .mejl-customer-chip.is-unlinked {
+        border-color: #fed7aa; background: var(--mejl-orange-bg); color: var(--mejl-orange);
       }
-      .mejl-item-attach i { font-size: 0.72rem; opacity: 0.9; }
-      .mejl-item-attach-count { font-variant-numeric: tabular-nums; }
-      .mejl-item-replied {
-        display: inline-flex; align-items: center; justify-content: center;
-        color: #64748b; font-size: 0.78rem; margin-right: 0.2rem; line-height: 1;
+      .mejl-customer-chip-menu {
+        position: absolute; z-index: 50; margin-top: 0.25rem;
+        min-width: 11rem; padding: 0.3rem; background: #fff;
+        border: 1px solid var(--mejl-line); border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(15,23,42,0.12);
       }
-      .mejl-item-replied i { font-size: 0.72rem; opacity: 0.9; }
-      .mejl-item-replied-badge {
-        display: inline-flex; align-items: center; gap: 0.28rem;
-        font-size: 0.72rem; font-weight: 600; color: #475569;
-        background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px;
-        padding: 0.12rem 0.45rem; line-height: 1.3;
+      .mejl-customer-chip-menu[hidden] { display: none !important; }
+      .mejl-customer-chip-menu button {
+        display: flex; width: 100%; align-items: center; gap: 0.45rem;
+        border: 0; background: transparent; text-align: left; padding: 0.45rem 0.55rem;
+        border-radius: 6px; font: inherit; font-size: 0.85rem; cursor: pointer; color: #0f172a;
       }
-      .mejl-item-replied-badge i { font-size: 0.68rem; opacity: 0.9; }
-      .mejl-item-menu {
-        position: relative; flex-shrink: 0;
+      .mejl-customer-chip-menu button:hover { background: #f1f5f9; }
+
+      .mejl-action-row {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+        margin: 0.75rem 0 0.85rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--mejl-line);
       }
-      .mejl-item-menu-btn {
-        width: 1.75rem; height: 1.75rem; padding: 0; border: none;
-        border-radius: 6px; background: transparent; color: #94a3b8;
-        display: inline-flex; align-items: center; justify-content: center;
-        cursor: pointer; line-height: 1; font-size: 0.9rem;
+      .mejl-action-more { position: relative; margin-left: 0.1rem; }
+      .mejl-action-more-panel {
+        position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+        min-width: 13.5rem; padding: 0.3rem; background: #fff;
+        border: 1px solid var(--mejl-line); border-radius: 10px;
+        box-shadow: 0 10px 28px rgba(15,23,42,0.12);
       }
-      .mejl-item-menu-btn:hover,
-      .mejl-item-menu.is-open .mejl-item-menu-btn {
-        background: #f1f5f9; color: #475569;
+      .mejl-action-more-panel[hidden] { display: none !important; }
+      .mejl-action-more-panel button {
+        display: flex; width: 100%; align-items: center; gap: 0.5rem;
+        border: 0; background: transparent; text-align: left; padding: 0.5rem 0.65rem;
+        border-radius: 8px; font: inherit; font-size: 0.88rem; cursor: pointer; color: #0f172a;
       }
-      .mejl-item-menu-panel {
-        position: absolute; top: calc(100% + 4px); right: 0;
-        min-width: 14.5rem; padding: 0.35rem; z-index: 40;
-        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
-        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
-      }
-      .mejl-item-menu-panel[hidden] { display: none !important; }
-      .mejl-item-menu-item {
-        display: flex; align-items: center; gap: 0.5rem; width: 100%;
-        border: none; background: transparent; color: #0f172a;
-        text-align: left; padding: 0.5rem 0.65rem; border-radius: 8px;
-        font-size: 0.88rem; cursor: pointer; line-height: 1.25;
-      }
-      .mejl-item-menu-item:hover { background: #f1f5f9; }
-      .mejl-item-menu-item.is-danger { color: #b91c1c; }
-      .mejl-item-menu-item.is-danger:hover { background: #fef2f2; }
-      .mejl-item-menu-item i { width: 1rem; text-align: center; opacity: 0.85; }
-      .mejl-item-customer {
-        font-weight: 700; color: #0f172a; font-size: 0.95rem; line-height: 1.3;
-        min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-      a.mejl-item-customer-link {
-        font-weight: 700; color: #0f172a; font-size: 0.95rem; line-height: 1.3;
-        text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-      a.mejl-item-customer-link:hover { color: #1e3a5f; text-decoration: underline; }
-      .mejl-detail-customer-link {
-        color: inherit; text-decoration: none;
-      }
-      .mejl-detail-customer-link:hover { text-decoration: underline; color: #1e3a5f; }
-      .mejl-item-customer-row {
-        display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.55rem;
-        min-width: 0; flex: 1 1 auto; overflow: hidden;
-      }
-      .mejl-kundkort-link {
-        display: inline-flex; align-items: center; gap: 0.28rem;
-        font-size: 0.72rem; font-weight: 600; color: #1e3a5f; text-decoration: none;
-        border-bottom: 1px solid transparent; white-space: nowrap;
-      }
-      .mejl-kundkort-link:hover { color: #0f172a; border-bottom-color: #94a3b8; }
-      .mejl-kundkort-link i { font-size: 0.68rem; opacity: 0.85; }
-      .mejl-detail-title-row {
-        display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.65rem; min-width: 0;
-      }
-      .mejl-detail-title-row .mejl-kundkort-btn { flex-shrink: 0; }
-      .mejl-labels-toggle {
-        display: inline-flex; align-items: center; justify-content: center;
-        width: 1.85rem; height: 1.85rem; padding: 0; flex-shrink: 0;
-        border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc;
-        color: #475569; cursor: pointer; line-height: 1;
-      }
-      .mejl-labels-toggle i.fa-tag { font-size: 0.72rem; opacity: 0.85; }
-      .mejl-labels-toggle:hover { background: #f1f5f9; color: #1e3a5f; border-color: #c5d4e8; }
-      .mejl-labels-toggle.is-open,
-      .mejl-labels-toggle[aria-expanded="true"] {
-        background: #e8eef6; color: #1e3a5f; border-color: #c5d4e8;
-      }
-      .mejl-labels-toggle:focus-visible {
-        outline: 2px solid #93c5fd; outline-offset: 2px;
-      }
-      .mejl-item-from { font-weight: 500; color: #334155; font-size: 0.88rem; margin-bottom: 0.15rem; }
-      .mejl-item-date { color: #94a3b8; font-size: 0.78rem; white-space: nowrap; }
-      .mejl-item-subject {
-        font-size: 0.86rem; color: #64748b; margin-bottom: 0.15rem;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-      .mejl-item-meta { font-size: 0.78rem; color: #64748b; }
-      .mejl-item-snippet {
-        font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-      .mejl-item.is-handled {
-        background: #dcfce7;
-        border-color: #86efac;
-      }
-      .mejl-item.is-handled:hover,
-      .mejl-item.is-handled.is-active {
-        border-color: #4ade80;
-        box-shadow: 0 2px 10px rgba(22, 163, 74, 0.12);
-      }
-      .mejl-item.is-todo {
-        background: #ffedd5;
-        border-color: #fdba74;
-      }
-      .mejl-item.is-todo:hover,
-      .mejl-item.is-todo.is-active {
-        border-color: #fb923c;
-        box-shadow: 0 2px 10px rgba(234, 88, 12, 0.12);
-      }
-      .mejl-item.is-task-created {
-        background: #e0f2fe;
-        border-color: #7dd3fc;
-      }
-      .mejl-item.is-task-created:hover,
-      .mejl-item.is-task-created.is-active {
-        border-color: #38bdf8;
-        box-shadow: 0 2px 10px rgba(14, 165, 233, 0.12);
-      }
-      .mejl-item.is-handled .mejl-item-snippet { display: none; }
-      .mejl-item-status-badge {
-        display: inline-block;
-        margin-top: 0.3rem;
-        margin-right: 0.35rem;
-        padding: 0.12rem 0.45rem;
-        border-radius: 4px;
-        font-size: 0.72rem;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-        line-height: 1.3;
-      }
-      .mejl-item-status-badge.is-handled {
-        background: #bbf7d0;
-        color: #166534;
-      }
-      .mejl-item-status-badge.is-todo {
-        background: #fed7aa;
-        color: #9a3412;
-      }
-      .mejl-item-status-badge.is-task-created {
-        background: #bae6fd;
-        color: #075985;
-      }
-      .mejl-handle-status-bar {
-        display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; align-items: center;
-      }
+      .mejl-action-more-panel button:hover { background: #f1f5f9; }
+      .mejl-action-more-panel button.is-danger { color: #b91c1c; }
+      .mejl-action-more-panel button.is-danger:hover { background: #fef2f2; }
+      .mejl-action-more-panel button i { width: 1rem; text-align: center; opacity: 0.85; }
+      .mejl-archive-bar-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
       .mejl-handle-status-btn.is-handled-active {
         background: #dcfce7; border-color: #4ade80; color: #166534;
       }
-      .mejl-handle-status-btn.is-todo-active {
-        background: #ffedd5; border-color: #fb923c; color: #9a3412;
+
+      .mejl-detail-body {
+        white-space: pre-wrap; line-height: 1.55; color: #334155;
+        margin-top: 0; max-width: 72ch; font-size: 14px;
       }
-      .mejl-detail-title {
-        font-size: 1.05rem; color: #0f172a; line-height: 1.35;
-        min-width: 0; overflow-wrap: anywhere;
-      }
-      .mejl-detail .mejl-item-subject {
-        font-size: 0.95rem; color: #334155; margin: 0.35rem 0 0.5rem;
-        white-space: normal; overflow: visible; text-overflow: unset;
-      }
-      .mejl-detail {
-        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; min-height: 320px;
-        padding: 1.25rem 1.4rem; min-width: 0; max-width: 100%; box-sizing: border-box;
-      }
-      .mejl-detail-empty { color: #94a3b8; padding: 2rem 0.5rem; }
-      .mejl-detail-body { white-space: pre-wrap; line-height: 1.55; color: #334155; margin-top: 1rem; }
       .mejl-detail-body.html-body { white-space: normal; }
-      .mejl-toolbar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 0.5rem; }
-      .mejl-compose {
-        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
-        padding: 1.25rem 1.4rem; margin-top: 1rem;
+      .mejl-mask-float {
+        position: absolute; z-index: 60; display: none;
+        padding: 0.28rem 0.55rem; font-size: 0.78rem; font-weight: 600;
+        border-radius: 6px; border: 1px solid #cbd5e1; background: #fff;
+        color: #0f172a; box-shadow: 0 4px 14px rgba(15,23,42,0.14); cursor: pointer;
       }
-      .mejl-pane--detail > .mejl-compose {
-        margin-top: 0;
-        min-height: 320px;
-        max-height: min(78vh, 920px);
-        overflow: auto;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
-        box-sizing: border-box;
-      }
-      @media (min-width: 960px) {
-        .mejl-pane--detail > .mejl-compose {
-          flex: 1 1 auto;
-          min-height: 0;
-          max-height: none;
-          height: 100%;
-        }
-      }
-      .mejl-pane--detail > .mejl-compose[hidden],
-      .mejl-compose[hidden] { display: none !important; }
-      .mejl-detail[hidden] { display: none !important; }
-      .mejl-compose .form-grid { display: grid; gap: 0.75rem; }
-      .mejl-compose textarea.form-input { min-height: 160px; resize: vertical; }
-      .mejl-filter { min-width: 220px; }
-      .mejl-hint { font-size: 0.85rem; color: #64748b; margin: 0.5rem 0 0; }
-      .mejl-sync-status {
-        font-size: 0.8rem; color: #64748b; margin: 0 0 0.55rem;
-        display: flex; align-items: center; gap: 0.4rem; min-height: 1.1rem;
-      }
-      .mejl-sync-status[hidden] { display: none !important; }
-      .btn-danger-outline {
-        color: #b91c1c; border-color: #fecaca; background: #fff;
-      }
-      .btn-danger-outline:hover { background: #fef2f2; border-color: #f87171; }
-      .mejl-labels {
-        display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.35rem 0 0.15rem;
-      }
-      .mejl-label-chip {
-        display: inline-flex; align-items: center; gap: 0.28rem;
-        font-size: 0.72rem; font-weight: 600; color: #475569;
-        background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px;
-        padding: 0.12rem 0.45rem; max-width: 100%;
-      }
-      .mejl-label-chip i.fa-tag { font-size: 0.65rem; opacity: 0.7; }
-      .mejl-label-chip.is-kunder {
-        color: #1e3a5f; background: #e8eef6; border-color: #c5d4e8;
-      }
-      .mejl-label-chip.is-kunder-root {
-        color: #334155; background: #e2e8f0; border-color: #cbd5e1;
-      }
-      .mejl-label-chip.is-system {
-        color: #64748b; background: #f8fafc; font-weight: 500;
-      }
-      .mejl-label-remove {
-        border: 0; background: transparent; color: inherit; cursor: pointer;
-        padding: 0 0 0 0.1rem; line-height: 1; opacity: 0.65;
-      }
-      .mejl-label-remove:hover { opacity: 1; color: #b91c1c; }
-      .mejl-labels-block {
-        margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid #e2e8f0;
-      }
-      .mejl-labels-block[hidden] { display: none !important; }
-      .mejl-labels-heading {
-        font-size: 0.78rem; font-weight: 700; color: #64748b;
-        text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.4rem;
-      }
-      .mejl-label-edit { margin-top: 0.65rem; }
-      .mejl-label-edit-label {
-        display: block; font-size: 0.82rem; font-weight: 600; color: #334155;
-        margin-bottom: 0.3rem;
-      }
-      .mejl-label-edit-row {
-        display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
-      }
-      .mejl-label-select { flex: 1 1 12rem; min-width: 0; max-width: 28rem; }
-      .mejl-label-create-wrap {
-        display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
-        margin-top: 0.45rem;
-      }
-      .mejl-label-create-wrap[hidden] { display: none !important; }
-      .mejl-label-create-wrap .form-input { flex: 1 1 12rem; min-width: 0; max-width: 28rem; }
-      .mejl-label-link { margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed #e2e8f0; }
-      .mejl-match-pill {
-        display: inline-flex; align-items: center; gap: 0.3rem;
-        font-size: 0.72rem; font-weight: 600; padding: 0.15rem 0.5rem;
-        border-radius: 6px; margin: 0.35rem 0 0.15rem;
-      }
-      .mejl-match-pill.is-link { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-      .mejl-match-pill.is-auto { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
-      .mejl-match-pill.is-unmatched { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
-      .mejl-item-unmatched-badge {
-        display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-weight: 700;
-        letter-spacing: 0.02em; text-transform: uppercase; color: #9a3412;
-        background: #fff7ed; border: 1px solid #fed7aa; border-radius: 4px; padding: 0.1rem 0.35rem;
-        vertical-align: middle;
-      }
-      .mejl-item.is-unmatched { border-left: 3px solid #fb923c; }
-      .mejl-unmatched { line-height: 1.45; }
-      .mejl-unmatched-filter-btn {
-        display: inline; margin-left: 0.25rem; padding: 0; border: 0; background: none;
-        color: #1e3a5f; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer;
-      }
-      .mejl-unmatched-filter-btn:hover { color: #0f172a; }
-      .mejl-label-link-row {
-        display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-top: 0.35rem;
-      }
-      .mejl-label-link-check {
-        display: flex; align-items: flex-start; gap: 0.4rem;
-        font-size: 0.82rem; color: #475569; margin-top: 0.45rem;
-      }
-      .mejl-label-link-check input { margin-top: 0.15rem; }
-      .mejl-item .mejl-labels { margin-top: 0.3rem; }
-      /* Global .btn { display:inline-flex } och .mejl-layout { display:grid } slår UA [hidden] */
-      #mejl-connect-btn[hidden],
-      #mejl-disconnect-btn[hidden],
-      #mejl-refresh-btn[hidden],
-      #mejl-compose-toggle[hidden],
-      #mejl-toolbar[hidden],
-      #mejl-main[hidden],
-      #mejl-compose[hidden] { display: none !important; }
-      #mejl-connect-btn.is-disabled,
-      #mejl-connect-btn[aria-disabled="true"] {
-        opacity: 0.55;
-        cursor: not-allowed;
-        filter: grayscale(0.2);
-      }
-      .mejl-archive-bar {
-        display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem;
-        padding-top: 0.75rem; border-top: 1px solid #e2e8f0;
-      }
-      .mejl-archive-meta { font-size: 0.78rem; color: #64748b; margin-top: 0.5rem; }
-      .mejl-archive-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
-      .mejl-archive-meta .pill {
-        display: inline-flex; align-items: center; gap: 0.25rem;
-        font-size: 0.72rem; font-weight: 600; padding: 0.12rem 0.45rem;
-        border-radius: 6px; margin-right: 0;
-      }
-      .mejl-archive-meta .pill-byra { background: #e8eef6; color: #1e3a5f; }
-      .mejl-archive-meta .pill-privat { background: #fef3c7; color: #92400e; }
-      .mejl-archive-chip {
-        display: inline-flex; align-items: center;
-        font-size: 0.72rem; color: #475569; background: #f1f5f9;
-        padding: 0.1rem 0.4rem; border-radius: 6px;
-      }
-      .mejl-archive-saved-label {
-        margin-top: 0.35rem; font-weight: 600; color: #334155; font-size: 0.78rem;
-      }
-      .mejl-archive-saved-label--muted { font-weight: 500; color: #64748b; }
-      .mejl-archive-dest-list {
-        margin: 0.2rem 0 0; padding: 0 0 0 1.05rem; color: #475569;
-      }
-      .mejl-archive-dest-list li { margin: 0.1rem 0; }
-      .mejl-archive-dest-link {
-        color: #1e3a5f; font-weight: 600; text-decoration: underline;
-        text-underline-offset: 2px;
-      }
-      .mejl-archive-dest-link:hover { color: #0f172a; }
-      .mejl-archive-dest-name { font-weight: 600; color: #334155; }
-      .mejl-archive-dest-detail { color: #64748b; }
-      .mejl-archive-att-status { margin-top: 0.25rem; color: #64748b; }
-      .mejl-att-saved {
-        display: inline-flex; margin-left: 0.4rem; font-size: 0.68rem; font-weight: 600;
-        color: #166534; background: #dcfce7; padding: 0.05rem 0.35rem; border-radius: 5px;
-        vertical-align: middle;
-      }
-      .mejl-atts { margin-top: 0.65rem; font-size: 0.82rem; color: #475569; }
-      .mejl-atts ul.mejl-att-list { margin: 0.4rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.45rem; }
+      .mejl-mask-float.is-visible { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+      .mejl-atts { margin-top: 1rem; max-width: 72ch; font-size: 0.82rem; color: #475569; }
+      .mejl-atts ul.mejl-att-list { margin: 0.35rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.25rem; }
       .mejl-att-item {
         display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-        gap: 0.5rem; padding: 0.45rem 0.55rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+        gap: 0.35rem; padding: 0.3rem 0; border-bottom: 1px solid #f1f5f9;
       }
-      .mejl-att-meta { flex: 1 1 12rem; min-width: 0; }
-      .mejl-att-name { font-weight: 600; color: #0f172a; word-break: break-word; }
-      .mejl-att-size { color: #64748b; font-weight: 400; }
-      .mejl-att-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+      .mejl-att-item:last-child { border-bottom: 0; }
+      .mejl-att-meta { flex: 1 1 10rem; min-width: 0; }
+      .mejl-att-name { font-weight: 600; color: #0f172a; word-break: break-word; font-size: 0.82rem; }
+      .mejl-att-size { color: #64748b; font-weight: 400; font-size: 0.75rem; }
+      .mejl-att-actions { display: flex; gap: 0.2rem; }
+      .mejl-att-actions .btn { width: 1.85rem; height: 1.85rem; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+      .mejl-att-saved {
+        display: inline-flex; margin-left: 0.35rem; font-size: 0.65rem; font-weight: 600;
+        color: #166534; background: #dcfce7; padding: 0.05rem 0.3rem; border-radius: 4px; vertical-align: middle;
+      }
       .mejl-att-preview-backdrop { z-index: 1300; }
       .mejl-att-preview-modal { max-width: min(920px, 96vw); width: 100%; padding: 0; display: flex; flex-direction: column; max-height: 92vh; }
       .mejl-att-preview-header {
@@ -622,6 +343,98 @@
         margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #1e293b;
       }
+
+      .mejl-compose {
+        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+        padding: 1.25rem 1.4rem; margin-top: 0;
+      }
+      .mejl-pane--detail > .mejl-compose {
+        margin-top: 0; min-height: 200px; max-height: none; height: 100%;
+        overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-sizing: border-box;
+      }
+      .mejl-pane--detail > .mejl-compose[hidden],
+      .mejl-compose[hidden] { display: none !important; }
+      .mejl-detail[hidden] { display: none !important; }
+      .mejl-compose .form-grid { display: grid; gap: 0.75rem; }
+      .mejl-compose textarea.form-input { min-height: 160px; resize: vertical; }
+      .mejl-hint { font-size: 0.85rem; color: #64748b; margin: 0.5rem 0 0; }
+      .mejl-connect-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+      .btn-danger-outline { color: #b91c1c; border-color: #fecaca; background: #fff; }
+      .btn-danger-outline:hover { background: #fef2f2; border-color: #f87171; }
+
+      .mejl-labels { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.35rem 0 0.15rem; }
+      .mejl-label-chip {
+        display: inline-flex; align-items: center; gap: 0.28rem;
+        font-size: 0.72rem; font-weight: 600; color: #475569;
+        background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.12rem 0.45rem; max-width: 100%;
+      }
+      .mejl-label-chip i.fa-tag { font-size: 0.65rem; opacity: 0.7; }
+      .mejl-label-chip.is-kunder { color: #1e3a5f; background: #e8eef6; border-color: #c5d4e8; }
+      .mejl-label-chip.is-kunder-root { color: #334155; background: #e2e8f0; border-color: #cbd5e1; }
+      .mejl-label-chip.is-system { color: #64748b; background: #f8fafc; font-weight: 500; }
+      .mejl-label-remove { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 0 0 0.1rem; line-height: 1; opacity: 0.65; }
+      .mejl-label-remove:hover { opacity: 1; color: #b91c1c; }
+      .mejl-labels-block { margin-top: 0.65rem; padding: 0.75rem; border: 1px solid var(--mejl-line); border-radius: 10px; background: #f8fafc; }
+      .mejl-labels-block[hidden] { display: none !important; }
+      .mejl-labels-heading {
+        font-size: 0.78rem; font-weight: 700; color: #64748b;
+        text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.4rem;
+      }
+      .mejl-label-edit { margin-top: 0.65rem; }
+      .mejl-label-edit-label { display: block; font-size: 0.82rem; font-weight: 600; color: #334155; margin-bottom: 0.3rem; }
+      .mejl-label-edit-row { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+      .mejl-label-select { flex: 1 1 12rem; min-width: 0; max-width: 28rem; }
+      .mejl-label-create-wrap { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-top: 0.45rem; }
+      .mejl-label-create-wrap[hidden] { display: none !important; }
+      .mejl-label-create-wrap .form-input { flex: 1 1 12rem; min-width: 0; max-width: 28rem; }
+      .mejl-label-link { margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed #e2e8f0; }
+      .mejl-match-pill {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        font-size: 0.72rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 6px; margin: 0.35rem 0 0.15rem;
+      }
+      .mejl-match-pill.is-link { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+      .mejl-match-pill.is-auto { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+      .mejl-match-pill.is-unmatched { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+      .mejl-unmatched { line-height: 1.45; }
+      .mejl-unmatched-filter-btn {
+        display: inline; margin-left: 0.25rem; padding: 0; border: 0; background: none;
+        color: #1e3a5f; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer;
+      }
+      .mejl-unmatched-filter-btn:hover { color: #0f172a; }
+      .mejl-label-link-row { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-top: 0.35rem; }
+      .mejl-label-link-check { display: flex; align-items: flex-start; gap: 0.4rem; font-size: 0.82rem; color: #475569; margin-top: 0.45rem; }
+      .mejl-label-link-check input { margin-top: 0.15rem; }
+
+      .mejl-archive-meta { font-size: 0.78rem; color: #64748b; margin-top: 0.5rem; max-width: 72ch; }
+      .mejl-archive-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+      .mejl-archive-meta .pill {
+        display: inline-flex; align-items: center; gap: 0.25rem;
+        font-size: 0.72rem; font-weight: 600; padding: 0.12rem 0.45rem; border-radius: 6px; margin-right: 0;
+      }
+      .mejl-archive-meta .pill-byra { background: #e8eef6; color: #1e3a5f; }
+      .mejl-archive-meta .pill-privat { background: #fef3c7; color: #92400e; }
+      .mejl-archive-chip { display: inline-flex; align-items: center; font-size: 0.72rem; color: #475569; background: #f1f5f9; padding: 0.1rem 0.4rem; border-radius: 6px; }
+      .mejl-archive-saved-label { margin-top: 0.35rem; font-weight: 600; color: #334155; font-size: 0.78rem; }
+      .mejl-archive-saved-label--muted { font-weight: 500; color: #64748b; }
+      .mejl-archive-dest-list { margin: 0.2rem 0 0; padding: 0 0 0 1.05rem; color: #475569; }
+      .mejl-archive-dest-list li { margin: 0.1rem 0; }
+      .mejl-archive-dest-link { color: #1e3a5f; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+      .mejl-archive-dest-link:hover { color: #0f172a; }
+      .mejl-archive-dest-name { font-weight: 600; color: #334155; }
+      .mejl-archive-dest-detail { color: #64748b; }
+      .mejl-archive-att-status { margin-top: 0.25rem; color: #64748b; }
+
+      #mejl-connect-btn[hidden],
+      #mejl-disconnect-btn[hidden],
+      #mejl-refresh-btn[hidden],
+      #mejl-compose-toggle[hidden],
+      #mejl-main[hidden],
+      #mejl-compose[hidden] { display: none !important; }
+      #mejl-connect-btn.is-disabled,
+      #mejl-connect-btn[aria-disabled="true"] {
+        opacity: 0.55; cursor: not-allowed; filter: grayscale(0.2);
+      }
+
       .mejl-modal-backdrop {
         position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45);
         z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 1rem;
@@ -633,98 +446,80 @@
       }
       .mejl-modal h3 { margin: 0 0 0.75rem; font-size: 1.05rem; color: #0f172a; }
       .mejl-modal .form-grid { display: grid; gap: 0.65rem; }
-      /* display:grid slår UA [hidden] — dolda kopplingsfält ska inte synas */
       .mejl-modal .form-grid[hidden],
       .mejl-koppla-subform[hidden] { display: none !important; }
-      .mejl-modal-actions {
-        display: flex; flex-wrap: wrap; gap: 0.45rem; justify-content: flex-end; margin-top: 1rem;
-      }
-      .mejl-tid-split {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem;
-      }
+      .mejl-modal-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; justify-content: flex-end; margin-top: 1rem; }
+      .mejl-tid-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
       .mejl-tid-error { color: #b91c1c; margin: 0; }
       .mejl-koppla-advanced {
-        margin-top: 0.25rem;
-        padding: 0.5rem 0.65rem;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        background: #f8fafc;
+        margin-top: 0.25rem; padding: 0.5rem 0.65rem; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;
       }
       .mejl-koppla-advanced > summary {
-        cursor: pointer;
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: #475569;
-        list-style: none;
+        cursor: pointer; font-size: 0.85rem; font-weight: 600; color: #475569; list-style: none;
       }
       .mejl-koppla-advanced > summary::-webkit-details-marker { display: none; }
       .mejl-koppla-advanced > summary::before { content: '▸ '; }
       .mejl-koppla-advanced[open] > summary::before { content: '▾ '; }
       .mejl-koppla-subform {
-        margin: 0;
-        padding: 0.55rem 0.65rem;
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
+        margin: 0; padding: 0.55rem 0.65rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
       }
-      .mejl-mask-hint { font-size: 0.8rem; color: #64748b; margin: 0.35rem 0 0; }
+
+      @media (max-width: 959px) {
+        .mejl-layout { height: auto; min-height: 0; }
+        .mejl-pane--list .mejl-list { max-height: min(42vh, 22rem); }
+        .mejl-pane--detail > .mejl-detail { max-height: min(55vh, 32rem); }
+      }
     </style>
 </head>
-<body>
+<body class="mejl-page">
     <div class="app-container">
         <div class="sidebar-container"></div>
         <main class="main-content">
             <div class="container">
-                <header class="content-header risk-header">
-                    <div class="risk-header-content">
-                        <h1>Mejl</h1>
-                        <p class="risk-header-sub">Kundmejl från Gmail under etiketten KUNDER</p>
-                    </div>
-                </header>
-
-                <nav class="mejl-page-tabs" aria-label="Mejl-sektioner">
-                    <button type="button" class="mejl-page-tab is-active" data-mejl-panel="inbox" id="mejl-tab-inbox">Inkorg</button>
-                    <button type="button" class="mejl-page-tab" data-mejl-panel="settings" id="mejl-tab-settings">Inställningar · sidfot</button>
-                </nav>
-
                 <div id="mejl-panel-inbox" class="mejl-panel">
-                <div id="mejl-connect" class="mejl-header-bar">
-                    <span id="mejl-status-pill" class="mejl-status-pill is-off">Ej kopplad</span>
-                    <div class="mejl-connect-actions">
+                <div class="mejl-topbar-wrap" id="mejl-connect">
+                    <header class="mejl-topbar" aria-label="Mejl">
+                        <h1 class="mejl-page-title">Mejl</h1>
+                        <div class="mejl-topbar-controls">
+                            <label class="mejl-filter">
+                                <span class="sr-only">Filtrera kund</span>
+                                <select id="mejl-customer-filter" class="form-select form-input">
+                                    <option value="">Alla under KUNDER</option>
+                                    <option value="__unmatched__">Omatchade etiketter</option>
+                                </select>
+                            </label>
+                            <nav class="mejl-folders" aria-label="Mappar">
+                                <button type="button" class="mejl-folder-btn is-active" data-folder="open" id="mejl-folder-open">Att hantera</button>
+                                <button type="button" class="mejl-folder-btn" data-folder="inbox" id="mejl-folder-inbox">Alla</button>
+                                <button type="button" class="mejl-folder-btn" data-folder="shared" id="mejl-folder-shared">Delat med mig</button>
+                                <button type="button" class="mejl-folder-btn" data-folder="sent" id="mejl-folder-sent">Skickat</button>
+                            </nav>
+                            <input type="search" id="mejl-list-search" class="form-input mejl-list-search" placeholder="Sök ämne eller avsändare" aria-label="Sök i listan" autocomplete="off">
+                            <div class="mejl-topbar-end">
+                                <button type="button" class="btn btn-secondary btn-sm mejl-icon-btn" id="mejl-refresh-btn" hidden title="Uppdatera (Shift = full sync)">
+                                    <i class="fas fa-sync" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="btn btn-primary btn-sm" id="mejl-compose-toggle" hidden>
+                                    <i class="fas fa-pen" aria-hidden="true"></i> Nytt mejl
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-sm mejl-icon-btn" id="mejl-settings-btn" title="Inställningar · sidfot" aria-label="Inställningar">
+                                    <i class="fas fa-cog" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+                    <div id="mejl-reconnect-banner" class="mejl-reconnect-banner" hidden>
+                        <span id="mejl-connect-text" class="mejl-banner-text">Laddar status…</span>
                         <button type="button" class="btn btn-secondary btn-sm" id="mejl-connect-btn">
-                            <i class="fab fa-google"></i> Koppla Gmail
-                        </button>
-                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-disconnect-btn" hidden>
-                            Koppla från
-                        </button>
-                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-refresh-btn" hidden>
-                            <i class="fas fa-sync"></i> Uppdatera
-                        </button>
-                        <button type="button" class="btn btn-primary btn-sm" id="mejl-compose-toggle" hidden>
-                            <i class="fas fa-pen"></i> Nytt mejl
+                            <i class="fab fa-google" aria-hidden="true"></i> Koppla igen
                         </button>
                     </div>
-                    <p id="mejl-connect-text" class="mejl-hint">Laddar status…</p>
-                </div>
-
-                <div class="mejl-toolbar" id="mejl-toolbar" hidden>
-                    <label class="mejl-filter">
-                        <span class="sr-only">Filtrera kund</span>
-                        <select id="mejl-customer-filter" class="form-select form-input">
-                            <option value="">Alla under KUNDER</option>
-                            <option value="__unmatched__">Omatchade etiketter</option>
-                        </select>
-                    </label>
+                    <span id="mejl-status-pill" class="sr-only" hidden aria-hidden="true"></span>
+                    <div id="mejl-toolbar" class="sr-only" hidden aria-hidden="true"></div>
                 </div>
 
                 <div class="mejl-layout" id="mejl-main" hidden>
                     <section class="mejl-pane mejl-pane--list" aria-label="Mejllista">
-                        <nav class="mejl-folders" aria-label="Mappar">
-                            <button type="button" class="mejl-folder-btn is-active" data-folder="inbox" id="mejl-folder-inbox">Inkorg</button>
-                            <button type="button" class="mejl-folder-btn" data-folder="open" id="mejl-folder-open">Endast öppna</button>
-                            <button type="button" class="mejl-folder-btn" data-folder="shared" id="mejl-folder-shared">Delat med mig</button>
-                            <button type="button" class="mejl-folder-btn" data-folder="sent" id="mejl-folder-sent">Skickat</button>
-                        </nav>
                         <p id="mejl-sync-status" class="mejl-sync-status" hidden></p>
                         <div id="mejl-list" class="mejl-list">
                             <p class="mejl-hint">Laddar mejl…</p>
@@ -827,7 +622,10 @@
                 </div><!-- /mejl-panel-inbox -->
 
                 <div id="mejl-panel-settings" class="mejl-panel" hidden>
-                    <section class="mejl-compose" style="margin-top:1rem;">
+                    <div class="mejl-settings-back">
+                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-tab-inbox"><i class="fas fa-arrow-left" aria-hidden="true"></i> Tillbaka till Mejl</button>
+                    </div>
+                    <section class="mejl-compose" style="margin-top:0;">
                         <h2 style="margin:0 0 0.35rem; font-size:1.05rem;">Mejl-sidfot</h2>
                         <p class="mejl-hint" style="margin:0 0 1rem;">Sparad per användare och bifogas automatiskt när du skickar från Mejl. Tomma fält visas inte.</p>
                         <div class="mejl-sig-grid">
@@ -854,6 +652,14 @@
                             </div>
                             <div><label style="display:block;font-weight:600;margin-bottom:0.4rem;">Förhandsvisning</label><div class="mejl-sig-preview" id="mejl-sig-preview"><p class="mejl-hint">Ingen sidfot ännu.</p></div></div>
                         </div>
+                        <div class="mejl-settings-disconnect">
+                            <h3 style="margin:0 0 0.35rem;font-size:0.95rem;">Gmail-koppling</h3>
+                            <p class="mejl-hint" style="margin:0 0 0.65rem;" id="mejl-settings-gmail-hint">Hantera din Gmail-koppling.</p>
+                            <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-disconnect-btn" hidden>
+                                Koppla från Gmail
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="mejl-tab-settings" hidden aria-hidden="true">Inställningar</button>
+                        </div>
                     </section>
                 </div>
 
@@ -867,12 +673,12 @@
     <script src="js/components.js?v=2.7" defer></script>
     <script src="js/mejl-mask-selection.js?v=20260913mask" defer></script>
     <script src="js/uppdrag-typ.js?v=2" defer></script>
-    <script src="js/mejl-archive.js?v=20260922uppgift" defer></script>
+    <script src="js/mejl-archive.js?v=20261029compact" defer></script>
     <script src="js/mejl-hidden.js?v=1" defer></script>
-    <script src="js/mejl-handle-status.js?v=20260916task" defer></script>
+    <script src="js/mejl-handle-status.js?v=20261029compact" defer></script>
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
     <script src="js/mejl-regga-tid.js?v=20260919lank" defer></script>
     <script src="js/mejl-replied.js?v=20261022svarat" defer></script>
-    <script src="js/mejl.js?v=20261022scroll" defer></script>
+    <script src="js/mejl.js?v=20261029compact" defer></script>
 </body>
 </html>
