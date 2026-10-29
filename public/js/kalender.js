@@ -1253,6 +1253,170 @@
       handle.addEventListener('pointerup', finishResize);
       handle.addEventListener('pointercancel', finishResize);
     });
+
+    // Dra på tom yta → skapa tidblock kopplat till kund/uppdrag
+    columns.forEach((col) => {
+      const track = col.querySelector('.kalender-time-track');
+      if (!track) return;
+      track.addEventListener('pointerdown', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        if (e.target.closest('.kalender-block') || e.target.closest('.kalender-block-resize')) return;
+        if (dragState) return;
+        const date = col.getAttribute('data-date');
+        if (!date) return;
+        e.preventDefault();
+        const { y, height } = pointerYInCol(e.clientY, col);
+        const startMin = KV.yToMinutes(y, height);
+        track.setPointerCapture(e.pointerId);
+        let draft = track.querySelector('.kalender-block-draft');
+        if (!draft) {
+          draft = document.createElement('div');
+          draft.className = 'kalender-block kalender-block-draft';
+          draft.setAttribute('aria-hidden', 'true');
+          track.appendChild(draft);
+        }
+        const endMin = Math.min(startMin + KV.DEFAULT_BLOCK_MINUTES, KV.dayEndMinutes());
+        const layout = KV.blockLayout(startMin, endMin);
+        const pos = KV.blockPositionStyle(layout);
+        draft.style.top = pos.top;
+        draft.style.height = pos.height;
+        draft.textContent = `${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)}`;
+        dragState = {
+          mode: 'create-slot',
+          date,
+          originMin: startMin,
+          startMin,
+          endMin,
+          draft,
+          track,
+          moved: false
+        };
+      });
+      track.addEventListener('pointermove', (e) => {
+        if (!dragState || dragState.mode !== 'create-slot' || dragState.track !== track) return;
+        const { y, height } = pointerYInCol(e.clientY, col);
+        const atMin = KV.yToMinutes(y, height);
+        const a = Math.min(dragState.originMin, atMin);
+        const b = Math.max(dragState.originMin, atMin);
+        let startMin = a;
+        let endMin = Math.max(b, a + KV.SNAP_MINUTES);
+        if (endMin - startMin < KV.DEFAULT_BLOCK_MINUTES && !dragState.moved) {
+          endMin = Math.min(startMin + KV.DEFAULT_BLOCK_MINUTES, KV.dayEndMinutes());
+        }
+        if (Math.abs(atMin - dragState.originMin) >= KV.SNAP_MINUTES) dragState.moved = true;
+        const layout = KV.blockLayout(startMin, endMin);
+        const pos = KV.blockPositionStyle(layout);
+        if (dragState.draft) {
+          dragState.draft.style.top = pos.top;
+          dragState.draft.style.height = pos.height;
+          dragState.draft.textContent = `${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)}`;
+        }
+        dragState.startMin = startMin;
+        dragState.endMin = endMin;
+      });
+      const finishCreate = (e) => {
+        if (!dragState || dragState.mode !== 'create-slot' || dragState.track !== track) return;
+        try { track.releasePointerCapture(e.pointerId); } catch (_) { /* */ }
+        const date = dragState.date;
+        let startMin = dragState.startMin;
+        let endMin = dragState.endMin;
+        if (dragState.draft) dragState.draft.remove();
+        dragState = null;
+        if (!date || startMin == null || endMin == null) return;
+        if (endMin <= startMin) endMin = startMin + KV.DEFAULT_BLOCK_MINUTES;
+        openCreateSlotPicker(date, startMin, endMin);
+      };
+      track.addEventListener('pointerup', finishCreate);
+      track.addEventListener('pointercancel', finishCreate);
+    });
+  }
+
+  function selectableRunsForSlot() {
+    const list = filtered();
+    const expanded = sidePanelEvents(list);
+    return typeof KE.uniqueRunEvents === 'function'
+      ? KE.uniqueRunEvents(expanded)
+      : SB.uniqueRunEvents(expanded);
+  }
+
+  function openCreateSlotPicker(date, startMin, endMin) {
+    if (!el.detail || !el.detailBody) return;
+    openDetailKey = null;
+    const timeLabel = `${fmtDate(date)} · ${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)}`;
+    const runs = selectableRunsForSlot();
+    if (el.detailTitle) el.detailTitle.textContent = 'Ny tidsbokning';
+    el.detailBody.innerHTML = `
+      <p class="kalender-detail-blocks-hint">Vald tid: <strong>${esc(timeLabel)}</strong>. Välj kundens uppdragskörning att koppla till.</p>
+      <div class="kalender-detail-note">
+        <label for="kal-create-slot-q">Sök kund eller uppdrag</label>
+        <input type="search" id="kal-create-slot-q" class="kunduppgifter-input" placeholder="T.ex. kundnamn eller bokslut" autocomplete="off">
+      </div>
+      <div class="kalender-create-slot-list" data-create-slot-list></div>
+      ${runs.length ? '' : '<p class="kalender-side-empty">Inga öppna körningar i listan — byt filter eller dra från Deadlines/Öppna.</p>'}`;
+    el.detail.hidden = false;
+    document.body.classList.add('kalender-detail-open');
+
+    const listEl = el.detailBody.querySelector('[data-create-slot-list]');
+    const qInput = el.detailBody.querySelector('#kal-create-slot-q');
+
+    const paint = () => {
+      if (!listEl) return;
+      const qq = String(qInput?.value || '').trim().toLowerCase();
+      const matched = runs.filter((ev) => {
+        if (!qq) return true;
+        const f = ev.record?.fields || {};
+        const blob = [
+          f['Kundnamn'], f['Namn'], displayName(ev.typ, f),
+          ev.periodLabel, ev.periodKey, f['Ansvarig']
+        ].join(' ').toLowerCase();
+        return blob.includes(qq);
+      });
+      if (!matched.length) {
+        listEl.innerHTML = '<p class="kalender-side-empty">Inga träffar.</p>';
+        return;
+      }
+      listEl.innerHTML = matched.map((ev) => {
+        const f = ev.record?.fields || {};
+        const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
+        const period = ev.periodLabel || ev.periodKey || '';
+        const runKey = String(ev.runKey || ev.key || '');
+        return `<button type="button" class="kalender-side-item kalender-side-item--${statusClass(statusOf(ev), ev.deadline)}" data-create-run="${esc(runKey)}">
+          <span class="kalender-side-main">
+            <span class="kalender-side-name">${esc(name)}</span>
+            <span class="kalender-side-meta">${esc(displayName(ev.typ, f))}${period ? ` · ${esc(period)}` : ''}</span>
+          </span>
+          <span class="kalender-side-status">Boka</span>
+        </button>`;
+      }).join('');
+      listEl.querySelectorAll('[data-create-run]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const key = btn.getAttribute('data-create-run');
+          const ev = eventByKey(key) || runs.find((r) => String(r.runKey || r.key) === key);
+          if (!ev) return;
+          btn.disabled = true;
+          const startIso = KV.toLocalDateTimeIso(date, startMin);
+          const endIso = KV.toLocalDateTimeIso(date, endMin);
+          const ok = await persistSchedule(ev, startIso, endIso, { mode: 'add' });
+          if (ok) {
+            closeDetail();
+            render();
+            const blocks = blocksOf(ev);
+            const newest = blocks.find((b) => b.start === startIso && b.end === endIso)
+              || blocks[blocks.length - 1];
+            const base = String(ev.runKey || ev.key || '').split('#')[0];
+            if (newest) openDetail(`${base}#${newest.id}`);
+            else openDetail(base);
+          } else {
+            btn.disabled = false;
+          }
+        });
+      });
+    };
+    paint();
+    if (qInput) {
+      qInput.addEventListener('input', paint);
+      setTimeout(() => qInput.focus(), 0);
+    }
   }
 
   function nowMarkerHtml(dayIso) {
