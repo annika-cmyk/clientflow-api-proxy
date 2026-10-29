@@ -21070,24 +21070,29 @@ body.byra-resa-page .risk-header h1 {
 #kundresa-step-host .kundresa-redovisning-live .collapsible-edit-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px 1rem;
-  row-gap: 12px;
+  gap: 12px 16px;
+}
+#kundresa-step-host .kundresa-redovisning-live .kunduppgifter-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
 }
 #kundresa-step-host .kundresa-redovisning-live .kunduppgifter-form-row label {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: #5B6670;
 }
 #kundresa-step-host .kundresa-redovisning-live .kunduppgifter-input,
 #kundresa-step-host .kundresa-redovisning-live select.kunduppgifter-input {
-  height: 36px;
-  min-height: 36px;
-  padding: 0 0.65rem;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 8px;
   font-size: 13px;
   line-height: 1.3;
-  border: 1px solid #CDD4DA;
+  border: 1px solid #D5DBE0;
   border-radius: 8px;
   background: #fff;
   color: #18212B;
@@ -21107,93 +21112,150 @@ body.byra-resa-page .risk-header h1 {
 #kundresa-step-host #nykund-tjanster-card .card-edit-fab {
   display: none !important;
 }
+#kundresa-step-host.kundresa-step3 #kundresa-redovisning-status {
+  /* Global «Sparas automatiskt» i steghuvudet bär statusen */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
 
+#kundresa-step-host .kundresa-tjanster-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
 #kundresa-step-host .kundresa-tjanster-help {
-  margin: 0 0 0.65rem;
-  font-size: 12.5px;
+  margin: 0;
+  font-size: 12px;
   line-height: 1.4;
   color: #5B6670;
 }
-#kundresa-step-host .kundresa-tjanster-toolbar {
+#kundresa-step-host .kundresa-tjanster-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #5B6670;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#kundresa-step-host .kundresa-tjanster-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+#kundresa-step-host .kundresa-tjanster-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#kundresa-step-host .kundresa-tjanster-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5B6670;
+}
+#kundresa-step-host .kundresa-tjanster-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#kundresa-step-host .kundresa-tjanst-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 14px;
+  margin: 0;
+  border: 1px solid #D5DBE0;
+  border-radius: 17px;
+  background: #FFFFFF;
+  color: #18212B;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+#kundresa-step-host .kundresa-tjanst-chip:hover {
+  border-color: #B8C0C8;
+}
+#kundresa-step-host .kundresa-tjanst-chip.is-selected {
+  padding-left: 10px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #FFFFFF;
+  font-weight: 600;
+  gap: 6px;
+}
+#kundresa-step-host .kundresa-tjanst-chip input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+#kundresa-step-host .kundresa-tjanst-chip-check {
+  display: none;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+#kundresa-step-host .kundresa-tjanst-chip.is-selected .kundresa-tjanst-chip-check {
+  display: inline-flex;
+}
+#kundresa-step-host .kundresa-tjanst-chip-name {
+  white-space: nowrap;
+}
+#kundresa-step-host .kundresa-tjanst-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: #D98B2B;
+}
+#kundresa-step-host .kundresa-tjanst-chip-dot--normal {
+  background: #D98B2B;
+}
+#kundresa-step-host .kundresa-tjanst-chip-dot--high {
+  background: #B42318;
+}
+#kundresa-step-host .kundresa-tjanst-chip.is-selected .kundresa-tjanst-chip-dot {
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55);
+}
+#kundresa-step-host .kundresa-tjanster-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.55rem;
-}
-#kundresa-step-host .kundresa-tjanster-count {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #18212B;
-}
-#kundresa-step-host .kundresa-tjanster-filter-link {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  font-size: 12.5px;
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-#kundresa-step-host .kundresa-tjanster-filter-link:hover {
-  color: #0f3d45;
-}
-#kundresa-step-host .kundresa-tjanster-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-#kundresa-step-host .kundresa-tjanst-row {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  height: 44px;
-  min-height: 44px;
-  padding: 0 0.7rem;
-  margin: 0;
-  border: 1px solid #E3E7EB;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #F4F6F8;
   border-radius: 8px;
-  background: transparent;
-  cursor: pointer;
-  user-select: none;
-}
-#kundresa-step-host .kundresa-tjanst-row:hover {
-  border-color: #CDD4DA;
-}
-#kundresa-step-host .kundresa-tjanst-row.is-selected {
-  background: color-mix(in srgb, var(--accent) 8%, #fff);
-  border-color: color-mix(in srgb, var(--accent) 28%, #E3E7EB);
-}
-#kundresa-step-host .kundresa-tjanst-row input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  flex-shrink: 0;
-  accent-color: var(--accent);
-}
-#kundresa-step-host .kundresa-tjanst-name {
-  flex: 1 1 auto;
-  min-width: 0;
   font-size: 13px;
-  font-weight: 500;
   color: #18212B;
-  line-height: 1.25;
+  line-height: 1.35;
+}
+#kundresa-step-host .kundresa-tjanster-summary-count {
+  font-weight: 600;
+}
+#kundresa-step-host .kundresa-tjanster-summary-risk {
+  color: #5B6670;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-#kundresa-step-host .kundresa-tjanst-risk {
   flex-shrink: 0;
-  font-size: 11.5px;
+}
+#kundresa-step-host .kundresa-tjanster-summary-risk strong {
+  color: #18212B;
   font-weight: 500;
-  color: #8A94A0;
-  margin-left: auto;
-}
-#kundresa-step-host .kundresa-tjanst-risk-badge {
-  margin-left: auto;
-  flex-shrink: 0;
 }
 #kundresa-step-host .kundresa-tjanster-save-status {
   margin-top: 0.45rem;
@@ -21206,8 +21268,15 @@ body.byra-resa-page .risk-header h1 {
   #kundresa-step-host .kundresa-redovisning-live .collapsible-edit-grid {
     grid-template-columns: 1fr;
   }
-  #kundresa-step-host .kundresa-tjanster-grid {
-    grid-template-columns: 1fr;
+  #kundresa-step-host .kundresa-tjanster-head {
+    flex-wrap: wrap;
+  }
+  #kundresa-step-host .kundresa-tjanster-summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  #kundresa-step-host .kundresa-tjanster-summary-risk {
+    white-space: normal;
   }
 }
 
