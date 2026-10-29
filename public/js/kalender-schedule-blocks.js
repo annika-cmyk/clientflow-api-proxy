@@ -428,7 +428,8 @@
     const map = new Map();
     (events || []).forEach((ev) => {
       if (!ev) return;
-      if (ev.source === 'google' || String(ev.key || '').startsWith('gcal:')) return;
+      if (ev.source === 'google' || String(ev.key || '').startsWith('gcal:')
+        || ev.source === 'meeting' || String(ev.key || '').startsWith('meeting:')) return;
       const runKey = String(ev.runKey || String(ev.key || '').split('#')[0] || '').trim();
       if (!runKey) return;
       const prev = map.get(runKey);
