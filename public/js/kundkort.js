@@ -11418,14 +11418,17 @@ class CustomerCardManager {
             return;
         }
         const kf = this._kundformularSummary || {};
+        const fields = this.customerData?.fields || {};
+        const step4Send = this._buildKundresaStep4Send(summary);
         const enriched = {
             ...summary,
             byraVhBekraftelse: kf.byraVhBekraftelse || summary.byraVhBekraftelse || '',
             byraVhNote: kf.byraVhNote || summary.byraVhNote || '',
             vhRegister: summary.vhRegister || summary.vhAlignment?.register || [],
-            vhAlignment: summary.vhAlignment || null
+            vhAlignment: summary.vhAlignment || null,
+            step4Status: summary.step4Status || null,
+            step4Send
         };
-        const fields = this.customerData?.fields || {};
         KundresaUi.render(host, {
             ...enriched,
             activeStepId: this._activeKundresaStepId || enriched.nextStepId,
@@ -11434,6 +11437,8 @@ class CustomerCardManager {
         }, {
             onStep: (target) => this._gotoKundresaStep(target),
             onVhSave: (payload, btn) => this._onKundresaVhSave(payload, btn),
+            onKycSend: () => this._sendKycFromKundresa({ source: 'footer' }),
+            onClose: () => this.closeKundresaModal(),
             onReady: ({ activeStep }) => {
                 this._mountKundresaStep(activeStep || {
                     id: this._activeKundresaStepId,
@@ -11442,6 +11447,25 @@ class CustomerCardManager {
                 });
             }
         });
+    }
+
+    _buildKundresaStep4Send(summary) {
+        const personer = Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner : [];
+        const withEmail = personer.filter((p) => String(p?.epost || '').trim());
+        const blockers = [];
+        if (!withEmail.length) blockers.push('Mottagare saknar e-post');
+        const gate = summary?.vhGate || {};
+        if (gate.relevant !== false && gate.value !== 'Ja' && !gate.complete) {
+            blockers.push('VH ej bekräftad i steg 1');
+        }
+        const picked = window.KundresaKycSkicka?.pickRecipients?.(personer)
+            || { recipients: withEmail, defaultRecipient: withEmail[0] || null };
+        return {
+            canSend: blockers.length === 0,
+            blockers,
+            recipients: picked.recipients || withEmail,
+            defaultRecipient: picked.defaultRecipient || summary?.step4Send?.defaultRecipient || null
+        };
     }
 
     _kundresaCardIdsForFocus(focus, key, step) {
@@ -12050,6 +12074,17 @@ class CustomerCardManager {
             }
 
             if (gen !== this._kundresaMountGeneration) return;
+
+            // Steg 4: review-and-send i popupen (lämna redigerbara KYC på kundkortet orört)
+            if (focus === 'kyc_skicka' || focus === 'formular_kyc' || Number(stepId) === 4) {
+                this._kundresaMountedNodes = [];
+                this._kundresaMovedExtras = [];
+                this._mountKundresaKycSkickaStep(host);
+                const scrollEarly = document.querySelector('[data-kundresa-scroll]');
+                if (scrollEarly) scrollEarly.scrollTop = 0;
+                else host.scrollTop = 0;
+                return;
+            }
 
             const selectors = cardIds.map((id) => `#${id}`);
             const mounted = [];
