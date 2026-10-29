@@ -554,7 +554,16 @@ class CustomerCardManager {
                     ? `${meta.done} av ${meta.total} steg klara`
                     : 'Inget steg klart ännu'));
         }
+        const titleEl = document.getElementById('kundresa-modal-title');
+        if (titleEl) {
+            const fields = this.customerData?.fields || {};
+            const name = fields.Namn || fields.namn || '';
+            titleEl.textContent = name
+                ? `Kunduppläggning – ${name}`
+                : 'Kunduppläggning';
+        }
         if (progressLabel) {
+            // Lugnare: progressrad döljs via CSS; behåll company/aria för skärmläsare.
             const fields = this.customerData?.fields || {};
             const name = fields.Namn || fields.namn || '';
             const orgnr = fields.Orgnr || fields.orgnr || '';
