@@ -239,16 +239,17 @@
     function toolbarHtml(customerId, visibility) {
       const disabled = customerId ? '' : ' disabled';
       const vis = visibility === 'privat' ? 'privat' : 'byra';
+      // Knapparna triggas från läsrutans ⋯-meny / flytande Maska — behåll samma id:n.
       return (
         '<div class="mejl-archive-bar">' +
         '<button type="button" class="btn btn-secondary btn-sm" id="mejl-save-btn"' + disabled + '>' +
-        '<i class="fas fa-link"></i> Koppla…</button>' +
+        '<i class="fas fa-link"></i> Spara i ClientFlow…</button>' +
         '<button type="button" class="btn btn-secondary btn-sm" id="mejl-share-btn"' + disabled + '>' +
         '<i class="fas fa-share-alt"></i> Dela…</button>' +
         '<button type="button" class="btn btn-secondary btn-sm" id="mejl-privat-btn"' + disabled + '>' +
         '<i class="fas fa-lock"></i> ' + (vis === 'privat' ? 'Gör byråsynlig' : 'Markera privat') + '</button>' +
         '<button type="button" class="btn btn-secondary btn-sm" id="mejl-mask-btn"' + disabled + '>' +
-        '<i class="fas fa-eye-slash"></i> Maska markering</button>' +
+        '<i class="fas fa-eye-slash"></i> Maska</button>' +
         '</div>'
       );
     }
