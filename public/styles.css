@@ -23523,6 +23523,59 @@ a.byra-profil-chip:hover {
 .kalender-block--google .kalender-block-main {
     color: #3e4a55;
 }
+.kalender-block--meeting {
+    border-color: #c5d9dc;
+    border-left: 3px solid #13505c;
+    background: #eef6f7;
+    box-shadow: none;
+}
+.kalender-block--meeting .kalender-block-main {
+    color: #1a3f46;
+}
+.kalender-block-meet {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.15rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--accent, #13505c);
+    text-decoration: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.kalender-block-meet:hover { text-decoration: underline; }
+.kalender-chip--meeting {
+    border-left-color: #13505c;
+    background: #eef6f7;
+    color: #1a3f46;
+}
+.kalender-chip-meet-icon {
+    font-size: 0.65rem;
+    opacity: 0.85;
+    margin-right: 0.2rem;
+}
+.kalender-detail-status--meeting {
+    color: #1a3f46;
+    background: #eef6f7;
+}
+.kalender-side-item--meeting { border-left-color: #13505c; }
+.kalender-allday-meeting {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: #eef6f7;
+    color: #1a3f46;
+    border-left: 3px solid #13505c;
+    font-size: 0.72rem;
+    padding: 0.2rem 0.35rem;
+    margin: 0.1rem 0;
+    cursor: pointer;
+    border-radius: 2px;
+}
 .kalender-gcal-dot {
     display: inline-block;
     width: 0.5rem;
