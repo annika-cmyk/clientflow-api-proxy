@@ -2091,7 +2091,11 @@
     if (!pendingFiles.length) { els.attachList.innerHTML = ''; return; }
     els.attachList.innerHTML = pendingFiles.map((f, i) =>
       `<div class="mejl-attach-row">
-        <span class="mejl-attach-name">${esc(f.name)}</span>
+        <span class="mejl-attach-name">${esc(f.name)}${
+          f.fromPaste
+            ? ' <span class="mejl-attach-paste-tag" title="Inklistrad bild">inklistrad</span>'
+            : ''
+        }</span>
         <div class="mejl-attach-row-actions">
           <label class="mejl-attach-bankid-badge ${f.bankId ? 'is-bankid' : 'is-open'}" title="Växla BankID-skydd">
             <input type="checkbox" class="visually-hidden" data-attach-bankid="${i}" ${f.bankId ? 'checked' : ''}>
@@ -2101,6 +2105,139 @@
         </div>
       </div>`
     ).join('');
+  }
+
+  const MAX_COMPOSE_FILES = 10;
+  const MAX_PASTE_IMAGE_BYTES = 12 * 1024 * 1024;
+
+  function extForImageMime(mime) {
+    const m = String(mime || '').toLowerCase();
+    if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+    if (m.includes('gif')) return 'gif';
+    if (m.includes('webp')) return 'webp';
+    if (m.includes('svg')) return 'svg';
+    return 'png';
+  }
+
+  function makePastedImageFile(blob, index) {
+    const mime = (blob && blob.type) || 'image/png';
+    if (!/^image\//i.test(mime)) return null;
+    const stamp = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const name =
+      'bild-' +
+      stamp.getFullYear() +
+      pad(stamp.getMonth() + 1) +
+      pad(stamp.getDate()) +
+      '-' +
+      pad(stamp.getHours()) +
+      pad(stamp.getMinutes()) +
+      pad(stamp.getSeconds()) +
+      (index > 0 ? '-' + (index + 1) : '') +
+      '.' +
+      extForImageMime(mime);
+    try {
+      return new File([blob], name, { type: mime, lastModified: Date.now() });
+    } catch (_) {
+      try {
+        blob.name = name;
+      } catch (__) {}
+      return blob;
+    }
+  }
+
+  function collectClipboardImageFiles(clipboardData) {
+    const out = [];
+    if (!clipboardData) return out;
+    const items = clipboardData.items ? Array.from(clipboardData.items) : [];
+    items.forEach((item, i) => {
+      if (!item || item.kind !== 'file') return;
+      if (!item.type || !/^image\//i.test(item.type)) return;
+      const blob = item.getAsFile();
+      if (!blob) return;
+      const file = makePastedImageFile(blob, i);
+      if (file) out.push(file);
+    });
+    if (out.length) return out;
+    const files = clipboardData.files ? Array.from(clipboardData.files) : [];
+    files.forEach((file, i) => {
+      if (!file || !/^image\//i.test(file.type || '')) return;
+      out.push(file.name ? file : makePastedImageFile(file, i));
+    });
+    return out;
+  }
+
+  function addPendingFiles(files, opts) {
+    const bankId = !!(opts && opts.bankId);
+    const fromPaste = !!(opts && opts.fromPaste);
+    const list = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!list.length) return 0;
+    let added = 0;
+    let skippedSize = 0;
+    let skippedCap = 0;
+    for (const file of list) {
+      if (pendingFiles.length >= MAX_COMPOSE_FILES) {
+        skippedCap += 1;
+        continue;
+      }
+      if (fromPaste && file.size > MAX_PASTE_IMAGE_BYTES) {
+        skippedSize += 1;
+        continue;
+      }
+      pendingFiles.push({
+        name: file.name || 'bild.png',
+        size: file.size || 0,
+        file,
+        bankId,
+        fromPaste
+      });
+      added += 1;
+    }
+    if (added) renderAttachList();
+    if (skippedCap) {
+      showToast('Högst ' + MAX_COMPOSE_FILES + ' bilagor per mejl.', 'error');
+    } else if (skippedSize) {
+      showToast('En bild var för stor (max 12 MB).', 'error');
+    }
+    return added;
+  }
+
+  function handleComposeImagePaste(e, bankId) {
+    const images = collectClipboardImageFiles(e.clipboardData);
+    if (!images.length) return;
+    e.preventDefault();
+    const n = addPendingFiles(images, { bankId: !!bankId, fromPaste: true });
+    if (!n) return;
+    if (bankId) {
+      showToast(
+        n === 1
+          ? 'Bild tillagd som BankID-skyddad bilaga.'
+          : n + ' bilder tillagda som BankID-skyddade bilagor.',
+        'success'
+      );
+    } else {
+      showToast(
+        n === 1
+          ? 'Bild tillagd — den syns i mejlet och under Bilagor.'
+          : n + ' bilder tillagda — de syns i mejlet och under Bilagor.',
+        'success'
+      );
+    }
+  }
+
+  function handleComposeImageDrop(e, bankId) {
+    const dt = e.dataTransfer;
+    if (!dt || !dt.files || !dt.files.length) return;
+    const images = Array.from(dt.files).filter((f) => f && /^image\//i.test(f.type || ''));
+    if (!images.length) return;
+    e.preventDefault();
+    const n = addPendingFiles(images, { bankId: !!bankId, fromPaste: true });
+    if (n) {
+      showToast(
+        n === 1 ? 'Bild tillagd under Bilagor.' : n + ' bilder tillagda under Bilagor.',
+        'success'
+      );
+    }
   }
   function addQuestionRow(prefill) {
     if (!els.qList) return;
@@ -2217,19 +2354,28 @@
       const protectedText = (els.protectedBody && els.protectedBody.value) || '';
       const protectedFiles = [];
       const openAttachments = [];
+      const bodyInlineImages = [];
       for (const f of pendingFiles) {
         const contentBase64 = await readFileAsBase64(f.file);
+        const mimeType = f.file.type || 'application/octet-stream';
         const meta = {
           name: f.name,
-          mimeType: f.file.type || 'application/octet-stream',
+          mimeType,
           contentBase64
         };
         if (f.bankId) {
           protectedFiles.push(meta);
+        } else if (f.fromPaste && /^image\//i.test(mimeType)) {
+          // Inklistrade bilder i offentlig del → inline i HTML (syns i mejlet)
+          bodyInlineImages.push({
+            contentType: mimeType,
+            dataBase64: contentBase64,
+            filename: f.name
+          });
         } else {
           openAttachments.push({
             filename: f.name,
-            mimeType: meta.mimeType,
+            mimeType,
             contentBase64
           });
         }
@@ -2263,6 +2409,7 @@
           quotedText: quotedText || undefined,
           quoteFrom: quoteFrom || undefined,
           quoteDate: quoteDate || undefined,
+          bodyInlineImages: bodyInlineImages.length ? bodyInlineImages : undefined,
           protectedText,
           protectedFiles,
           subject: els.subject.value.trim(),
@@ -2600,12 +2747,27 @@
     }
   });
   if (els.attachments) els.attachments.addEventListener('change', () => {
-    Array.from(els.attachments.files || []).forEach((file) =>
-      pendingFiles.push({ name: file.name, size: file.size, file, bankId: true })
-    );
+    addPendingFiles(Array.from(els.attachments.files || []), { bankId: true, fromPaste: false });
     els.attachments.value = '';
-    renderAttachList();
   });
+  if (els.body) {
+    els.body.addEventListener('paste', (e) => handleComposeImagePaste(e, false));
+    els.body.addEventListener('dragover', (e) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
+        e.preventDefault();
+      }
+    });
+    els.body.addEventListener('drop', (e) => handleComposeImageDrop(e, false));
+  }
+  if (els.protectedBody) {
+    els.protectedBody.addEventListener('paste', (e) => handleComposeImagePaste(e, true));
+    els.protectedBody.addEventListener('dragover', (e) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
+        e.preventDefault();
+      }
+    });
+    els.protectedBody.addEventListener('drop', (e) => handleComposeImageDrop(e, true));
+  }
   if (els.attachList) {
     els.attachList.addEventListener('click', (e) => {
       const rem = e.target.closest('[data-attach-remove]');
