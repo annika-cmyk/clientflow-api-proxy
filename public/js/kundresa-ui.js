@@ -1,7 +1,8 @@
 /**
  * Kundresa-UI — popup «Din resa» (analyskorts-design) med INBÄDDAT steg-innehåll.
  * Stegytan (#kundresa-step-host) fylls av CustomerCardManager via reparent av befintliga kort.
- * Layout: Förslag 1-struktur (checklist data, sektioner, kvar-footer) med Förslag 2 · Lugnare-chrome.
+ * Layout: Förslag 1 · Företag & personer i steg 1 (#kundresa-step-host: kort, checklista),
+ * övriga steg behåller Förslag 2 · Lugnare-chrome. Spar-API oförändrat.
  */
 (function (global) {
   function esc(s) {
@@ -190,9 +191,17 @@
         : '');
     const showSavedFlash = !!s.vhJustSaved;
     const savedHint = `<span class="kundresa-vh-saved-hint${showSavedFlash ? ' is-saved is-fade' : ''}" data-kundresa-vh-saved${showSavedFlash ? '' : ' hidden'}>Sparat</span>`;
+    const isSteg1 = isStep1(activeStep);
+    const layoutStepClass = isSteg1
+      ? ' kundresa-popup-layout--steg1'
+      : (isStep2(activeStep)
+        ? ' kundresa-popup-layout--steg2'
+        : (isStep3(activeStep)
+          ? ' kundresa-popup-layout--steg3'
+          : (isStep4(activeStep) ? ' kundresa-popup-layout--steg4' : '')));
 
     container.innerHTML = `
-      <div class="kundresa-popup-layout tjanst-modal-layout kundresa-popup-layout--embed">
+      <div class="kundresa-popup-layout tjanst-modal-layout kundresa-popup-layout--embed${layoutStepClass}">
         <nav class="tjanst-tabs kundresa-popup-tabs" role="tablist" aria-label="Din resa">
           <p class="tjanst-tabs-kicker">Din resa</p>
           <div class="tjanst-tabs-steps">
@@ -230,14 +239,13 @@
             <strong>VH blockerar.</strong> ${esc(gate.message || 'Bekräfta verklig huvudman innan ni går vidare.')}
           </div>` : ''}
 
-          ${activeStep ? `<header class="kundresa-popup-stepinfo kundresa-popup-stepinfo--compact${isStep2(activeStep) ? ' kundresa-popup-stepinfo--row' : ''}">
+          ${activeStep ? `<header class="kundresa-popup-stepinfo kundresa-popup-stepinfo--compact${isStep2(activeStep) ? ' kundresa-popup-stepinfo--row' : ''}${isSteg1 ? ' kundresa-popup-stepinfo--steg1' : ''}">
             <p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>
             <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
             ${isStep2(activeStep) ? `<span class="kundresa-step2-autosave is-saved" data-kundresa-autosave><i class="fas fa-check" aria-hidden="true"></i> Sparas automatiskt</span>` : ''}
             ${companyLabel ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
             <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
           </header>` : ''}
-          <!-- Lugnare: meta/company/desc döljs via CSS; checklista finns i DOM men döljs. -->
 
           <div class="kundresa-popup-scroll" data-kundresa-scroll>
             ${showChecklist ? renderStep1Checklist(step1Sub) : ''}
@@ -256,8 +264,8 @@
                 <div class="kundresa-vh-box-lead">
                   <div class="kundresa-sec-icon" aria-hidden="true"><i class="fas fa-shield-alt"></i></div>
                   <div class="kundresa-vh-box-titles">
-                    <h4>Kontroller</h4>
-                    <p class="kundresa-hint">Stämmer verklig huvudman mot Bolagsverket?</p>
+                    <h4>Verifiera verklig huvudman</h4>
+                    <p class="kundresa-hint">Jämför personerna med rollen VH ovan mot Bolagsverkets register</p>
                   </div>
                 </div>
                 ${vhBadge}
