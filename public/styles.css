@@ -23333,7 +23333,8 @@ body.kalender-detail-open { overflow: hidden; }
     height: 100%;
     border: none;
     background: transparent;
-    padding: 0.2rem 0.35rem 0.55rem;
+    /* Extra top/botten så resize-handtag inte täcks av text */
+    padding: 0.55rem 0.35rem 0.55rem;
     text-align: left;
     font: inherit;
     color: var(--title-text, #0f172a);
@@ -23402,28 +23403,29 @@ body.kalender-detail-open { overflow: hidden; }
     position: absolute;
     left: 0;
     right: 0;
-    height: 10px;
+    height: 12px;
     cursor: ns-resize;
     touch-action: none;
-    z-index: 2;
+    z-index: 4;
+    pointer-events: auto;
 }
 .kalender-block-resize--end {
     bottom: 0;
-    background: linear-gradient(to bottom, transparent, rgb(15 23 42 / 12%));
+    background: linear-gradient(to bottom, transparent, rgb(15 23 42 / 18%));
 }
 .kalender-block-resize--start {
     top: 0;
-    background: linear-gradient(to top, transparent, rgb(15 23 42 / 12%));
+    background: linear-gradient(to top, transparent, rgb(15 23 42 / 18%));
 }
 .kalender-block-resize::after {
     content: '';
     position: absolute;
     left: 50%;
-    width: 22px;
+    width: 24px;
     height: 3px;
-    margin-left: -11px;
+    margin-left: -12px;
     border-radius: 2px;
-    background: rgb(15 23 42 / 28%);
+    background: rgb(15 23 42 / 40%);
 }
 .kalender-block-resize--end::after {
     bottom: 3px;
