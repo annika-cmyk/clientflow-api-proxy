@@ -238,6 +238,7 @@ class CustomerCardManager {
         this.setupKundkortModeSwitch();
         this.setupWorkSubnav();
         this.setupKundresaModal();
+        this.setupRiskAvtalModal();
         this.setupRollerEventDelegation();
         this._ensureTabStatusElements();
         this._updateKlarTabIndicators({});
@@ -463,6 +464,98 @@ class CustomerCardManager {
         });
     }
 
+    setupRiskAvtalModal() {
+        const modal = document.getElementById('risk-avtal-modal');
+        const closeBtn = document.getElementById('risk-avtal-modal-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.closeRiskAvtalModal());
+        }
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) this.closeRiskAvtalModal();
+            });
+        }
+        if (!this._riskAvtalEscBound) {
+            this._riskAvtalEscBound = true;
+            document.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape' || !this._riskAvtalModalOpen) return;
+                this.closeRiskAvtalModal();
+            });
+        }
+    }
+
+    openRiskAvtalModal({ bridgeToTab = true } = {}) {
+        const modal = document.getElementById('risk-avtal-modal');
+        const shell = document.getElementById('risk-avtal-shell');
+        if (!modal || !shell || !window.RiskAvtalModal) {
+            this._bridgeToRiskTab();
+            return;
+        }
+        this._riskAvtalModalOpen = true;
+        modal.hidden = false;
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('kundresa-modal-open');
+        const fields = this.customerData?.fields || {};
+        shell.innerHTML = RiskAvtalModal.renderShell({
+            activeStep: 1,
+            customerName: fields.Namn || fields.namn || '',
+            bridgeToTab: !!bridgeToTab
+        });
+        RiskAvtalModal.bind(shell, {
+            onOpenTab: () => {
+                this.closeRiskAvtalModal();
+                this._bridgeToRiskTab();
+            },
+            onContinue: () => {
+                this.closeRiskAvtalModal();
+                this._bridgeToRiskTab();
+            }
+        });
+        const closeBtn = document.getElementById('risk-avtal-modal-close');
+        if (closeBtn) closeBtn.focus();
+    }
+
+    closeRiskAvtalModal() {
+        const modal = document.getElementById('risk-avtal-modal');
+        if (modal) {
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+        }
+        this._riskAvtalModalOpen = false;
+        if (!this._kundresaModalOpen) {
+            document.body.classList.remove('kundresa-modal-open');
+        }
+    }
+
+    _bridgeToRiskTab() {
+        this.setKundkortMode('onboarding', { skipTabSwitch: true });
+        this.switchToTab('ovrigkyc');
+        this.loadTabContent('ovrigkyc');
+        const el = document.getElementById('ovrigkyc-content');
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        this.showNotification(
+            'Riskbedömning & avtal — intern bedömning (kunden ser aldrig detta). Kedja: Kundens uppgifter → byråns bedömning → beslut → avtal.',
+            'info'
+        );
+    }
+
+    _refreshKundResaTimeline() {
+        const host = document.getElementById('kund-resa-timeline-host');
+        if (!host || !window.KundResaTimeline) return;
+        const timeline = KundResaTimeline.buildTimeline({
+            fields: this.customerData?.fields || {},
+            kyc: this._savedKycFormular || {},
+            kundresa: this._kundresa || null,
+            avtalFields: this._uppdragsavtal?.fields || this._uppdragsavtalFields || {}
+        });
+        this._kundResaTimeline = timeline;
+        host.innerHTML = KundResaTimeline.render(timeline);
+        const bridge = host.querySelector('[data-kund-resa-risk-bridge]');
+        if (bridge) {
+            bridge.addEventListener('click', () => this.openRiskAvtalModal({ bridgeToTab: true }));
+        }
+    }
+
     setupKundresaModal() {
         const openBtn = document.getElementById('kundresa-open-btn');
         const modal = document.getElementById('kundresa-modal');
@@ -605,7 +698,7 @@ class CustomerCardManager {
         if (oversiktNav) oversiktNav.hidden = next !== 'oversikt';
         if (lead) {
             lead.textContent = next === 'onboarding'
-                ? 'Följ uppläggningsresan: företag & personer → beskrivning & frågor → redovisning & tjänster → skicka KYC. Öppna stegen via knappen vid kundnamnet. Riskprofil och godkännande finns kvar under flikarna.'
+                ? 'Kunden lämnar uppgifter → byrån bedömer risken → beslut → avtal. Uppläggning skickar Kundens uppgifter (KYC); Riskbedömning & avtal är ett separat flöde därefter.'
                 : 'Här ser ni insamlad information och löpande kundarbete (avtal, uppdrag, anteckningar, dokumentation och samarbete). Onboarding & KYC öppnas via knappen vid kundnamnet.';
         }
 
@@ -8048,10 +8141,11 @@ class CustomerCardManager {
             : valda.map((r, i) => {
                 const uid = `risk-details-${typId}-${i}`;
                 const hasDetails = r.fields['Beskrivning'] || r.fields['Åtgjärd'];
+                const kallaHtml = this._riskfaktorKallaBadgeHtml(r, typId);
                 return `
                 <div class="tjanst-collapsible-item" onclick="${hasDetails ? `customerCardManager.toggleTjanstDetails('${uid}')` : ''}">
                     <div class="tjanst-collapsible-header">
-                        <span class="risker-vald-namn">${r.fields['Riskfaktor'] || ''}</span>
+                        <span class="risker-vald-namn">${r.fields['Riskfaktor'] || ''}${kallaHtml}</span>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
                             ${riskBadge(r)}
                             ${hasDetails ? `<i class="fas fa-chevron-down tjanst-chevron" id="chevron-${uid}"></i>` : ''}
@@ -8119,7 +8213,7 @@ class CustomerCardManager {
                             <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
                             <span class="risker-check-label">
                                 <span class="risker-check-top">
-                                    <span class="risker-check-namn">${r.fields['Riskfaktor'] || ''}</span>
+                                    <span class="risker-check-namn">${r.fields['Riskfaktor'] || ''}${this._riskfaktorKallaBadgeHtml(r, typId)}</span>
                                     ${riskBadge(r)}
                                 </span>
                                 ${r.fields['Beskrivning'] ? `<span class="risker-check-desc">${r.fields['Beskrivning']}</span>` : ''}
@@ -8435,6 +8529,8 @@ class CustomerCardManager {
 
         container.innerHTML = `
             <div class="kyc-layout">
+                ${this._riskfaktorGranskningBannerHtml()}
+                <p class="kyc-hint" style="margin:0 0 0.85rem;">Intern riskbedömning (kunden ser aldrig detta). Byråns kundbeskrivning och Kundens uppgifter (KYC) matar faktorer; bedömning och avtal sker i kedjan: Kunden lämnar uppgifter → byrån bedömer risken → beslut → avtal.</p>
 
                 ${section('Affärsförbindelsen', 'fa-handshake', `
                     ${chipsRow('Syfte med affärsförbindelsen', f['Syfte med affärsförbindelsen'], 'fa-bullseye')}
@@ -9928,7 +10024,13 @@ class CustomerCardManager {
         const avvikelse = document.getElementById('ai-rb-avvikelse-input')?.value || '';
         const KP = window.KundRiskprofil;
         if (KP) {
-            const check = KP.canSaveResidual(residual, foreslagen, avvikelse);
+            const check = KP.canSaveResidual(residual, foreslagen, avvikelse, {
+                tjanstFloor: this._tjanstResidualFloor(),
+                logFn: (entry) => {
+                    console.info('[risk-avvikelse]', entry);
+                    this._lastRiskAvvikelseLog = entry;
+                }
+            });
             if (!check.ok) {
                 this._updateKundRiskprofilWarnings();
                 this.showNotification(check.error, 'error');
@@ -11399,10 +11501,12 @@ class CustomerCardManager {
             const data = await res.json();
             this._kundresa = data.kundresa || null;
             this._updateKundresaTrigger();
+            this._refreshKundResaTimeline();
             if (this._kundresaModalOpen) this._renderKundresa();
         } catch (e) {
             console.warn('loadKundresa:', e);
             this._updateKundresaTrigger();
+            this._refreshKundResaTimeline();
         }
     }
 
@@ -14282,11 +14386,99 @@ class CustomerCardManager {
         const recs = this._utlandskaUboRecords();
         if (!recs.length) return allChecked;
         const on = this._hasForeignKycUbo();
-        recs.forEach((r) => {
-            if (on) allChecked.add(r.id);
-            else allChecked.delete(r.id);
-        });
+        const steered = recs.map((r) => r.id);
+        const suggested = on ? steered : [];
+        if (window.RiskfaktorKalla && RiskfaktorKalla.mergeAddOnly) {
+            const result = RiskfaktorKalla.mergeAddOnly(allChecked, steered, suggested);
+            result.set._pendingRemoval = result.pendingRemoval;
+            if (result.pendingRemoval?.length) this._queueRiskfaktorReview(result.pendingRemoval, 'utlandska_ubo');
+            return result.set;
+        }
+        // Fallback add-only
+        if (on) recs.forEach((r) => allChecked.add(r.id));
         return allChecked;
+    }
+
+    _riskfaktorKallaBadgeHtml(rec, typId) {
+        if (!rec) return '';
+        const Kalla = window.RiskfaktorKalla;
+        const KVS = window.KycVerksamhetStyrning;
+        let src = { kind: 'manual', label: 'Manuellt' };
+        if (typId === 'kund' && KVS && KVS.sourceLabelForRecord) {
+            const suggested = KVS.suggestedRecordIds
+                ? KVS.suggestedRecordIds(this._riskerForTypId('kund', this._allaRisker || []), this._kycVerksamhetState())
+                : [];
+            src = KVS.sourceLabelForRecord(rec, this._kycVerksamhetState(), suggested);
+        } else if (Kalla && Kalla.sourceForFactor) {
+            src = Kalla.sourceForFactor({
+                recordId: rec.id,
+                namn: rec.fields?.Riskfaktor || '',
+                linked: true,
+                suggested: false
+            });
+        }
+        const pending = this._pendingRiskReviewIds || new Set();
+        if (pending.has(rec.id) || (Kalla && Kalla.needsReview?.(this.customerData?.fields || {}))) {
+            const items = Kalla?.changesSinceAssessment?.(this.customerData?.fields || {}) || [];
+            if (items.some((it) => it.recordId === rec.id) || pending.has(rec.id)) {
+                return `<span class="risk-kalla-badge risk-kalla-badge--review" title="Behöver granskas">behöver granskas</span>`;
+            }
+        }
+        if (!src.label) return '';
+        const cls = src.kind === 'kyc' ? 'kyc' : (src.kind === 'auto' ? 'auto' : 'manual');
+        return `<span class="risk-kalla-badge risk-kalla-badge--${cls}" title="${this._esc(src.label)}">${this._esc(src.label)}</span>`;
+    }
+
+    _queueRiskfaktorReview(pendingIds, sourceTag) {
+        if (!pendingIds?.length) return;
+        if (!this._pendingRiskReviewIds) this._pendingRiskReviewIds = new Set();
+        pendingIds.forEach((id) => this._pendingRiskReviewIds.add(id));
+        const Kalla = window.RiskfaktorKalla;
+        const KVS = window.KycVerksamhetStyrning;
+        let items = [];
+        if (KVS && KVS.buildPendingReviewItems) {
+            items = KVS.buildPendingReviewItems(
+                this._riskerForTypId('kund', this._allaRisker || []),
+                this._kycVerksamhetState(),
+                pendingIds
+            );
+        } else if (Kalla) {
+            items = pendingIds.map((id) => {
+                const rec = (this._allaRisker || []).find((r) => r.id === id);
+                return Kalla.reviewItem({
+                    recordId: id,
+                    namn: rec?.fields?.Riskfaktor || id,
+                    reason: `KYC/automation (${sourceTag || 'styrning'}) skulle ta bort faktorn. Behålls tills granskning.`,
+                    previous: 'länkad',
+                    next: 'föreslagen borttagen'
+                });
+            });
+        }
+        this._pendingRiskReviewItems = Kalla
+            ? Kalla.mergeReviewItems(this._pendingRiskReviewItems || [], items)
+            : items;
+        if (this.customerData?.fields && Kalla) {
+            this.customerData.fields[Kalla.FIELD_PROFIL_STATUS] = Kalla.REVIEW_STATUS;
+            const prev = Kalla.parseGranskning(this.customerData.fields[Kalla.FIELD_GRANSKNING]);
+            this.customerData.fields[Kalla.FIELD_GRANSKNING] = Kalla.serializeGranskning({
+                ...prev,
+                items: this._pendingRiskReviewItems,
+                sinceAssessment: this._pendingRiskReviewItems
+            });
+        }
+    }
+
+    _riskfaktorGranskningBannerHtml() {
+        const Kalla = window.RiskfaktorKalla;
+        const fields = this.customerData?.fields || {};
+        const items = (Kalla && Kalla.changesSinceAssessment(fields))
+            || this._pendingRiskReviewItems
+            || [];
+        if (!items.length && !(Kalla && Kalla.needsReview(fields))) return '';
+        const list = items.length
+            ? `<ul>${items.map((it) => `<li>${this._esc(it.namn || it.recordId)} — ${this._esc(it.reason || 'behöver granskas')}</li>`).join('')}</ul>`
+            : '<p style="margin:0.35rem 0 0;">KYC-svar har ändrats jämfört med länkade faktorer. Granska innan ni godkänner risken.</p>';
+        return `<div class="riskfaktor-granskning-banner" role="status"><strong>Behöver granskas</strong>${list}</div>`;
     }
 
     async _persistUtlandskaUboFromKyc() {
@@ -14791,6 +14983,9 @@ class CustomerCardManager {
         const recs = this._riskerForTypId('kund', this._allaRisker || []);
         if (KVS && KVS.mergeIntoLinkedSet) {
             KVS.mergeIntoLinkedSet(allChecked, recs, this._kycVerksamhetState());
+            if (Array.isArray(allChecked?._pendingRemoval) && allChecked._pendingRemoval.length) {
+                this._queueRiskfaktorReview(allChecked._pendingRemoval, 'kyc_verksamhet');
+            }
         }
         return allChecked;
     }
@@ -14802,12 +14997,23 @@ class CustomerCardManager {
         const kyc = this._kycVerksamhetState();
         const steered = new Set(KVS.steeredRecordIds(recs));
         const suggested = new Set(KVS.suggestedRecordIds(recs, kyc));
+        // Add-only: KYC may check+lock suggested factors, never silently uncheck linked ones.
         document.querySelectorAll('input[name="risk-kund"]').forEach((cb) => {
             if (!steered.has(cb.value)) return;
-            cb.checked = suggested.has(cb.value);
-            cb.disabled = suggested.has(cb.value);
+            if (suggested.has(cb.value)) {
+                cb.checked = true;
+                cb.disabled = true;
+                const item = cb.closest('.risker-check-item');
+                if (item) item.classList.add('is-kyc-kund-steered');
+                return;
+            }
+            // Would have been removed → keep checked if already on, enable for review
+            cb.disabled = false;
             const item = cb.closest('.risker-check-item');
-            if (item) item.classList.toggle('is-kyc-kund-steered', suggested.has(cb.value));
+            if (item) {
+                item.classList.remove('is-kyc-kund-steered');
+                if (cb.checked) item.classList.add('is-risk-needs-review');
+            }
         });
     }
 
@@ -15755,9 +15961,19 @@ class CustomerCardManager {
             }).join('')
             : '<p class="uppdrag-hint" style="color:#94a3b8;"><i class="fas fa-info-circle"></i> Inga tjänster valda. Välj tjänster på fliken <strong>Övrig KYC</strong>.</p>';
 
+        const riskGate = (window.AvtalRiskGate && AvtalRiskGate.canSendUppdragsavtal)
+            ? AvtalRiskGate.canSendUppdragsavtal(kundFields)
+            : { allowed: true, reason: '' };
+        const riskGateBanner = riskGate.allowed
+            ? `<div class="avtal-risk-gate-banner"><i class="fas fa-shield-alt"></i> Riskbedömning godkänd — uppdragsavtal får skickas för signering.</div>`
+            : `<div class="avtal-risk-gate-banner is-blocked" role="status"><i class="fas fa-lock"></i> ${esc(riskGate.reason)} <button type="button" class="btn-link" onclick="customerCardManager.openRiskAvtalModal()">Öppna riskbedömning</button></div>`;
+        const skickaDisabled = !riskGate.allowed;
+        const skickaTitle = skickaDisabled ? riskGate.reason : 'Skicka för signering (InLeed)';
+
         container.innerHTML = `
             <div class="uppdrag-wrap">
                 ${uaUtanforHtml}
+                ${riskGateBanner}
 
                 <!-- STATUS-BANNER -->
                 ${uaUtanfor ? `
@@ -15985,7 +16201,10 @@ class CustomerCardManager {
                         <button type="button" class="btn btn-secondary" id="ua-preview-pdf-btn" onclick="customerCardManager.previewUppdragsavtalPdf('${avtal.id}')">
                             <i class="fas fa-eye"></i> Förhandsgranskning
                         </button>
-                        <button type="button" class="btn btn-inleed" onclick="customerCardManager.skickaInleed('${avtal.id}')">
+                        <button type="button" class="btn btn-inleed${skickaDisabled ? ' is-risk-gated' : ''}"
+                            ${skickaDisabled ? 'disabled' : ''}
+                            title="${esc(skickaTitle)}"
+                            onclick="customerCardManager.skickaInleed('${avtal.id}')">
                             <i class="fas fa-pen-nib"></i> Skicka för signering (InLeed)
                         </button>
                         ${(avtal.fields?.['InleedDokumentId'] && (avtal.fields['Avtalsstatus'] || avtal.fields['Status']) === 'Skickat till kund') ? `
@@ -16001,6 +16220,7 @@ class CustomerCardManager {
         this._uppdragsavtalByraData = byraData || {};
         this._bindKundbilagorUpload(avtal?.id || null);
         if (window.DateInput) DateInput.bindDateInputs(container);
+        this._refreshKundResaTimeline();
     }
 
 
@@ -16349,6 +16569,13 @@ class CustomerCardManager {
     async skickaInleed(avtalId) {
         if (!avtalId) {
             this.showNotification('Spara utkastet innan du skickar för signering.', 'error');
+            return;
+        }
+        const gate = (window.AvtalRiskGate && AvtalRiskGate.canSendUppdragsavtal)
+            ? AvtalRiskGate.canSendUppdragsavtal(this.customerData?.fields || {})
+            : { allowed: true };
+        if (!gate.allowed) {
+            this.showNotification(gate.reason || 'Riskbedömning måste vara godkänd innan avtalet skickas.', 'warning');
             return;
         }
         // Stäng förhandsgranskning så signeringsdialogen inte hamnar bakom/under den.
@@ -20487,6 +20714,7 @@ class CustomerCardManager {
                 this.customerData.fields['Kundens riskbedömning godkänd'] = data.senasteRiskbedomningDatum;
             }
             this._refreshSenasteRiskbedomningDatum();
+            this._refreshKundResaTimeline();
             this.showNotification(data.message || 'Riskbedömning dokumenterad.', 'success');
             if (data.reloadedDocuments) this.loadDocuments();
             // Erbjud nedladdning om PDF genererades men inte sparades till Dokumentation (t.ex. vid localhost)

@@ -25980,3 +25980,232 @@ body.kalender-detail-open { overflow: hidden; }
   font-family: inherit;
 }
 
+
+/* —— Kundresa timeline + Riskbedömning & avtal brygga —— */
+.kund-resa-timeline-host {
+  margin: 0.75rem 0 0.25rem;
+  max-width: 52rem;
+}
+.kund-resa-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.kund-resa-tl-chain {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+  line-height: 1.35;
+}
+.kund-resa-tl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.15rem;
+}
+.kund-resa-tl-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+}
+.kund-resa-tl-step.is-done {
+  color: #047857;
+  background: #ecfdf5;
+}
+.kund-resa-tl-step.is-current {
+  color: #1e3a5f;
+  background: #e2e8f0;
+  box-shadow: inset 0 0 0 1px #94a3b8;
+}
+.kund-resa-tl-step.is-blocked {
+  color: #94a3b8;
+  background: #f8fafc;
+}
+.kund-resa-tl-dot {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.kund-resa-tl-sep {
+  width: 0.85rem;
+  height: 1px;
+  background: #cbd5e1;
+  display: inline-block;
+  margin: 0 0.1rem;
+}
+.kund-resa-tl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.kundresa-kyc-next {
+  margin: 0.85rem 0 0;
+  padding: 0.75rem 0.9rem;
+  background: #f8fafc;
+  border-left: 3px solid #64748b;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.88rem;
+  color: #334155;
+  line-height: 1.4;
+}
+.kundresa-kyc-next strong { display: block; margin-bottom: 0.25rem; }
+.kundresa-kyc-next p { margin: 0; }
+.kundresa-kyc-next-hint {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.risk-kalla-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+}
+.risk-kalla-badge--kyc { background: #eef2ff; color: #3730a3; }
+.risk-kalla-badge--auto { background: #ecfeff; color: #0e7490; }
+.risk-kalla-badge--manual { background: #f1f5f9; color: #475569; }
+.risk-kalla-badge--review { background: #fff7ed; color: #9a3412; }
+
+.riskfaktor-granskning-banner {
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.9rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  color: #92400e;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.riskfaktor-granskning-banner ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+.avtal-risk-gate-banner {
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.9rem;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #334155;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.avtal-risk-gate-banner.is-blocked {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+.btn.is-risk-gated[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.risk-avtal-modal .risk-avtal-shell {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: 1rem;
+  min-height: 18rem;
+  padding: 0.5rem 0.75rem 1rem;
+}
+.risk-avtal-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.risk-avtal-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.risk-avtal-nav-item.is-current {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.risk-avtal-nav-item.is-done { color: #047857; }
+.risk-avtal-nav-num {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  font-size: 0.75rem;
+}
+.risk-avtal-nav-item.is-current .risk-avtal-nav-num { background: #94a3b8; color: #fff; }
+.risk-avtal-kicker {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+.risk-avtal-customer {
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.risk-avtal-chain {
+  margin: 0 0 0.75rem;
+  font-size: 0.88rem;
+  color: #475569;
+}
+.risk-avtal-bridge-note {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #334155;
+}
+.risk-avtal-panel-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+.risk-avtal-panel-desc {
+  margin: 0 0 0.75rem;
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.risk-avtal-stub {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+.risk-avtal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #e2e8f0;
+}
+@media (max-width: 720px) {
+  .risk-avtal-modal .risk-avtal-shell {
+    grid-template-columns: 1fr;
+  }
+  .risk-avtal-nav { flex-direction: row; flex-wrap: wrap; }
+}

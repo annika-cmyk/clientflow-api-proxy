@@ -122,12 +122,34 @@
   }
 
   function mergeIntoLinkedSet(linkedSet, records, kyc) {
+    var steered = steeredRecordIds(records);
+    var suggested = suggestedRecordIds(records, kyc);
+    var Kalla = global.RiskfaktorKalla;
+    if (Kalla && Kalla.mergeAddOnly) {
+      var result = Kalla.mergeAddOnly(linkedSet, steered, suggested);
+      result.set._pendingRemoval = result.pendingRemoval;
+      result.set._added = result.added;
+      return result.set;
+    }
     var set = linkedSet instanceof Set ? linkedSet : new Set(linkedSet || []);
-    var steered = new Set(steeredRecordIds(records));
-    var suggested = new Set(suggestedRecordIds(records, kyc));
-    steered.forEach(function (id) { set.delete(id); });
     suggested.forEach(function (id) { set.add(id); });
     return set;
+  }
+
+  function sourceLabelForRecord(rec, kyc, suggestedIds) {
+    var Kalla = global.RiskfaktorKalla;
+    if (!Kalla || !Kalla.sourceForFactor) return { kind: 'manual', label: 'Manuellt' };
+    var suggested = {};
+    (suggestedIds || []).forEach(function (id) { suggested[id] = true; });
+    var matched = matchFactor(recordNamn(rec));
+    return Kalla.sourceForFactor({
+      recordId: rec && rec.id,
+      namn: recordNamn(rec),
+      factor: matched,
+      kyc: parseKyc(kyc),
+      suggested: !!(rec && suggested[rec.id]),
+      linked: true
+    });
   }
 
   function suggestedFactorLabels(kyc) {
@@ -147,6 +169,7 @@
     steeredRecordIds: steeredRecordIds,
     suggestedRecordIds: suggestedRecordIds,
     mergeIntoLinkedSet: mergeIntoLinkedSet,
+    sourceLabelForRecord: sourceLabelForRecord,
     suggestedFactorLabels: suggestedFactorLabels
   };
 

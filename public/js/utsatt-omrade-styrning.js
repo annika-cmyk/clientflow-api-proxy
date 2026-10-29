@@ -69,10 +69,16 @@
   }
 
   function mergeIntoLinkedSet(linkedSet, records, stored) {
+    var steered = steeredRecordIds(records);
+    var suggested = suggestedRecordIds(records, stored);
+    var Kalla = global.RiskfaktorKalla;
+    if (Kalla && Kalla.mergeAddOnly) {
+      var result = Kalla.mergeAddOnly(linkedSet, steered, suggested);
+      result.set._pendingRemoval = result.pendingRemoval;
+      result.set._added = result.added;
+      return result.set;
+    }
     var set = linkedSet instanceof Set ? linkedSet : new Set(linkedSet || []);
-    var steered = new Set(steeredRecordIds(records));
-    var suggested = new Set(suggestedRecordIds(records, stored));
-    steered.forEach(function (id) { set.delete(id); });
     suggested.forEach(function (id) { set.add(id); });
     return set;
   }

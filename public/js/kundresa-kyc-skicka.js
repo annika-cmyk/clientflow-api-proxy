@@ -171,7 +171,11 @@
           <button type="button" class="btn btn-secondary btn-sm" data-kundresa-kyc-copy ${inviteUrl ? '' : 'disabled'} title="${esc(inviteUrl ? 'Kopiera kundlänk' : 'Skicka först för att få en länk')}">Kopiera länk</button>
           <a class="kundresa-kyc-open-link" data-kundresa-kyc-open href="${esc(inviteUrl || '#')}" target="_blank" rel="noopener noreferrer" ${inviteUrl ? '' : 'aria-disabled="true" tabindex="-1"'}>Öppna som kunden ser det</a>
         </div>
-        <p class="kundresa-kyc-help">Kunden fyller i och intygar uppgifterna själv. Ingen riskinformation visas i formuläret.</p>
+        <p class="kundresa-kyc-help">Kunden fyller i och intygar uppgifterna själv (Kundens uppgifter). Ingen riskinformation visas i formuläret.</p>
+        ${sent ? `<div class="kundresa-kyc-next" role="status">
+          <strong>Vad händer sen?</strong>
+          <p>När kunden svarat (Besvarat/Signerat) fortsätter ni med <em>Riskbedömning &amp; avtal</em> — ett separat flöde efter uppläggningen. Kedjan: Kunden lämnar uppgifter → byrån bedömer risken → beslut → avtal. Kunden ser aldrig riskbedömningen.</p>
+        </div>` : `<p class="kundresa-kyc-next-hint">Efter utskick: vänta på kundens svar, därefter Riskbedömning &amp; avtal (inte i samma steg som uppläggningen).</p>`}
       </section>
       <section class="kundresa-kyc-preview" aria-label="Förhandsgranskning">
         <h5 class="kundresa-kyc-preview-title">Det här får kunden svara på</h5>

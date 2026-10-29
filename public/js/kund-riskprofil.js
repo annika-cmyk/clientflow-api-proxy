@@ -1096,16 +1096,80 @@ function collectResidualItems(kund) {
     return '';
   }
 
-  function canSaveResidual(residual, suggested, avvikelseMotivering) {
-    if (!residualAvvikerFranForeslagen(residual, suggested)) {
+  /**
+   * Sparregel för bedömd residual.
+   * - Avvikelse från beräknad kräver motivering + loggas via avvikelsefält.
+   * - Sänkning under tjänstgolv kräver motivering.
+   * - Oacceptabel får inte sänkas med motivering ensam — ändra tjänster/faktorer, annars reject.
+   * @param {string} residual
+   * @param {string} suggested
+   * @param {string} avvikelseMotivering
+   * @param {{ tjanstFloor?: {level:string,namn?:string}, logFn?: Function }} [opts]
+   */
+  function canSaveResidual(residual, suggested, avvikelseMotivering, opts) {
+    var bedomd = labelOf(residual);
+    var beraknad = labelOf(suggested);
+    var motiv = trimStr(avvikelseMotivering);
+    var floor = (opts && opts.tjanstFloor) || null;
+    var oacceptabel = labelOf('Oacceptabel');
+
+    if (beraknad === oacceptabel && bedomd && bedomd !== oacceptabel) {
+      return {
+        ok: false,
+        required: true,
+        code: 'oacceptabel_locked',
+        error:
+          'Beräknad nivå är Oacceptabel och kan inte sänkas med motivering. Ändra tjänster eller riskfaktorer, annars är beslutet avslag/avveckling.'
+      };
+    }
+
+    if (floor && floor.level && residualBelowFloor(bedomd, floor.level)) {
+      if (!motiv) {
+        return {
+          ok: false,
+          required: true,
+          code: 'below_floor',
+          error:
+            'Bedömd residual (' + bedomd + ') ligger under tjänstgolvet (' + floor.level
+            + (floor.namn ? ', ' + floor.namn : '')
+            + '). Motivering krävs för att spara, och avvikelsen loggas.'
+        };
+      }
+      if (typeof (opts && opts.logFn) === 'function') {
+        try {
+          opts.logFn({
+            type: 'residual_below_floor',
+            residual: bedomd,
+            floor: floor.level,
+            floorNamn: floor.namn || '',
+            motivering: motiv
+          });
+        } catch (_) { /* loggning får inte blockera */ }
+      }
+      return { ok: true, required: true, code: 'below_floor_logged' };
+    }
+
+    if (!residualAvvikerFranForeslagen(bedomd, beraknad)) {
       return { ok: true, required: false };
     }
-    if (trimStr(avvikelseMotivering)) {
+    if (motiv) {
+      if (typeof (opts && opts.logFn) === 'function') {
+        try {
+          opts.logFn({
+            type: 'residual_avvikelse',
+            residual: bedomd,
+            suggested: beraknad,
+            riktning: avvikelseRiktning(bedomd, beraknad),
+            motivering: motiv
+          });
+        } catch (_) { /* ignore */ }
+      }
       return { ok: true, required: true };
     }
     return {
       ok: false,
       required: true,
+      code: 'avvikelse_motivering',
       error: 'Motivering till avvikelse från beräknad nivå krävs innan ändringen kan sparas.'
     };
   }
@@ -1140,7 +1204,8 @@ function collectResidualItems(kund) {
   function floorWarning(residual, floor) {
     if (!floor || !floor.level || !residualBelowFloor(residual, floor.level)) return '';
     var tjanst = floor.namn ? 'tjänsten ' + floor.namn : 'en vald tjänst';
-    return 'Bedömd residual (' + residual + ') ligger under ' + tjanst + ' (' + floor.level + '). Det är tillåtet men ska vara ett medvetet val.';
+    return 'Bedömd residual (' + residual + ') ligger under ' + tjanst + ' (' + floor.level
+      + '). Sänkning under golvet kräver motivering och loggas. Oacceptabel kan inte sänkas med motivering ensam.';
   }
 
   function normalizeAiPayload(raw, opts) {

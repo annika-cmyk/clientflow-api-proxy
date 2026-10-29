@@ -25908,6 +25908,16 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
         console.warn('Uppdragsavtal signering: kunde inte hämta kund för klientansvarig:', custErr.message);
       }
     }
+    // PTL: blockera skicka/signera tills riskbedömning är godkänd
+    try {
+      const AvtalRiskGate = require('./lib/avtal-risk-gate');
+      const gate = AvtalRiskGate.canSendUppdragsavtal(customerFields);
+      if (!gate.allowed) {
+        return res.status(400).json({ error: gate.reason, code: gate.code });
+      }
+    } catch (gateErr) {
+      console.warn('Uppdragsavtal risk-gate:', gateErr.message);
+    }
     const sender = await resolveKlientansvarigForSend({
       customerFields,
       extraFields: avtalFields,
