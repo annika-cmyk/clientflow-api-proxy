@@ -24532,6 +24532,13 @@ body.kalender-detail-open { overflow: hidden; }
     background: color-mix(in srgb, var(--error, #b42318) 10%, #fff);
 }
 .kalender-block.is-resizing { z-index: 5; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #13505c) 35%, transparent); }
+.kalender-block.is-moving {
+    z-index: 8;
+    opacity: 0.94;
+    pointer-events: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #13505c) 40%, transparent),
+      0 8px 20px rgb(15 23 42 / 18%);
+}
 .kalender-block-main {
     display: flex;
     flex-direction: column;
@@ -24626,6 +24633,10 @@ body.kalender-detail-open { overflow: hidden; }
 }
 .kalender-block.is-draggable .kalender-block-main {
     cursor: grab;
+    touch-action: none;
+}
+.kalender-block.is-moving .kalender-block-main {
+    cursor: grabbing;
 }
 .kalender-block-resize {
     position: absolute;
