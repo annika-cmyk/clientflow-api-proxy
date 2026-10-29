@@ -1646,6 +1646,63 @@
     return archiveApi.attachmentsHtml(atts, archiveForDetail);
   }
 
+  /** Synlig text från HTML (för fallback när injicerad mejl-HTML blir tom). */
+  function visibleTextFromHtml(html) {
+    return String(html || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Mejl-HTML i läsrutan: ta bort style/script och html/body-skalet så
+   * Gmail/Outlook-CSS inte gömmer texten. Fall back till text/snippet.
+   */
+  function prepareDetailHtml(html) {
+    let s = String(html || '');
+    s = s.replace(/<script[\s\S]*?<\/script>/gi, '');
+    s = s.replace(/<style[\s\S]*?<\/style>/gi, '');
+    s = s.replace(/<link\b[^>]*>/gi, '');
+    s = s.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
+    s = s.replace(/<\/?(?:html|head|body)\b[^>]*>/gi, '');
+    s = s.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '');
+    s = s.replace(/\son\w+\s*=\s*[^\s>]+/gi, '');
+    s = s.replace(/javascript:/gi, '');
+    return s.trim();
+  }
+
+  function messagePlainForQuote(m) {
+    const text = String((m && m.text) || '').trim();
+    if (text) return text;
+    const fromHtml = visibleTextFromHtml(m && m.html);
+    if (fromHtml) return fromHtml;
+    return String((m && m.snippet) || '').trim();
+  }
+
+  function buildDetailBodyHtml(m) {
+    const rawHtml = m && m.html ? String(m.html) : '';
+    const prepared = rawHtml ? prepareDetailHtml(rawHtml) : '';
+    const htmlVisible = prepared ? visibleTextFromHtml(prepared) : '';
+    if (prepared && htmlVisible) {
+      return `<div class="mejl-detail-body html-body">${prepared}</div>`;
+    }
+    const plain = String((m && (m.text || m.snippet)) || '').trim() || htmlVisible;
+    if (plain) {
+      return `<div class="mejl-detail-body">${esc(plain)}</div>`;
+    }
+    const hasAtt = Array.isArray(m && m.attachments) && m.attachments.length > 0;
+    const emptyHint = hasAtt
+      ? 'Ingen mejltext att visa (mejlet kan vara en kalenderinbjudan eller endast bilaga).'
+      : 'Ingen mejltext att visa.';
+    return `<div class="mejl-detail-body mejl-detail-body--empty">${esc(emptyHint)}</div>`;
+  }
+
   function bindFloatingMask(gmailMessageIdForArchive, customerIdForArchive) {
     const bodyEl = els.detail && els.detail.querySelector('.mejl-detail-body');
     if (!bodyEl || !archiveApi || !customerIdForArchive) return;
@@ -1752,9 +1809,7 @@
       fromName: (listMeta && listMeta.fromName) || null,
       from: m.from
     });
-    const bodyHtml = m.html
-      ? `<div class="mejl-detail-body html-body">${m.html}</div>`
-      : `<div class="mejl-detail-body">${esc(m.text || m.snippet || '')}</div>`;
+    const bodyHtml = buildDetailBodyHtml(m);
     const currentKunderId =
       (m.labelId && (m.labels || []).some((l) => l.id === m.labelId && l.isKunderChild) && m.labelId) ||
       ((m.labels || []).find((l) => l.isKunderChild) || {}).id ||
@@ -1911,7 +1966,7 @@
         showComposePane({ title: 'Svara' });
         els.to.value = fromEmail || '';
         els.subject.value = /^re:/i.test(m.subject || '') ? m.subject : `Re: ${m.subject || ''}`;
-        els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
+        els.body.value = `\n\n---\n${messagePlainForQuote(m)}`;
         els.compose.dataset.threadId = m.threadId || '';
         els.compose.dataset.inReplyTo = m.messageIdHeader || '';
         els.compose.dataset.replyToMessageId = id || m.id || '';
