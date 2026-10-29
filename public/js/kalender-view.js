@@ -298,8 +298,9 @@
   /**
    * Placering i tidsrutnät (0–100 % av synlig höjd).
    * Klampas till [DAY_START, DAY_END]; block kortare än snap behåller minhöjd via CSS.
+   * Valfri laneInfo från packOverlapLanes sätter left/width (Google Calendar-stil).
    */
-  function blockLayout(startMin, endMin) {
+  function blockLayout(startMin, endMin, laneInfo) {
     const gridStart = dayStartMinutes();
     const gridEnd = dayEndMinutes();
     const span = daySpanMinutes();
@@ -308,25 +309,151 @@
     if (e <= s) e = Math.min(gridEnd, s + SNAP_MINUTES);
     const topPct = ((s - gridStart) / span) * 100;
     const heightPct = ((e - s) / span) * 100;
-    return { topPct, heightPct, startMin: s, endMin: e };
+    const leftPct = laneInfo && Number.isFinite(Number(laneInfo.leftPct))
+      ? Number(laneInfo.leftPct)
+      : 0;
+    const widthPct = laneInfo && Number.isFinite(Number(laneInfo.widthPct))
+      ? Number(laneInfo.widthPct)
+      : 100;
+    return {
+      topPct,
+      heightPct,
+      startMin: s,
+      endMin: e,
+      leftPct,
+      widthPct,
+      lane: laneInfo && laneInfo.lane != null ? laneInfo.lane : 0,
+      laneCount: laneInfo && laneInfo.laneCount != null ? laneInfo.laneCount : 1
+    };
+  }
+
+  /**
+   * Packa överlappande tidblock i horisontella lanes (Google Calendar-stil).
+   * Top/height styrs separat av verklig start/slut — här sätts bara lane + left/width.
+   * Rygg-mot-rygg (slut === nästa start) räknas inte som överlapp.
+   *
+   * @param {Array<{id:string|number, startMin:number, endMin:number}>} items
+   * @returns {Map<string, {lane:number, laneCount:number, span:number, leftPct:number, widthPct:number}>}
+   */
+  function packOverlapLanes(items) {
+    const list = (Array.isArray(items) ? items : [])
+      .map((it, i) => ({
+        id: String(it && it.id != null ? it.id : i),
+        startMin: Number(it && it.startMin) || 0,
+        endMin: Number(it && it.endMin) || 0
+      }))
+      .filter((it) => it.endMin > it.startMin);
+
+    const result = new Map();
+    if (!list.length) return result;
+
+    list.sort((a, b) => {
+      if (a.startMin !== b.startMin) return a.startMin - b.startMin;
+      const da = a.endMin - a.startMin;
+      const db = b.endMin - b.startMin;
+      if (da !== db) return db - da;
+      return a.id.localeCompare(b.id);
+    });
+
+    const lanes = [];
+    for (const it of list) {
+      let placed = false;
+      for (let L = 0; L < lanes.length; L++) {
+        const conflict = lanes[L].some(
+          (o) => o.startMin < it.endMin && it.startMin < o.endMin
+        );
+        if (!conflict) {
+          it.lane = L;
+          lanes[L].push(it);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        it.lane = lanes.length;
+        lanes.push([it]);
+      }
+    }
+
+    const parent = new Map(list.map((it) => [it.id, it.id]));
+    const find = (x) => {
+      let cur = x;
+      while (parent.get(cur) !== cur) {
+        parent.set(cur, parent.get(parent.get(cur)));
+        cur = parent.get(cur);
+      }
+      return cur;
+    };
+    const union = (a, b) => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) parent.set(ra, rb);
+    };
+
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j];
+        if (b.startMin >= a.endMin) break;
+        if (a.startMin < b.endMin && b.startMin < a.endMin) union(a.id, b.id);
+      }
+    }
+
+    const clusterMax = new Map();
+    for (const it of list) {
+      const root = find(it.id);
+      clusterMax.set(root, Math.max(clusterMax.get(root) || 0, it.lane + 1));
+    }
+
+    for (const it of list) {
+      const root = find(it.id);
+      const laneCount = clusterMax.get(root) || 1;
+      let span = 1;
+      for (let L = it.lane + 1; L < laneCount; L++) {
+        const blocked = list.some(
+          (o) =>
+            find(o.id) === root
+            && o.lane === L
+            && o.startMin < it.endMin
+            && it.startMin < o.endMin
+        );
+        if (blocked) break;
+        span += 1;
+      }
+      result.set(it.id, {
+        lane: it.lane,
+        laneCount,
+        span,
+        leftPct: (it.lane / laneCount) * 100,
+        widthPct: (span / laneCount) * 100
+      });
+    }
+    return result;
   }
 
   /** Visuell lucka mellan tidblock så back-to-back-rutor inte smälter ihop. */
   const BLOCK_GAP_PX = 3;
+  /** Horisontell inset/gap mellan överlappande lanes. */
+  const BLOCK_LANE_INSET = '0.15rem';
+  const BLOCK_LANE_GAP = '0.2rem';
 
-  /** CSS top/height för absolutplacerat block (med gap i nederkant). */
+  /** CSS top/height/left/width för absolutplacerat block. */
   function blockPositionStyle(layout) {
     const top = Number(layout && layout.topPct) || 0;
     const height = Math.max(0, Number(layout && layout.heightPct) || 0);
+    const leftPct = layout && Number.isFinite(Number(layout.leftPct)) ? Number(layout.leftPct) : 0;
+    const widthPct = layout && Number.isFinite(Number(layout.widthPct)) ? Number(layout.widthPct) : 100;
     return {
       top: `${top}%`,
-      height: `max(1.1rem, calc(${height}% - ${BLOCK_GAP_PX}px))`
+      height: `max(1.1rem, calc(${height}% - ${BLOCK_GAP_PX}px))`,
+      left: `calc(${leftPct}% + ${BLOCK_LANE_INSET})`,
+      width: `calc(${widthPct}% - ${BLOCK_LANE_GAP})`
     };
   }
 
   function blockPositionStyleAttr(layout) {
     const s = blockPositionStyle(layout);
-    return `top:${s.top};height:${s.height};`;
+    return `top:${s.top};height:${s.height};left:${s.left};width:${s.width};`;
   }
 
   /** Y-position → minuter från midnatt (osnappat, för greppunkt vid drag). */
@@ -770,7 +897,10 @@
     durationMinutes,
     normalizeSchedule,
     blockLayout,
+    packOverlapLanes,
     BLOCK_GAP_PX,
+    BLOCK_LANE_INSET,
+    BLOCK_LANE_GAP,
     blockPositionStyle,
     blockPositionStyleAttr,
     yToMinutesRaw,

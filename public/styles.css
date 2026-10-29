@@ -24496,8 +24496,10 @@ body.kalender-detail-open { overflow: hidden; }
 }
 .kalender-block {
     position: absolute;
-    left: 0.2rem;
-    right: 0.2rem;
+    /* left/width sätts inline (lanes vid överlapp); fallback om inline saknas */
+    left: 0.15rem;
+    width: calc(100% - 0.3rem);
+    right: auto;
     box-sizing: border-box;
     border-radius: 7px;
     border: 1px solid color-mix(in srgb, var(--accent, #13505c) 22%, #fff);

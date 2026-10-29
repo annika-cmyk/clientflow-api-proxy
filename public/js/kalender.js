@@ -1318,12 +1318,12 @@
     bindMonthDrag(dayMap);
   }
 
-  function timedBlockHtml(ev) {
+  function timedBlockHtml(ev, laneInfo) {
     if (isOverlayCalendarEvent(ev)) {
       const name = String(ev.summary || ev.record?.fields?.Kundnamn || (isMeetingEvent(ev) ? 'Möte' : 'Google'));
       const sched = scheduleOf(ev);
       if (!sched) return '';
-      const layout = KV.blockLayout(sched.startMin, sched.endMin);
+      const layout = KV.blockLayout(sched.startMin, sched.endMin, laneInfo);
       const kind = isMeetingEvent(ev) ? 'Möte' : 'Google';
       const meetUrl = eventMeetingUrl(ev);
       const blockCls = isMeetingEvent(ev) ? 'kalender-block--meeting' : 'kalender-block--google';
@@ -1344,7 +1344,7 @@
     const cls = statusClass(st, ev.deadline);
     const sched = scheduleOf(ev);
     if (!sched) return '';
-    const layout = KV.blockLayout(sched.startMin, sched.endMin);
+    const layout = KV.blockLayout(sched.startMin, sched.endMin, laneInfo);
     const done = st === 'Klar' || st === 'Avslutad';
     const canDrag = !!ev.runRec?.id && !done;
     const note = String(ev.blockNote || (focusBlockNoteOf(ev)) || '').trim();
@@ -1367,6 +1367,21 @@
       </button>
       ${canDrag ? '<span class="kalender-block-resize kalender-block-resize--end" data-resize="end" title="Ändra slut" aria-hidden="true"></span>' : ''}
     </div>`;
+  }
+
+  /** Render tidblock för en dag med Google Calendar-liknande överlapp (lanes). */
+  function timedBlocksHtml(events) {
+    const list = Array.isArray(events) ? events : [];
+    const packItems = [];
+    const withSched = [];
+    for (const ev of list) {
+      const sched = scheduleOf(ev);
+      if (!sched) continue;
+      withSched.push(ev);
+      packItems.push({ id: ev.key, startMin: sched.startMin, endMin: sched.endMin });
+    }
+    const packed = KV.packOverlapLanes(packItems);
+    return withSched.map((ev) => timedBlockHtml(ev, packed.get(String(ev.key)))).join('');
   }
 
   function focusBlockNoteOf(ev) {
@@ -1414,10 +1429,13 @@
     };
 
     const applyTimedBlockPreview = (block, startMin, endMin) => {
-      const layout = KV.blockLayout(startMin, endMin);
+      // Under drag: full bredd så avsedd tid syns tydligt; lanes räknas om efter sparad flytt
+      const layout = KV.blockLayout(startMin, endMin, { leftPct: 0, widthPct: 100, lane: 0, laneCount: 1 });
       const pos = KV.blockPositionStyle(layout);
       block.style.top = pos.top;
       block.style.height = pos.height;
+      block.style.left = pos.left;
+      block.style.width = pos.width;
       const timeEl = block.querySelector('.kalender-block-time');
       if (timeEl) {
         timeEl.textContent = `${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)}`;
@@ -1638,6 +1656,7 @@
           ? KV.resizeBlockStart(atMin, dragState.endMin)
           : KV.resizeBlock(dragState.startMin, atMin);
         if (resized.startMin === dragState.startMin && resized.endMin === dragState.endMin) return;
+        // Behåll left/width under resize; lanes räknas om efter sparning
         const layout = KV.blockLayout(resized.startMin, resized.endMin);
         const pos = KV.blockPositionStyle(layout);
         block.style.top = pos.top;
@@ -2499,7 +2518,7 @@
       return `<div class="kalender-time-col${iso === t ? ' is-today' : ''}" data-date="${esc(iso)}">
         <div class="kalender-time-track" style="height:${trackH}px">
           ${hours.map(() => `<div class="kalender-time-hour" style="height:${KV.PX_PER_HOUR}px"></div>`).join('')}
-          ${timed.map(timedBlockHtml).join('')}
+          ${timedBlocksHtml(timed)}
           ${nowMarkerHtml(iso)}
         </div>
       </div>`;
@@ -2556,7 +2575,7 @@
             return `<div class="kalender-time-col${iso === t ? ' is-today' : ''}${KV.isWeekendIso(iso) ? ' kalender-time-col--weekend' : ''}" data-date="${esc(iso)}">
               <div class="kalender-time-track" style="height:${trackH}px">
                 ${hours.map(() => `<div class="kalender-time-hour" style="height:${KV.PX_PER_HOUR}px"></div>`).join('')}
-                ${timed.map(timedBlockHtml).join('')}
+                ${timedBlocksHtml(timed)}
                 ${nowMarkerHtml(iso)}
               </div>
             </div>`;
