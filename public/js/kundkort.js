@@ -154,6 +154,35 @@ const KUND_BESKRIVNING_DELKORT = [
 ];
 
 /** KYC-frågor som visas förenklat i kundresa steg 2 (samma fält-id som i KYC-formuläret). */
+/** Steg-2-promptchips: kortare etiketter (+-prefix) enligt mock — prompts oförändrade. */
+const KUNDRESA_STEP2_CHIP_LABEL = {
+    'Vad gör kunden?': '+ Vad gör kunden?',
+    'Ägare/familj i verksamheten': '+ Ägare/familj',
+    'Storlek': '+ Storlek',
+    'Största kostnader': '+ Största kostnader',
+    'Leverantörer': '+ Leverantörer',
+    'Hur betalas de?': '+ Hur betalas de?',
+    'Vilka är kunderna?': '+ Vilka är kunderna?',
+    'Hur möts de (digitalt/fysiskt)?': '+ Digitalt/fysiskt',
+    'Hur tar de betalt?': '+ Hur tar de betalt?',
+    'Faktureringsprogram': '+ System',
+    'Hur kommer underlag in?': '+ Hur kommer underlag in?',
+    'Inlogg på banken?': '+ Bankinlogg',
+    'Ordning på underlaget': '+ Ordning',
+    'Branschkännedom': '+ Branschkännedom',
+    'Tidigare konsult/revisor': '+ Tidigare konsult'
+};
+
+const KUNDRESA_STEP2_PLACEHOLDER = {
+    kostnader: 'T.ex. Avverkningstjänster och maskinhyra, betalas via bank mot faktura.',
+    intakterna: 'T.ex. Säljer virke till ett sågverk, betalning via avräkningsnota.',
+    'bokforing-beskrivning': 'T.ex. Underlag via e-post månadsvis, vi har läsbehörighet till banken.'
+};
+
+const KUNDRESA_STEP2_FIELD_TITLE = {
+    intakterna: 'Intäkter'
+};
+
 const KUNDRESA_STEP2_KYC_FRAGOR = [
     {
         id: 'vh-noterat',
@@ -168,11 +197,28 @@ const KUNDRESA_STEP2_KYC_FRAGOR = [
         type: 'janej'
     },
     {
-        id: 'kapital',
-        inputId: 'kyc-kapital-ursprung',
-        label: 'Pengarnas ursprung',
-        type: 'textarea',
-        placeholder: 't.ex. svensk försäljning, lån, investeringar'
+        id: 'internationell',
+        selectId: 'kyc-internationell',
+        label: 'Handel utanför Sverige',
+        type: 'janej',
+        followUpId: 'kyc-internationella-lander-wrap',
+        followUpWhen: 'Ja'
+    },
+    {
+        id: 'kontanter',
+        selectId: 'kyc-kontanter',
+        label: 'Hanterar kontanter',
+        type: 'janej',
+        followUpId: 'kyc-kontanter-andel-wrap',
+        followUpWhen: 'Ja',
+        onChange: 'verksamhet'
+    },
+    {
+        id: 'krypto',
+        selectId: 'kyc-kryptovaluta',
+        label: 'Transaktioner i kryptovaluta',
+        type: 'janej',
+        onChange: 'verksamhet'
     },
     {
         id: 'anstallda',
@@ -185,32 +231,16 @@ const KUNDRESA_STEP2_KYC_FRAGOR = [
     {
         id: 'omsattning',
         inputId: 'kyc-omsattning',
-        label: 'Uppskattad årsomsättning',
+        label: 'Årsomsättning',
         type: 'omsattning'
     },
     {
-        id: 'internationell',
-        selectId: 'kyc-internationell',
-        label: 'Handel med kunder eller leverantörer utanför Sverige?',
-        type: 'janej',
-        followUpId: 'kyc-internationella-lander-wrap',
-        followUpWhen: 'Ja'
-    },
-    {
-        id: 'kontanter',
-        selectId: 'kyc-kontanter',
-        label: 'Hanterar företaget kontanter i sin verksamhet?',
-        type: 'janej',
-        followUpId: 'kyc-kontanter-andel-wrap',
-        followUpWhen: 'Ja',
-        onChange: 'verksamhet'
-    },
-    {
-        id: 'krypto',
-        selectId: 'kyc-kryptovaluta',
-        label: 'Har företaget transaktioner i kryptovaluta?',
-        type: 'janej',
-        onChange: 'verksamhet'
+        id: 'kapital',
+        inputId: 'kyc-kapital-ursprung',
+        label: 'Pengarnas ursprung',
+        type: 'textarea',
+        placeholder: 't.ex. svensk försäljning, lån, investeringar',
+        stack: true
     }
 ];
 
@@ -6825,6 +6855,9 @@ class CustomerCardManager {
             el.textContent = '';
             el.removeAttribute('tabindex');
         }
+        if (document.getElementById('kundresa-step-host')?.classList.contains('kundresa-step2')) {
+            this._setKundresaStep2Autosave(state === 'saving' || state === 'error' || state === 'saved' ? state : 'idle');
+        }
     }
 
     async saveBeskrivningDelkort(id, opts = {}) {
@@ -12415,7 +12448,8 @@ class CustomerCardManager {
             if (has) filled += 1;
             this._updateBeskrivningFieldCheck(def.id);
         });
-        el.textContent = `${filled} av 4 beskrivningar ifyllda`;
+        el.textContent = `${filled} av 4`;
+        this._refreshKundresaStep2Remaining();
     }
 
     _updateKundresaKycProgress() {
@@ -12429,7 +12463,68 @@ class CustomerCardManager {
             else if (q.inputId) val = document.getElementById(q.inputId)?.value || '';
             if (String(val).trim()) filled += 1;
         });
-        el.textContent = `${filled} av ${total} frågor ifyllda`;
+        el.textContent = `${filled} av ${total}`;
+        this._refreshKundresaStep2Remaining();
+    }
+
+    _setKundresaStep2Autosave(state) {
+        const el = document.querySelector('[data-kundresa-autosave]');
+        if (!el) return;
+        el.classList.remove('is-saving', 'is-saved', 'is-error');
+        if (state === 'saving') {
+            el.classList.add('is-saving');
+            el.innerHTML = 'Sparar…';
+        } else if (state === 'error') {
+            el.classList.add('is-error');
+            el.innerHTML = 'Kunde inte spara – försök igen';
+        } else {
+            el.classList.add('is-saved');
+            el.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i> Sparas automatiskt';
+        }
+    }
+
+    _refreshKundresaStep2Remaining() {
+        if (this._activeKundresaFocus !== 'beskrivning_fragor') return;
+        const remaining = [];
+        const labels = {
+            verksamhet: 'verksamhet',
+            kostnader: 'kostnader',
+            intakterna: 'intäkter',
+            'bokforing-beskrivning': 'bokföring'
+        };
+        KUND_BESKRIVNING_DELKORT.forEach((def) => {
+            const input = document.getElementById(`ku-${def.id}-input`);
+            let has = false;
+            if (input?.tagName === 'TEXTAREA') has = !!(input.value || '').trim();
+            else if (input) has = !!this._htmlToPlainText(input.innerHTML || '');
+            if (!has) remaining.push(labels[def.id] || String(def.title || '').toLowerCase());
+        });
+        if (this._kundresa) {
+            this._kundresa.step2Substatus = {
+                remaining,
+                remainingLabel: remaining.length ? `Kvar: ${remaining.join(', ')}` : '',
+                emptyFieldCount: remaining.length
+            };
+        }
+        const foot = document.querySelector('.kundresa-step-remaining');
+        if (foot) {
+            if (remaining.length) {
+                foot.classList.remove('is-ok');
+                foot.innerHTML = `<i class="fas fa-exclamation-circle" aria-hidden="true"></i> Kvar: ${remaining.map((r) => this._esc(r)).join(', ')}`;
+            } else {
+                foot.classList.add('is-ok');
+                foot.textContent = '';
+            }
+        }
+        const step = (this._kundresa?.steps || []).find((s) => Number(s.id) === 2);
+        if (step && !step.done) {
+            const n = remaining.length;
+            if (n > 0) {
+                step.label = n === 1 ? '1 fält kvar' : `${n} fält kvar`;
+                const tabStatus = document.querySelector('.tjanst-tab[data-kundresa-step-id="2"] .kundresa-tab-status');
+                if (tabStatus) tabStatus.textContent = step.label;
+            }
+        }
     }
 
     _updateBeskrivningChipMuted(id) {
@@ -12473,8 +12568,31 @@ class CustomerCardManager {
     _enhanceKundresaStep2(host, movedExtras) {
         if (!host) return;
         host.classList.add('kundresa-step2');
+
+        let grid = host.querySelector('.kundresa-step2-grid');
+        if (!grid) {
+            grid = document.createElement('div');
+            grid.className = 'kundresa-step2-grid';
+            const left = document.createElement('section');
+            left.className = 'kundresa-step2-col kundresa-step2-col--beskrivning';
+            left.setAttribute('data-kundresa-step2-col', 'beskrivning');
+            const right = document.createElement('section');
+            right.className = 'kundresa-step2-col kundresa-step2-col--fragor';
+            right.setAttribute('data-kundresa-step2-col', 'fragor');
+            grid.appendChild(left);
+            grid.appendChild(right);
+            const desc = host.querySelector('#beskrivning-card');
+            const kyc = host.querySelector('#kycformular-content');
+            if (desc) left.appendChild(desc);
+            if (kyc) right.appendChild(kyc);
+            host.appendChild(grid);
+            movedExtras.push({ kind: 'remove', node: grid });
+        }
+
         this._enhanceKundresaStep2Beskrivning(host, movedExtras);
         this._enhanceKundresaStep2Kyc(host, movedExtras);
+        this._setKundresaStep2Autosave('idle');
+        this._refreshKundresaStep2Remaining();
     }
 
     _enhanceKundresaStep2Beskrivning(host, movedExtras) {
@@ -12493,21 +12611,17 @@ class CustomerCardManager {
         const titleSpan = card.querySelector('.collapsible-title span');
         if (titleSpan) {
             movedExtras.push({ kind: 'title', titleEl: titleSpan, prevText: titleSpan.textContent });
-            titleSpan.textContent = 'Beskrivning av kunden';
+            titleSpan.textContent = 'Byråns beskrivning av kunden';
         }
 
-        const progress = document.createElement('p');
-        progress.className = 'kundresa-step2-progress';
-        progress.setAttribute('data-kundresa-desc-progress', '');
-        progress.setAttribute('role', 'status');
-        body.insertBefore(progress, body.firstChild);
-        movedExtras.push({ kind: 'remove', node: progress });
-
-        const heading = document.createElement('h3');
-        heading.className = 'kundresa-step2-heading';
-        heading.textContent = 'Beskrivning av kunden';
-        body.insertBefore(heading, progress.nextSibling);
-        movedExtras.push({ kind: 'remove', node: heading });
+        const head = document.createElement('div');
+        head.className = 'kundresa-step2-section-head';
+        head.innerHTML = `
+            <h3 class="kundresa-step2-heading">Byråns beskrivning av kunden</h3>
+            <p class="kundresa-step2-progress" data-kundresa-desc-progress role="status"></p>
+        `;
+        body.insertBefore(head, body.firstChild);
+        movedExtras.push({ kind: 'remove', node: head });
 
         KUND_BESKRIVNING_DELKORT.forEach((def) => {
             this._enhanceBeskrivningDelkortForStep2(def, movedExtras);
@@ -12535,32 +12649,37 @@ class CustomerCardManager {
             : (existingView?.innerHTML || '');
         const plain = this._htmlToPlainText(raw);
         const chips = Array.isArray(def.chips) ? def.chips : [];
-        const chipHtml = chips.map((c) => `
+        const title = KUNDRESA_STEP2_FIELD_TITLE[def.id] || def.title;
+        const placeholder = KUNDRESA_STEP2_PLACEHOLDER[def.id] || def.placeholder || '';
+        const chipHtml = chips.map((c) => {
+            const display = KUNDRESA_STEP2_CHIP_LABEL[c.label] || `+ ${c.label}`;
+            return `
             <button type="button" class="kundresa-step2-chip" data-kundresa-chip
                 data-chip-label="${this._esc(c.label)}"
                 data-chip-prompt="${this._esc(c.prompt)}"
-                data-beskrivning-id="${this._esc(def.id)}">${this._esc(c.label)}</button>`).join('');
+                data-beskrivning-id="${this._esc(def.id)}">${this._esc(display)}</button>`;
+        }).join('');
 
         section.innerHTML = `
             <div class="kundresa-step2-field-head">
                 <label class="kundresa-step2-field-title" for="ku-${this._esc(def.id)}-input">
+                    ${this._esc(title)}
                     <span class="kundresa-step2-field-check" data-kundresa-field-check="${this._esc(def.id)}" hidden aria-hidden="true"><i class="fas fa-check"></i></span>
-                    ${this._esc(def.title)}
                 </label>
                 <span class="kundresa-step2-save-status" data-kundresa-save-status="${this._esc(def.id)}" aria-live="polite"></span>
             </div>
             <div class="kundresa-step2-chips" data-kundresa-chips="${this._esc(def.id)}">${chipHtml}</div>
             <textarea id="ku-${this._esc(def.id)}-input" class="kundresa-step2-textarea uppdrag-input"
-                rows="3" placeholder="${this._esc(def.placeholder || '')}"
+                rows="2" placeholder="${this._esc(placeholder)}"
                 data-beskrivning-id="${this._esc(def.id)}"
-                aria-label="${this._esc(def.title)}">${this._esc(plain)}</textarea>
+                aria-label="${this._esc(title)}">${this._esc(plain)}</textarea>
         `;
 
         const ta = document.getElementById(`ku-${def.id}-input`);
         if (ta) {
-            this._autoGrowTextarea(ta);
+            this._autoGrowTextarea(ta, { minRows: 2, maxRows: 8 });
             ta.addEventListener('input', () => {
-                this._autoGrowTextarea(ta);
+                this._autoGrowTextarea(ta, { minRows: 2, maxRows: 8 });
                 this._updateBeskrivningChipMuted(def.id);
                 this._updateBeskrivningFieldCheck(def.id);
                 this._updateKundresaDescProgress();
@@ -12606,9 +12725,10 @@ class CustomerCardManager {
         const panel = document.createElement('div');
         panel.className = 'kundresa-step2-fragor';
         panel.innerHTML = `
-            <div class="kundresa-step2-divider" aria-hidden="true"></div>
-            <p class="kundresa-step2-progress" data-kundresa-kyc-progress role="status"></p>
-            <h3 class="kundresa-step2-heading">Frågor om kunden</h3>
+            <div class="kundresa-step2-section-head">
+                <h3 class="kundresa-step2-heading">Frågor om kunden</h3>
+                <p class="kundresa-step2-progress" data-kundresa-kyc-progress role="status"></p>
+            </div>
             <div class="kundresa-step2-fragor-list" data-kundresa-fragor-list></div>
         `;
         form.insertBefore(panel, form.firstChild);
@@ -12620,6 +12740,12 @@ class CustomerCardManager {
             if (row) list.appendChild(row);
         });
 
+        const signedNotice = this._buildKundresaStep2SignedNotice();
+        if (signedNotice) {
+            panel.appendChild(signedNotice);
+            movedExtras.push({ kind: 'remove', node: signedNotice });
+        }
+
         kycRoot.querySelectorAll('.uppdrag-section, .uppdrag-doc-header, .uppdrag-banner, .uppdrag-actions, .kundformular-invite-box, .extern-cf-option, .inleed-sign-links')
             .forEach((el) => {
                 if (panel.contains(el)) return;
@@ -12628,6 +12754,28 @@ class CustomerCardManager {
             });
 
         this._updateKundresaKycProgress();
+    }
+
+    _buildKundresaStep2SignedNotice() {
+        const saved = this._savedKycFormular || {};
+        const fields = this.customerData?.fields || {};
+        const status = String(saved.status || '').trim();
+        const signedDate = String(
+            saved.signeringsdatum
+            || fields['KYC UTFÖRD DATUM']
+            || ''
+        ).trim().slice(0, 10);
+        const isSigned = status === 'Signerat' || !!signedDate;
+        if (!isSigned) return null;
+        const when = signedDate || 'tidigare';
+        const note = document.createElement('div');
+        note.className = 'kundresa-step2-signed-note';
+        note.setAttribute('role', 'note');
+        note.innerHTML = `
+            <i class="fas fa-info-circle" aria-hidden="true"></i>
+            <span>Kunden signerade KYC ${this._esc(when)}. Ändringar här uppdaterar inte det signerade dokumentet.</span>
+        `;
+        return note;
     }
 
     _parkKundresaField(el, movedExtras) {
@@ -12642,15 +12790,16 @@ class CustomerCardManager {
 
     _buildKundresaStep2KycRow(q, movedExtras) {
         const row = document.createElement('div');
-        row.className = 'kundresa-step2-q';
+        row.className = 'kundresa-step2-q' + (q.stack ? ' kundresa-step2-q--stack' : '');
         row.setAttribute('data-kundresa-q', q.id);
 
         const head = document.createElement('div');
         head.className = 'kundresa-step2-q-main';
 
-        const label = document.createElement('div');
+        const label = document.createElement(q.stack || q.type === 'unit' || q.type === 'omsattning' || q.type === 'textarea' ? 'label' : 'div');
         label.className = 'kundresa-step2-q-label';
         label.textContent = q.label;
+        if (q.inputId && label.tagName === 'LABEL') label.setAttribute('for', q.inputId);
         head.appendChild(label);
 
         const controls = document.createElement('div');
@@ -12702,15 +12851,30 @@ class CustomerCardManager {
             if (!ta) return null;
             this._parkKundresaField(ta, movedExtras);
             ta.classList.add('kundresa-step2-q-input');
-            movedExtras.push({ kind: 'class', node: ta, add: ['kundresa-step2-q-input'] });
-            if (q.placeholder) ta.setAttribute('placeholder', q.placeholder);
-            ta.addEventListener('input', () => {
-                this._autoGrowTextarea(ta, { minRows: 2, maxRows: 6 });
-                this._updateKundresaKycProgress();
-                this._scheduleKycStep2Autosave();
+            if (q.stack) ta.classList.add('kundresa-step2-q-input--line');
+            movedExtras.push({
+                kind: 'class',
+                node: ta,
+                add: q.stack
+                    ? ['kundresa-step2-q-input', 'kundresa-step2-q-input--line']
+                    : ['kundresa-step2-q-input']
             });
+            if (q.placeholder) ta.setAttribute('placeholder', q.placeholder);
+            if (q.stack) {
+                ta.setAttribute('rows', '1');
+                ta.addEventListener('input', () => {
+                    this._updateKundresaKycProgress();
+                    this._scheduleKycStep2Autosave();
+                });
+            } else {
+                ta.addEventListener('input', () => {
+                    this._autoGrowTextarea(ta, { minRows: 2, maxRows: 6 });
+                    this._updateKundresaKycProgress();
+                    this._scheduleKycStep2Autosave();
+                });
+                this._autoGrowTextarea(ta, { minRows: 2, maxRows: 6 });
+            }
             ta.addEventListener('blur', () => this._flushKycStep2Autosave());
-            this._autoGrowTextarea(ta, { minRows: 2, maxRows: 6 });
             controls.appendChild(ta);
         } else if (q.type === 'unit' && q.inputId) {
             const inp = document.getElementById(q.inputId);
@@ -12740,29 +12904,27 @@ class CustomerCardManager {
             if (!cur || isInterval) {
                 inp.classList.add('kundresa-step2-native-hidden');
                 movedExtras.push({ kind: 'class', node: inp, add: ['kundresa-step2-native-hidden'] });
-                const segs = document.createElement('div');
-                segs.className = 'kundresa-step2-segments kundresa-step2-segments--wrap';
-                segs.setAttribute('role', 'group');
-                segs.setAttribute('aria-label', q.label);
+                const sel = document.createElement('select');
+                sel.className = 'kundresa-step2-select';
+                sel.setAttribute('aria-label', q.label);
+                const blank = document.createElement('option');
+                blank.value = '';
+                blank.textContent = 'Välj…';
+                sel.appendChild(blank);
                 KUND_OMSATTNING_VAL.forEach((v) => {
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'kundresa-step2-seg' + (cur === v ? ' is-active' : '');
-                    btn.setAttribute('aria-pressed', cur === v ? 'true' : 'false');
-                    btn.textContent = v;
-                    btn.addEventListener('click', () => {
-                        inp.value = v;
-                        segs.querySelectorAll('button').forEach((b) => {
-                            const on = b === btn;
-                            b.classList.toggle('is-active', on);
-                            b.setAttribute('aria-pressed', on ? 'true' : 'false');
-                        });
-                        this._updateKundresaKycProgress();
-                        this._scheduleKycStep2Autosave();
-                    });
-                    segs.appendChild(btn);
+                    const opt = document.createElement('option');
+                    opt.value = v;
+                    opt.textContent = v;
+                    if (cur === v) opt.selected = true;
+                    sel.appendChild(opt);
                 });
-                controls.appendChild(segs);
+                sel.addEventListener('change', () => {
+                    inp.value = sel.value;
+                    this._updateKundresaKycProgress();
+                    this._scheduleKycStep2Autosave();
+                });
+                sel.addEventListener('blur', () => this._flushKycStep2Autosave());
+                controls.appendChild(sel);
                 controls.appendChild(inp);
             } else {
                 inp.classList.add('kundresa-step2-q-input', 'kundresa-step2-q-input--unit');
@@ -12843,6 +13005,7 @@ class CustomerCardManager {
                 el.onclick = null;
             }
         });
+        this._setKundresaStep2Autosave(state === 'saving' || state === 'error' || state === 'saved' ? state : 'idle');
     }
 
     async _autosaveKycStep2() {

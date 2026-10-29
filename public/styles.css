@@ -25049,47 +25049,78 @@ body.kalender-detail-open { overflow: hidden; }
 /* === Kundresa steg 2: Beskrivning & frågor (scoped to popup host) === */
 #kundresa-step-host.kundresa-step2,
 .kundresa-modal #kundresa-step-host.kundresa-step2 {
+  gap: 0;
+}
+#kundresa-step-host.kundresa-step2 > .kundresa-embedded-card,
+#kundresa-step-host.kundresa-step2 > #kycformular-content {
+  display: none;
+}
+#kundresa-step-host .kundresa-step2-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+  width: 100%;
+}
+#kundresa-step-host .kundresa-step2-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+#kundresa-step-host .kundresa-step2-col > .kundresa-embedded-card,
+#kundresa-step-host .kundresa-step2-col > #kycformular-content {
+  border: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+#kundresa-step-host .kundresa-step2-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 16px;
+  margin-bottom: 6px;
 }
 #kundresa-step-host .kundresa-step2-progress {
-  margin: 0 0 0.35rem;
+  margin: 0;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
   color: #5B6670;
+  white-space: nowrap;
 }
 #kundresa-step-host .kundresa-step2-heading {
-  margin: 0 0 0.75rem;
+  margin: 0;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--title-text, #18212B);
-}
-#kundresa-step-host .kundresa-step2-divider {
-  height: 1px;
-  background: #E3E7EB;
-  margin: 1.1rem 0 0.9rem;
-  border: 0;
 }
 #kundresa-step-host .kundresa-step2-beskrivning > .collapsible-header {
   display: none;
 }
 #kundresa-step-host .kundresa-step2-field {
-  margin: 0 0 1rem;
+  margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 #kundresa-step-host .kundresa-step2-field-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.35rem;
+  margin: 0;
 }
 #kundresa-step-host .kundresa-step2-field-title {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 14px;
+  gap: 6px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--title-text, #18212B);
   cursor: pointer;
@@ -25098,12 +25129,12 @@ body.kalender-detail-open { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #D9F0E3;
-  color: #1E6B3C;
-  font-size: 9px;
+  color: #2E8B57;
+  font-size: 11px;
+  background: transparent;
+  width: auto;
+  height: auto;
+  border-radius: 0;
 }
 #kundresa-step-host .kundresa-step2-field-check[hidden] {
   display: none !important;
@@ -25113,7 +25144,20 @@ body.kalender-detail-open { overflow: hidden; }
   color: #8A94A0;
   white-space: nowrap;
 }
+#kundresa-step-host .kundresa-step2-save-status.is-saving,
+#kundresa-step-host .kundresa-step2-save-status.is-saved:not(.is-error) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
 #kundresa-step-host .kundresa-step2-save-status.is-error {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
   color: #B42318;
   cursor: pointer;
   text-decoration: underline;
@@ -25121,19 +25165,20 @@ body.kalender-detail-open { overflow: hidden; }
 #kundresa-step-host .kundresa-step2-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  margin: 0 0 0.45rem;
+  gap: 6px;
+  margin: 0;
 }
 #kundresa-step-host .kundresa-step2-chip {
   appearance: none;
-  border: 1px solid #D5DBE1;
-  background: #F4F6F8;
-  color: #334155;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #D5DBE0;
+  background: #F7F8F9;
+  color: #3E4A55;
   font: inherit;
   font-size: 12px;
-  line-height: 1.2;
-  padding: 0.22rem 0.55rem;
-  border-radius: 999px;
+  line-height: 1;
+  border-radius: 13px;
   cursor: pointer;
 }
 #kundresa-step-host .kundresa-step2-chip:hover {
@@ -25146,63 +25191,83 @@ body.kalender-detail-open { overflow: hidden; }
 }
 #kundresa-step-host .kundresa-step2-textarea {
   width: 100%;
-  min-height: calc(3 * 1.4em + 0.9rem);
-  max-height: calc(10 * 1.4em + 0.9rem);
-  resize: none;
+  min-height: calc(2 * 1.45em + 16px);
+  max-height: calc(8 * 1.45em + 16px);
+  resize: vertical;
+  font: inherit;
   font-size: 13px;
   line-height: 1.45;
-  padding: 0.45rem 0.65rem;
-  border: 1px solid var(--line, #E3E7EB);
+  padding: 8px 10px;
+  border: 1px solid #CDD4DA;
   border-radius: 8px;
   background: #fff;
   color: var(--title-text, #18212B);
   box-sizing: border-box;
 }
 #kundresa-step-host .kundresa-step2-textarea::placeholder {
-  color: #9AA3AD;
+  color: #7A8590;
 }
 #kundresa-step-host .kundresa-step2-fragor {
-  margin-top: 0.25rem;
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 #kundresa-step-host .kundresa-step2-fragor-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0;
+  border: 1px solid #E6E9EC;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
 }
 #kundresa-step-host .kundresa-step2-q {
-  padding: 0.55rem 0;
-  border-bottom: 1px solid #EEF1F4;
+  padding: 8px 12px;
+  border-bottom: 1px solid #EEF0F2;
+  margin: 0;
 }
 #kundresa-step-host .kundresa-step2-q:last-child {
   border-bottom: 0;
+  padding-bottom: 10px;
 }
 #kundresa-step-host .kundresa-step2-q-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.85rem;
-  flex-wrap: wrap;
+  gap: 12px;
+}
+#kundresa-step-host .kundresa-step2-q--stack .kundresa-step2-q-main {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
 }
 #kundresa-step-host .kundresa-step2-q-label {
-  flex: 1 1 220px;
+  flex: 1 1 auto;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--title-text, #18212B);
   line-height: 1.35;
+  margin: 0;
 }
 #kundresa-step-host .kundresa-step2-q-controls {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.5rem;
-  flex: 0 1 auto;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+#kundresa-step-host .kundresa-step2-q--stack .kundresa-step2-q-controls {
+  justify-content: stretch;
+  width: 100%;
 }
 #kundresa-step-host .kundresa-step2-segments {
   display: inline-flex;
-  border: 1px solid var(--line, #E3E7EB);
-  border-radius: 8px;
+  border: 1px solid #CDD4DA;
+  border-radius: 6px;
   overflow: hidden;
   background: #fff;
+  flex-shrink: 0;
 }
 #kundresa-step-host .kundresa-step2-segments--wrap {
   flex-wrap: wrap;
@@ -25211,18 +25276,21 @@ body.kalender-detail-open { overflow: hidden; }
 #kundresa-step-host .kundresa-step2-seg {
   appearance: none;
   border: 0;
-  background: transparent;
-  color: var(--title-text, #18212B);
+  background: #fff;
+  color: #3E4A55;
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  height: 34px;
-  padding: 0 0.8rem;
+  font-size: 12px;
+  font-weight: 400;
+  height: 28px;
+  width: 40px;
+  padding: 0;
   cursor: pointer;
-  border-right: 1px solid var(--line, #E3E7EB);
+  border-right: 1px solid #CDD4DA;
 }
 #kundresa-step-host .kundresa-step2-segments--wrap .kundresa-step2-seg {
-  border-bottom: 1px solid var(--line, #E3E7EB);
+  width: auto;
+  padding: 0 0.65rem;
+  border-bottom: 1px solid #CDD4DA;
 }
 #kundresa-step-host .kundresa-step2-seg:last-child {
   border-right: 0;
@@ -25231,8 +25299,9 @@ body.kalender-detail-open { overflow: hidden; }
   background: #F4F6F8;
 }
 #kundresa-step-host .kundresa-step2-seg.is-active {
-  background: var(--muted, #E8F1F2);
-  color: var(--accent, #13505c);
+  background: var(--accent, #1D4E57);
+  color: #fff;
+  font-weight: 600;
 }
 #kundresa-step-host .kundresa-step2-native-hidden {
   position: absolute !important;
@@ -25243,23 +25312,50 @@ body.kalender-detail-open { overflow: hidden; }
   overflow: hidden !important;
   clip: rect(0, 0, 0, 0) !important;
 }
-#kundresa-step-host .kundresa-step2-q-input {
+#kundresa-step-host .kundresa-step2-select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #CDD4DA;
+  border-radius: 6px;
+  font: inherit;
   font-size: 13px;
-  min-width: 160px;
+  background: #fff;
+  color: #18212B;
   max-width: 100%;
 }
+#kundresa-step-host .kundresa-step2-q-input {
+  font-size: 13px;
+  min-width: 64px;
+  max-width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid #CDD4DA;
+  border-radius: 6px;
+  background: #fff;
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-step2-q-input--line {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  resize: none;
+  overflow: hidden;
+  line-height: 32px;
+}
 #kundresa-step-host .kundresa-step2-q-input--unit {
-  width: 160px;
+  width: 64px;
+  text-align: right;
 }
 #kundresa-step-host .kundresa-step2-unit {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 6px;
 }
 #kundresa-step-host .kundresa-step2-unit-label {
   font-size: 12px;
   color: #5B6670;
-  font-weight: 600;
+  font-weight: 400;
 }
 #kundresa-step-host .kundresa-step2-followup {
   margin-top: 0.55rem;
@@ -25270,6 +25366,23 @@ body.kalender-detail-open { overflow: hidden; }
   margin-top: 0.25rem;
   text-align: right;
 }
+#kundresa-step-host .kundresa-step2-signed-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #F4F6F8;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #3E4A55;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.4;
+}
+#kundresa-step-host .kundresa-step2-signed-note i {
+  color: #5B6670;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
 #kundresa-step-host .kundresa-step2-hide {
   display: none !important;
 }
@@ -25279,8 +25392,45 @@ body.kalender-detail-open { overflow: hidden; }
   background: transparent;
   box-shadow: none;
 }
+.kundresa-popup-stepinfo--row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.kundresa-step2-autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #5B6670;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.kundresa-step2-autosave i {
+  color: #2E8B57;
+  font-size: 11px;
+}
+.kundresa-step2-autosave.is-saving {
+  color: #5B6670;
+}
+.kundresa-step2-autosave.is-error {
+  color: #B42318;
+}
+.kundresa-step2-autosave.is-error i {
+  color: inherit;
+}
+@media (max-width: 900px) {
+  #kundresa-step-host .kundresa-step2-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
 @media (max-width: 720px) {
   #kundresa-step-host .kundresa-step2-q-main {
+    flex-wrap: wrap;
+  }
+  #kundresa-step-host .kundresa-step2-q:not(.kundresa-step2-q--stack) .kundresa-step2-q-main {
     flex-direction: column;
     align-items: stretch;
   }

@@ -91,6 +91,13 @@
     return isVhStep(step);
   }
 
+  function isStep2(step) {
+    if (!step) return false;
+    return step.focus === 'beskrivning_fragor'
+      || step.key === 'beskrivning_fragor'
+      || Number(step.id) === 2;
+  }
+
   function isStep3(step) {
     if (!step) return false;
     return step.focus === 'redovisning_tjanster'
@@ -162,6 +169,7 @@
     const showVhPanel = gate.relevant !== false
       && (isVhStep(activeStep) || gate.blocked || Number(activeStepId) === 1);
     const step1Sub = s.step1Substatus || null;
+    const step2Sub = s.step2Substatus || null;
     const step3Sub = s.step3Substatus || null;
     const showChecklist = isStep1(activeStep) && step1Sub && Array.isArray(step1Sub.items) && step1Sub.items.length;
     const step4Status = s.step4Status || activeStep?.step4 || null;
@@ -171,11 +179,13 @@
     const step4CanSend = step4Send ? !!step4Send.canSend : step4Blockers.length === 0;
     const remainingLabel = isStep1(activeStep)
       ? (step1Sub?.remainingLabel || '')
-      : (isStep3(activeStep)
-        ? (step3Sub?.remainingLabel || '')
-        : (isStep4(activeStep) && !step4Sent && step4Blockers.length
-          ? step4Blockers.join(' · ')
-          : ''));
+      : (isStep2(activeStep)
+        ? (step2Sub?.remainingLabel || '')
+        : (isStep3(activeStep)
+          ? (step3Sub?.remainingLabel || '')
+          : (isStep4(activeStep) && !step4Sent && step4Blockers.length
+            ? step4Blockers.join(' · ')
+            : '')));
     const totalSteps = steps.length || Number(s.total) || 4;
     const isLastStep = isStep4(activeStep);
     const stepNum = activeStep
@@ -231,9 +241,10 @@
             <strong>VH blockerar.</strong> ${esc(gate.message || 'Bekräfta verklig huvudman innan ni går vidare.')}
           </div>` : ''}
 
-          ${activeStep ? `<header class="kundresa-popup-stepinfo kundresa-popup-stepinfo--compact">
+          ${activeStep ? `<header class="kundresa-popup-stepinfo kundresa-popup-stepinfo--compact${isStep2(activeStep) ? ' kundresa-popup-stepinfo--row' : ''}">
             <p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>
             <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
+            ${isStep2(activeStep) ? `<span class="kundresa-step2-autosave is-saved" data-kundresa-autosave><i class="fas fa-check" aria-hidden="true"></i> Sparas automatiskt</span>` : ''}
             ${companyLabel ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
             <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
           </header>` : ''}
@@ -451,5 +462,5 @@
     }
   }
 
-  global.KundresaUi = { render, renderProgressIcon, progressMeta, isStep3, isStep4 };
+  global.KundresaUi = { render, renderProgressIcon, progressMeta, isStep2, isStep3, isStep4 };
 })(typeof window !== 'undefined' ? window : global);
