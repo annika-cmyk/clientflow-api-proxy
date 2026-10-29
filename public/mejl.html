@@ -112,6 +112,12 @@
       }
       .mejl-attach-row:last-child { border-bottom: 0; }
       .mejl-attach-name { flex: 1 1 8rem; min-width: 0; word-break: break-word; }
+      .mejl-attach-paste-tag {
+        display: inline-block; margin-left: 0.35rem; padding: 0.05rem 0.35rem;
+        font-size: 0.65rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+        color: #0f766e; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 4px;
+        vertical-align: middle;
+      }
       .mejl-attach-row-actions { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
       .mejl-attach-bankid-badge {
         display: inline-flex; align-items: center; gap: 0.28rem;
@@ -613,6 +619,7 @@
                                     <div class="form-group">
                                         <label for="mejl-body">Offentlig del</label>
                                         <textarea id="mejl-body" class="form-input" placeholder="Skriv den del som ska synas öppet i mejlet…"></textarea>
+                                        <p class="mejl-hint">Klistra in eller dra in bilder här (t.ex. skärmdump) — de läggs till under Bilagor och syns i mejlet.</p>
                                     </div>
                                 </div>
 
@@ -637,7 +644,7 @@
                                         <input type="file" id="mejl-attachments" class="visually-hidden" multiple>
                                     </div>
                                     <div id="mejl-attach-list" class="mejl-attach-list"></div>
-                                    <p class="mejl-hint">Klicka på statusmärket för att växla BankID-skydd per bilaga. Öppna bilagor skickas som vanliga mejlbilagor; BankID-märkta nås via länk efter identifiering.</p>
+                                    <p class="mejl-hint">Klistra in bilder i textfältet eller välj filer här. Klicka på statusmärket för att växla BankID-skydd. Inklistrade öppna bilder syns i mejlet; BankID-märkta nås via länk efter identifiering.</p>
                                 </div>
 
                                 <div class="mejl-compose-card" data-compose-card="uppfoljning">
@@ -735,6 +742,6 @@
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
     <script src="js/mejl-regga-tid.js?v=20260919lank" defer></script>
     <script src="js/mejl-replied.js?v=20261022svarat" defer></script>
-    <script src="js/mejl.js?v=20261029status" defer></script>
+    <script src="js/mejl.js?v=20261029pasteimg" defer></script>
 </body>
 </html>
