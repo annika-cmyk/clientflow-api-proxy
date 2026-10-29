@@ -328,7 +328,15 @@
 
   function setFolderUi() {
     if (els.folderInbox) els.folderInbox.classList.toggle('is-active', folder === 'inbox');
-    if (els.folderOpen) els.folderOpen.classList.toggle('is-active', folder === 'open');
+    if (els.folderOpen) {
+      els.folderOpen.classList.toggle('is-active', folder === 'open');
+      const openCount = (messages || []).filter(
+        (m) => m && !isClientHidden(m) && !isSharedListId(m.id) && isUnhandled(m)
+      ).length;
+      els.folderOpen.innerHTML =
+        'Att hantera' +
+        (openCount ? `<span class="mejl-folder-count">(${openCount})</span>` : '');
+    }
     if (els.folderSent) els.folderSent.classList.toggle('is-active', folder === 'sent');
     if (els.folderShared) {
       els.folderShared.classList.toggle('is-active', folder === 'shared');
@@ -573,7 +581,10 @@
     if (!list.length) {
       let empty = 'Inga mejl hittades under etiketten KUNDER.';
       if (folder === 'sent') empty = 'Inga skickade mejl under etiketten KUNDER.';
-      if (folder === 'open') empty = 'Inga mejl att hantera just nu.';
+      if (folder === 'open') {
+        empty =
+          'Inga mejl att hantera just nu. Markerade som hanterade syns under «Alla».';
+      }
       if (folder === 'shared') {
         empty =
           status && status.connected
@@ -601,8 +612,16 @@
             : `<span class="mejl-item-customer">${esc(primaryLabel)}</span>`;
           const handleStatus =
             handleStatusApi && !isSharedListId(m.id) ? handleStatusApi.get(m.id) : '';
-          const isHandled = handleStatus === 'handled';
-          const handleClass = isHandled ? ' is-handled' : ' is-unhandled';
+          const statusCls =
+            handleStatusApi && handleStatus ? handleStatusApi.listItemClass(handleStatus) : '';
+          // Ohanterat / att-göra får accentprick; hanterat och uppgift-skapad inte.
+          const needsDot = handleStatus !== 'handled' && handleStatus !== 'task_created';
+          const handleClass =
+            (statusCls ? ` ${statusCls}` : '') + (needsDot ? ' is-unhandled' : '');
+          const statusBadge =
+            handleStatusApi && handleStatus && typeof handleStatusApi.badgeHtml === 'function'
+              ? handleStatusApi.badgeHtml(handleStatus)
+              : '';
           const attCount = messageAttachmentCount(m);
           const attachBadge =
             attCount > 0
@@ -624,6 +643,27 @@
             m.matchReason === 'unmatched'
               ? `<span class="mejl-item-unmatched-text">Ej kopplad</span>`
               : '';
+          const menuHtml = isSharedListId(m.id)
+            ? ''
+            : `<div class="mejl-item-menu">
+            <button type="button" class="mejl-item-menu-btn" data-mejl-menu-toggle aria-label="Fler alternativ" aria-haspopup="true" aria-expanded="false" title="Fler alternativ">
+              <i class="fas fa-ellipsis-v" aria-hidden="true"></i>
+            </button>
+            <div class="mejl-item-menu-panel" role="menu" hidden>
+              <button type="button" class="mejl-item-menu-item" role="menuitem" data-mejl-menu-action="todo">
+                <i class="fas fa-exclamation-circle" aria-hidden="true"></i> Att hantera
+              </button>
+              <button type="button" class="mejl-item-menu-item" role="menuitem" data-mejl-menu-action="handled">
+                <i class="fas fa-check" aria-hidden="true"></i> Hanterat
+              </button>
+              <button type="button" class="mejl-item-menu-item" role="menuitem" data-mejl-menu-action="koppla">
+                <i class="fas fa-link" aria-hidden="true"></i> Koppla till uppdrag / skapa uppgift
+              </button>
+              <button type="button" class="mejl-item-menu-item is-danger" role="menuitem" data-mejl-menu-action="radera">
+                <i class="fas fa-eye-slash" aria-hidden="true"></i> Ta bort från listan
+              </button>
+            </div>
+          </div>`;
           // Rad 2: avsändare · ämne (om kund finns), annars bara ämne
           const fromSubj = customerName
             ? `${esc(sender)} · ${subjectDisplay(m.subject)}`
@@ -632,12 +672,13 @@
       <div class="mejl-item${m.id === activeId ? ' is-active' : ''}${handleClass}${m.matchReason === 'unmatched' ? ' is-unmatched' : ''}" data-id="${esc(m.id)}" role="button" tabindex="0">
         <div class="mejl-item-top">
           <div class="mejl-item-customer-row">
-            ${customerHtml}${unmatched}
+            ${customerHtml}${unmatched}${statusBadge}
           </div>
           <div class="mejl-item-top-right">
             ${repliedBadge}
             ${attachBadge}
             <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
+            ${menuHtml}
           </div>
         </div>
         <div class="mejl-item-from-subj">${fromSubj}</div>

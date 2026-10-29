@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20261029mejl-flexfix">
+    <link rel="stylesheet" href="styles.css?v=20261029mejl-status">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
       /* —— Mejl compact UI —— */
@@ -188,18 +188,65 @@
       }
       .mejl-item.is-unhandled::before { background: var(--mejl-accent); }
       .mejl-item.is-handled {
-        background: transparent; color: #94a3b8;
+        background: #f0fdf4;
       }
       .mejl-item.is-handled .mejl-item-customer,
       .mejl-item.is-handled .mejl-item-customer-link,
       .mejl-item.is-handled .mejl-item-from-subj,
       .mejl-item.is-handled .mejl-item-snippet,
-      .mejl-item.is-handled .mejl-item-date { color: #94a3b8; font-weight: 500; }
+      .mejl-item.is-handled .mejl-item-date { color: #64748b; font-weight: 500; }
       .mejl-item.is-handled::before { background: transparent; }
-      .mejl-item.is-handled.is-active { background: #f1f5f9; box-shadow: inset 3px 0 0 #94a3b8; }
-      .mejl-item.is-todo, .mejl-item.is-task-created { background: #fff; }
+      .mejl-item.is-handled.is-active {
+        background: #dcfce7; box-shadow: inset 3px 0 0 #16a34a;
+      }
+      .mejl-item.is-todo { background: #fff7ed; }
+      .mejl-item.is-todo.is-active {
+        background: #ffedd5; box-shadow: inset 3px 0 0 #ea580c;
+      }
+      .mejl-item.is-task-created { background: #f0f9ff; }
+      .mejl-item.is-task-created.is-active {
+        background: #e0f2fe; box-shadow: inset 3px 0 0 #0284c7;
+      }
+      .mejl-item.is-handled .mejl-item-snippet { display: none; }
+      .mejl-item-status-badge {
+        display: inline-block; flex-shrink: 0;
+        padding: 0.1rem 0.4rem; border-radius: 4px;
+        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.01em; line-height: 1.3;
+        white-space: nowrap;
+      }
+      .mejl-item-status-badge.is-handled { background: #bbf7d0; color: #166534; }
+      .mejl-item-status-badge.is-todo { background: #fed7aa; color: #9a3412; }
+      .mejl-item-status-badge.is-task-created { background: #bae6fd; color: #075985; }
+      .mejl-item-menu { position: relative; flex-shrink: 0; }
+      .mejl-item-menu-btn {
+        width: 1.65rem; height: 1.65rem; padding: 0; border: none;
+        border-radius: 6px; background: transparent; color: #94a3b8;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; line-height: 1; font-size: 0.85rem;
+      }
+      .mejl-item-menu-btn:hover,
+      .mejl-item-menu.is-open .mejl-item-menu-btn {
+        background: #f1f5f9; color: #475569;
+      }
+      .mejl-item-menu-panel {
+        position: absolute; top: calc(100% + 4px); right: 0;
+        min-width: 14.5rem; padding: 0.35rem; z-index: 40;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+      }
+      .mejl-item-menu-panel[hidden] { display: none !important; }
+      .mejl-item-menu-item {
+        display: flex; align-items: center; gap: 0.5rem; width: 100%;
+        border: none; background: transparent; color: #0f172a;
+        text-align: left; padding: 0.5rem 0.65rem; border-radius: 8px;
+        font-size: 0.88rem; cursor: pointer; line-height: 1.25;
+      }
+      .mejl-item-menu-item:hover { background: #f1f5f9; }
+      .mejl-item-menu-item.is-danger { color: #b91c1c; }
+      .mejl-item-menu-item.is-danger:hover { background: #fef2f2; }
+      .mejl-item-menu-item i { width: 1rem; text-align: center; opacity: 0.85; }
       .mejl-item-top {
-        display: flex; justify-content: space-between; gap: 0.55rem; align-items: baseline; min-width: 0;
+        display: flex; justify-content: space-between; gap: 0.55rem; align-items: flex-start; min-width: 0;
       }
       .mejl-item-top-right { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
       .mejl-item-attach, .mejl-item-replied {
@@ -214,7 +261,7 @@
       .mejl-item.is-unhandled a.mejl-item-customer-link { font-weight: 700; }
       a.mejl-item-customer-link:hover { color: var(--mejl-accent); text-decoration: underline; }
       .mejl-item-customer-row {
-        display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.4rem; min-width: 0; flex: 1 1 auto; overflow: hidden;
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.45rem; min-width: 0; flex: 1 1 auto;
       }
       .mejl-item-unmatched-text {
         font-size: 0.75rem; font-weight: 600; color: var(--mejl-orange); white-space: nowrap; flex-shrink: 0;
@@ -303,6 +350,9 @@
       .mejl-archive-bar-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
       .mejl-handle-status-btn.is-handled-active {
         background: #dcfce7; border-color: #4ade80; color: #166534;
+      }
+      .mejl-handle-status-btn.is-todo-active {
+        background: #ffedd5; border-color: #fb923c; color: #9a3412;
       }
 
       .mejl-detail-body {
@@ -685,6 +735,6 @@
     <script src="js/mejl-task-link.js?v=20260916task" defer></script>
     <script src="js/mejl-regga-tid.js?v=20260919lank" defer></script>
     <script src="js/mejl-replied.js?v=20261022svarat" defer></script>
-    <script src="js/mejl.js?v=20261029flexfix" defer></script>
+    <script src="js/mejl.js?v=20261029status" defer></script>
 </body>
 </html>
