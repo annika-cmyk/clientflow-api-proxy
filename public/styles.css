@@ -24907,6 +24907,7 @@ body.kalender-detail-open { overflow: hidden; }
     justify-content: flex-start;
   }
 }
+
 /* === Förslag 2 · Lugnare: lugnare chrome i kunduppläggningspopupen === */
 .kundresa-modal-content {
   border-radius: 14px;
@@ -25461,3 +25462,160 @@ body.kalender-detail-open { overflow: hidden; }
     align-items: flex-start;
   }
 }
+/* === KUNDRESA STEG4 KYC SKICKA === */
+#kundresa-step-host .kundresa-kyc-skicka {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-kyc-send-panel {
+  background: #fff;
+  border: 1px solid #E3E7EB;
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+#kundresa-step-host .kundresa-kyc-recipient {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.85rem;
+}
+#kundresa-step-host .kundresa-kyc-recipient-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+#kundresa-step-host .kundresa-kyc-recipient-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+#kundresa-step-host .kundresa-kyc-recipient-email {
+  font-size: 13px;
+  color: #5B6670;
+}
+#kundresa-step-host .kundresa-kyc-swap,
+#kundresa-step-host .kundresa-kyc-open-link,
+#kundresa-step-host .kundresa-kyc-missing a {
+  font-size: 13px;
+  color: var(--accent, #13505C);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+#kundresa-step-host .kundresa-kyc-open-link[aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+  text-decoration: none;
+}
+#kundresa-step-host .kundresa-kyc-recipient-select {
+  font: inherit;
+  font-size: 13px;
+  max-width: 100%;
+}
+#kundresa-step-host .kundresa-kyc-status-line {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3E4A55;
+}
+#kundresa-step-host .kundresa-kyc-send-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+}
+#kundresa-step-host .kundresa-kyc-help,
+#kundresa-step-host .kundresa-kyc-q-note,
+#kundresa-step-host .kundresa-kyc-missing {
+  margin: 0;
+  font-size: 12px;
+  color: #5B6670;
+  line-height: 1.4;
+}
+#kundresa-step-host .kundresa-kyc-preview-title {
+  margin: 0 0 0.55rem;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--title-text, #0f172a);
+}
+#kundresa-step-host .kundresa-kyc-section-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  border: 1px solid #E3E7EB;
+  border-radius: 12px;
+  overflow: hidden;
+}
+#kundresa-step-host .kundresa-kyc-section + .kundresa-kyc-section {
+  border-top: 1px solid #E3E7EB;
+}
+#kundresa-step-host .kundresa-kyc-section-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "num name count" "num pref chev";
+  column-gap: 0.55rem;
+  row-gap: 0.15rem;
+  align-items: center;
+  padding: 0.7rem 0.95rem;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+}
+#kundresa-step-host .kundresa-kyc-section-num { grid-area: num; font-weight: 600; color: #5B6670; }
+#kundresa-step-host .kundresa-kyc-section-name { grid-area: name; font-size: 14px; font-weight: 600; }
+#kundresa-step-host .kundresa-kyc-section-count { grid-area: count; font-size: 12px; color: #5B6670; justify-self: end; }
+#kundresa-step-host .kundresa-kyc-section-pref { grid-area: pref; font-size: 12px; color: #8A939C; }
+#kundresa-step-host .kundresa-kyc-section-chevron {
+  grid-area: chev;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 1.5px solid #8A939C;
+  border-bottom: 1.5px solid #8A939C;
+  transform: rotate(45deg);
+  justify-self: end;
+  transition: transform 0.15s ease;
+}
+#kundresa-step-host .kundresa-kyc-section:not(.is-collapsed) .kundresa-kyc-section-chevron {
+  transform: rotate(-135deg);
+}
+#kundresa-step-host .kundresa-kyc-section-body {
+  padding: 0 0.95rem 0.85rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+#kundresa-step-host .kundresa-kyc-q-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5B6670;
+  margin-bottom: 0.1rem;
+}
+#kundresa-step-host .kundresa-kyc-q-value { font-size: 13px; color: #18212B; }
+#kundresa-step-host .kundresa-kyc-q-prefilled { font-size: 13px; color: #5B6670; }
+#kundresa-step-host .kundresa-kyc-q-empty { font-size: 13px; color: #8A939C; font-style: italic; }
+#kundresa-step-host ::placeholder {
+  font-family: inherit !important;
+  font-size: inherit;
+}
+#kundresa-step-host input,
+#kundresa-step-host textarea,
+#kundresa-step-host select {
+  font-family: inherit;
+}
+

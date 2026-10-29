@@ -11418,14 +11418,17 @@ class CustomerCardManager {
             return;
         }
         const kf = this._kundformularSummary || {};
+        const fields = this.customerData?.fields || {};
+        const step4Send = this._buildKundresaStep4Send(summary);
         const enriched = {
             ...summary,
             byraVhBekraftelse: kf.byraVhBekraftelse || summary.byraVhBekraftelse || '',
             byraVhNote: kf.byraVhNote || summary.byraVhNote || '',
             vhRegister: summary.vhRegister || summary.vhAlignment?.register || [],
-            vhAlignment: summary.vhAlignment || null
+            vhAlignment: summary.vhAlignment || null,
+            step4Status: summary.step4Status || null,
+            step4Send
         };
-        const fields = this.customerData?.fields || {};
         KundresaUi.render(host, {
             ...enriched,
             activeStepId: this._activeKundresaStepId || enriched.nextStepId,
@@ -11434,6 +11437,8 @@ class CustomerCardManager {
         }, {
             onStep: (target) => this._gotoKundresaStep(target),
             onVhSave: (payload, btn) => this._onKundresaVhSave(payload, btn),
+            onKycSend: () => this._sendKycFromKundresa({ source: 'footer' }),
+            onClose: () => this.closeKundresaModal(),
             onReady: ({ activeStep }) => {
                 this._mountKundresaStep(activeStep || {
                     id: this._activeKundresaStepId,
@@ -12050,6 +12055,17 @@ class CustomerCardManager {
             }
 
             if (gen !== this._kundresaMountGeneration) return;
+
+            // Steg 4: review-and-send i popupen (lämna redigerbara KYC på kundkortet orört)
+            if (focus === 'kyc_skicka' || focus === 'formular_kyc' || Number(stepId) === 4) {
+                this._kundresaMountedNodes = [];
+                this._kundresaMovedExtras = [];
+                this._mountKundresaKycSkickaStep(host);
+                const scrollEarly = document.querySelector('[data-kundresa-scroll]');
+                if (scrollEarly) scrollEarly.scrollTop = 0;
+                else host.scrollTop = 0;
+                return;
+            }
 
             const selectors = cardIds.map((id) => `#${id}`);
             const mounted = [];
