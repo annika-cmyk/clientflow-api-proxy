@@ -24536,6 +24536,13 @@ body.kalender-detail-open { overflow: hidden; }
     overflow: auto;
     margin-top: 0.35rem;
 }
+.kalender-create-mode {
+    margin: 0.35rem 0 0.65rem;
+}
+.kalender-create-mode .kalender-seg-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+}
 .kalender-meeting-invite-form {
     display: flex;
     flex-direction: column;

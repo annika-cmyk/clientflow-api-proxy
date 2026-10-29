@@ -1423,11 +1423,180 @@
       : SB.uniqueRunEvents(expanded);
   }
 
+  function currentUserName() {
+    const u = (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) || {};
+    return String(u.name || u.Namn || '').trim();
+  }
+
+  async function loadCustomerMetaForUppgift(customerId) {
+    try {
+      const res = await fetch(`${baseUrl}/api/kunddata/${encodeURIComponent(customerId)}`, authOpts());
+      const data = await res.json().catch(() => ({}));
+      const fields =
+        (data && data.record && data.record.fields) ||
+        (data && data.fields) ||
+        (data && data.data && data.data.fields) ||
+        {};
+      return {
+        klientansvarig: String(fields['Klientansvarig'] || fields.Klientansvarig || '').trim(),
+        byraId: String(fields['Byrå ID'] || fields['ByråID'] || fields.byraId || '').replace(/,/g, '').trim(),
+        orgnr: String(fields.Orgnr || fields.orgnr || fields['Organisationsnummer'] || '').trim(),
+        namn: String(fields.Namn || fields['Företagsnamn'] || '').trim()
+      };
+    } catch (_) {
+      return { klientansvarig: '', byraId: '', orgnr: '', namn: '' };
+    }
+  }
+
+  async function createStandaloneUppgiftAtSlot({
+    customerId,
+    title,
+    note,
+    date,
+    startMin,
+    endMin
+  }) {
+    const CU = window.KalenderCreateUppgift;
+    if (!CU || typeof CU.buildEngangUppgiftUppdragPayload !== 'function') {
+      throw new Error('Saknar kalender-create-uppgift.js');
+    }
+    const ansvarig = currentUserName();
+    if (!ansvarig) throw new Error('Saknar inloggad användare.');
+    const day = KV.dateIso(date) || today();
+    const meta = await loadCustomerMetaForUppgift(customerId);
+    const klientansvarig = meta.klientansvarig || ansvarig;
+    const uppdragBody = CU.buildEngangUppgiftUppdragPayload({
+      customerId,
+      namn: title,
+      ansvarig,
+      klientansvarig,
+      deadline: day,
+      today: day
+    });
+    const uppdragRes = await fetch(`${baseUrl}/api/uppdrag`, {
+      method: 'POST',
+      ...authOpts(),
+      headers: {
+        ...(authOpts().headers || {}),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(uppdragBody)
+    });
+    const uppdragData = await uppdragRes.json().catch(() => ({}));
+    if (!uppdragRes.ok) {
+      throw new Error(uppdragData.error || uppdragData.message || `HTTP ${uppdragRes.status}`);
+    }
+    const uppdragRec = uppdragData.record || uppdragData;
+    const uppdragId = String(uppdragRec && uppdragRec.id || '').trim();
+    if (!uppdragId) throw new Error('Uppgiften skapades men id saknas');
+
+    // Mina uppgifter / Att göra — samma ToDo-modell som mejl → Ny uppgift
+    try {
+      const notePayload = CU.buildStandaloneUppgiftNotePayload({
+        text: title,
+        ansvarig,
+        byraId: meta.byraId,
+        orgnr: meta.orgnr,
+        foretagsnamn: meta.namn,
+        today: day,
+        extraNote: note
+      });
+      await fetch(`${baseUrl}/api/notes`, {
+        method: 'POST',
+        ...authOpts(),
+        headers: {
+          ...(authOpts().headers || {}),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(notePayload)
+      });
+    } catch (err) {
+      console.warn('Kalender uppgift-anteckning:', err);
+    }
+
+    const runsRes = await fetch(
+      `${baseUrl}/api/uppdrag/runs?customerId=${encodeURIComponent(customerId)}`,
+      authOpts()
+    );
+    const runsData = await runsRes.json().catch(() => ({}));
+    if (!runsRes.ok) {
+      throw new Error(runsData.error || 'Kunde inte hämta körning för uppgiften');
+    }
+    const runs = Array.isArray(runsData.records) ? runsData.records
+      : (Array.isArray(runsData.runs) ? runsData.runs : []);
+    const runRec = CU.findRunForUppdrag(runs, uppdragId);
+    if (!runRec || !runRec.id) {
+      throw new Error('Uppgift skapad men körning saknas ännu — ladda om kalendern.');
+    }
+
+    // Se till att föräldra-uppdraget har kundnamn för kalenderraderna
+    if (uppdragRec) {
+      uppdragRec.fields = uppdragRec.fields || {};
+      if (!uppdragRec.fields['Kundnamn'] && meta.namn) {
+        uppdragRec.fields['Kundnamn'] = meta.namn;
+      }
+      if (!uppdragRec.fields['Kund ID']) {
+        uppdragRec.fields['Kund ID'] = customerId;
+      }
+      if (!records.some((r) => r.id === uppdragRec.id)) {
+        records.push(uppdragRec);
+      }
+    }
+    const runIdx = runRecords.findIndex((r) => r.id === runRec.id);
+    if (runIdx >= 0) runRecords[runIdx] = runRec;
+    else runRecords.push(runRec);
+
+    render();
+    const findEvForRun = () =>
+      events.find((e) => String(e.runRec?.id || '') === String(runRec.id)) || null;
+    let ev = findEvForRun();
+    if (!ev) {
+      // Minimal event om synligt intervall ännu inte inkluderar engångskörningen
+      const pk = day.slice(0, 7);
+      const key = `${uppdragId}:${pk}`;
+      ev = {
+        key,
+        runKey: key,
+        typ: CU.EGET_TYP,
+        record: uppdragRec,
+        runRec,
+        deadline: day,
+        startDate: day,
+        periodLabel: '',
+        periodKey: pk,
+        status: 'Planerad',
+        scheduleBlocks: []
+      };
+      byKey.set(key, ev);
+      events.push(ev);
+    }
+
+    const startIso = KV.toLocalDateTimeIso(date, startMin);
+    const endIso = KV.toLocalDateTimeIso(date, endMin);
+    const schedOpts = { mode: 'add' };
+    if (note) schedOpts.note = note;
+    const ok = await persistSchedule(ev, startIso, endIso, schedOpts);
+    if (!ok) throw new Error('Uppgift skapad men tidblocket sparades inte.');
+
+    render();
+    ev = findEvForRun() || ev;
+    const blocks = blocksOf(ev);
+    const newest = blocks.find((b) => b.start === startIso && b.end === endIso)
+      || blocks[blocks.length - 1];
+    const baseKey = String(ev.runKey || ev.key || '').split('#')[0];
+    return { ev, blockId: newest && newest.id, baseKey };
+  }
+
   function openCreateSlotPicker(date, startMin, endMin) {
     if (!el.detail || !el.detailBody) return;
     openDetailKey = null;
+    const CU = window.KalenderCreateUppgift || null;
     const timeLabel = `${fmtDate(date)} · ${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)}`;
     const runs = selectableRunsForSlot();
+    let createMode = CU && CU.CREATE_MODES
+      ? CU.CREATE_MODES.RUN
+      : 'run';
+
     if (el.detailTitle) el.detailTitle.textContent = 'Ny tidsbokning';
     el.detailBody.innerHTML = `
       <p class="kalender-detail-blocks-hint">Vald tid: <strong>${esc(timeLabel)}</strong>.</p>
@@ -1439,14 +1608,46 @@
         </button>
       </div>
       <div class="kalender-detail-scope">
-        <h4 class="kalender-detail-scope-title">Koppla till uppdrag</h4>
-        <p class="kalender-detail-blocks-hint">Välj kundens uppdragskörning att koppla till.</p>
-        <div class="kalender-detail-note">
-          <label for="kal-create-slot-q">Sök kund eller uppdrag</label>
-          <input type="search" id="kal-create-slot-q" class="kunduppgifter-input" placeholder="T.ex. kundnamn eller bokslut" autocomplete="off">
+        <h4 class="kalender-detail-scope-title">Lägg i kalendern</h4>
+        <div class="kalender-seg kalender-create-mode" role="tablist" aria-label="Koppla eller uppgift">
+          <button type="button" class="kalender-seg-btn is-active" data-create-mode="run" role="tab" aria-selected="true">Uppdragskörning</button>
+          <button type="button" class="kalender-seg-btn" data-create-mode="uppgift" role="tab" aria-selected="false">Uppgift</button>
         </div>
-        <div class="kalender-create-slot-list" data-create-slot-list></div>
-        ${runs.length ? '' : '<p class="kalender-side-empty">Inga öppna körningar i listan — byt filter eller dra från Att planera.</p>'}
+        <div data-create-panel="run">
+          <p class="kalender-detail-blocks-hint">Koppla till en befintlig uppdragskörning.</p>
+          <div class="kalender-detail-note">
+            <label for="kal-create-slot-q">Sök kund eller uppdrag</label>
+            <input type="search" id="kal-create-slot-q" class="kunduppgifter-input" placeholder="T.ex. kundnamn eller bokslut" autocomplete="off">
+          </div>
+          <div class="kalender-create-slot-list" data-create-slot-list></div>
+          ${runs.length ? '' : '<p class="kalender-side-empty">Inga öppna körningar i listan — byt filter, dra från Att planera, eller välj Uppgift.</p>'}
+        </div>
+        <div data-create-panel="uppgift" hidden>
+          <p class="kalender-detail-blocks-hint">Lägg upp en enkel uppgift utan att koppla till en löpande uppdragskörning. Syns i kalendern och under Mina uppgifter.</p>
+          <div class="kalender-detail-note">
+            <label for="kal-create-uppgift-customer">Kund *</label>
+            <input type="text" id="kal-create-uppgift-customer" class="kunduppgifter-input" list="kal-create-uppgift-customer-list"
+              placeholder="Sök kund…" autocomplete="off">
+            <input type="hidden" id="kal-create-uppgift-customer-id" value="">
+            <datalist id="kal-create-uppgift-customer-list"></datalist>
+          </div>
+          <div class="kalender-detail-note">
+            <label for="kal-create-uppgift-title">Vad ska göras? *</label>
+            <input type="text" id="kal-create-uppgift-title" class="kunduppgifter-input" placeholder="T.ex. Mejla avtal för signering" maxlength="200" autocomplete="off">
+          </div>
+          <div class="kalender-detail-note">
+            <label for="kal-create-uppgift-note">Anteckning (valfritt)</label>
+            <textarea id="kal-create-uppgift-note" class="kunduppgifter-input kalender-detail-note-input" rows="2"
+              maxlength="${SB.NOTE_MAX_LEN || 2000}"
+              placeholder="Kort notering på tidblocket"></textarea>
+          </div>
+          <p class="kalender-detail-blocks-hint" data-create-uppgift-error style="color:var(--error,#b42318);display:none;"></p>
+          <div class="kalender-detail-actions kalender-detail-actions--scope">
+            <button type="button" class="btn btn-primary btn-sm" data-create-uppgift-submit>
+              <i class="fas fa-plus"></i> Lägg upp uppgift
+            </button>
+          </div>
+        </div>
       </div>`;
     el.detail.hidden = false;
     document.body.classList.add('kalender-detail-open');
@@ -1455,6 +1656,35 @@
     if (inviteBtn) {
       inviteBtn.addEventListener('click', () => openMeetingInviteForm(date, startMin, endMin));
     }
+
+    const syncModeUi = () => {
+      const mode = CU && typeof CU.normalizeCreateMode === 'function'
+        ? CU.normalizeCreateMode(createMode)
+        : createMode;
+      createMode = mode;
+      el.detailBody.querySelectorAll('[data-create-mode]').forEach((btn) => {
+        const on = btn.getAttribute('data-create-mode') === mode;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      el.detailBody.querySelectorAll('[data-create-panel]').forEach((panel) => {
+        panel.hidden = panel.getAttribute('data-create-panel') !== mode;
+      });
+    };
+    el.detailBody.querySelectorAll('[data-create-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        createMode = btn.getAttribute('data-create-mode') || 'run';
+        syncModeUi();
+        if (createMode === 'uppgift') {
+          const titleEl = el.detailBody.querySelector('#kal-create-uppgift-title');
+          if (titleEl) setTimeout(() => titleEl.focus(), 0);
+        } else {
+          const qEl = el.detailBody.querySelector('#kal-create-slot-q');
+          if (qEl) setTimeout(() => qEl.focus(), 0);
+        }
+      });
+    });
+    syncModeUi();
 
     const listEl = el.detailBody.querySelector('[data-create-slot-list]');
     const qInput = el.detailBody.querySelector('#kal-create-slot-q');
@@ -1516,6 +1746,98 @@
     if (qInput) {
       qInput.addEventListener('input', paint);
       setTimeout(() => qInput.focus(), 0);
+    }
+
+    // Uppgift-panel: kundlista + skapa
+    const custInput = el.detailBody.querySelector('#kal-create-uppgift-customer');
+    const custIdInput = el.detailBody.querySelector('#kal-create-uppgift-customer-id');
+    const custList = el.detailBody.querySelector('#kal-create-uppgift-customer-list');
+    const titleInput = el.detailBody.querySelector('#kal-create-uppgift-title');
+    const noteInput = el.detailBody.querySelector('#kal-create-uppgift-note');
+    const errEl = el.detailBody.querySelector('[data-create-uppgift-error]');
+    const submitBtn = el.detailBody.querySelector('[data-create-uppgift-submit]');
+
+    const resolveUppgiftCustomer = () => {
+      const name = String((custInput && custInput.value) || '').trim();
+      const id = String((custIdInput && custIdInput.value) || '').trim();
+      const byName = gcalCustomers.find((c) => c.namn === name);
+      if (byName) {
+        if (custIdInput) custIdInput.value = byName.id;
+        return byName;
+      }
+      if (id) {
+        const byId = gcalCustomers.find((c) => c.id === id);
+        if (byId) return byId;
+      }
+      return null;
+    };
+
+    ensureGcalCustomers().then((list) => {
+      if (!custList) return;
+      custList.innerHTML = list.map((c) =>
+        `<option value="${esc(c.namn)}"></option>`
+      ).join('');
+    });
+    if (custInput) {
+      custInput.addEventListener('change', () => {
+        resolveUppgiftCustomer();
+      });
+      custInput.addEventListener('input', () => {
+        if (custIdInput) custIdInput.value = '';
+      });
+    }
+
+    if (submitBtn) {
+      submitBtn.addEventListener('click', async () => {
+        if (errEl) {
+          errEl.style.display = 'none';
+          errEl.textContent = '';
+        }
+        const customer = resolveUppgiftCustomer();
+        const title = String((titleInput && titleInput.value) || '').trim();
+        const note = String((noteInput && noteInput.value) || '').trim();
+        if (!customer || !customer.id) {
+          if (errEl) {
+            errEl.textContent = 'Välj en kund från listan.';
+            errEl.style.display = '';
+          }
+          return;
+        }
+        if (!title) {
+          if (errEl) {
+            errEl.textContent = 'Ange vad som ska göras.';
+            errEl.style.display = '';
+          }
+          return;
+        }
+        submitBtn.disabled = true;
+        const prevHtml = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar…';
+        try {
+          const created = await createStandaloneUppgiftAtSlot({
+            customerId: customer.id,
+            title,
+            note,
+            date,
+            startMin,
+            endMin
+          });
+          closeDetail();
+          render();
+          const base = String(created.baseKey || created.ev?.runKey || created.ev?.key || '');
+          if (created.blockId && base) openDetail(`${base}#${created.blockId}`);
+          else if (base) openDetail(base);
+          showSaveToast('Uppgift lagd i kalendern');
+        } catch (err) {
+          console.error('Kalender skapa uppgift:', err);
+          if (errEl) {
+            errEl.textContent = (err && err.message) || 'Kunde inte skapa uppgift';
+            errEl.style.display = '';
+          }
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = prevHtml;
+        }
+      });
     }
   }
 
@@ -2555,29 +2877,41 @@
     const focusScoped = !!focusSched;
     const klarOnlyCls = (hasHours || focusScoped) ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm';
     const klarTidCls = (hasHours && !focusScoped) ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
-    el.detailBody.innerHTML = `
-      <div class="kalender-detail-status kalender-detail-status--${cls}">${esc(statusLabel(st, ev.deadline))}${plan.fullyPlanned ? ' · Inplanerad' : ''}</div>
-      <dl class="kalender-detail-dl">
+    const CU = window.KalenderCreateUppgift;
+    const isUppgiftOnly = CU && typeof CU.isStandaloneUppgiftEvent === 'function'
+      ? CU.isStandaloneUppgiftEvent(ev)
+      : (String(ev.typ || '').trim() === 'Eget uppdrag');
+    const metaDl = isUppgiftOnly
+      ? `<dl class="kalender-detail-dl">
+        <div><dt>Uppgift</dt><dd>${esc(displayName(ev.typ, f))}</dd></div>
+        <div><dt>Deadline</dt><dd>${esc(toDate(ev.deadline) || '—')}</dd></div>
+        <div><dt>Avsatt tid</dt><dd data-avsatt-tid>${esc(blockLabel)}</dd></div>
+        ${ansvarig ? `<div><dt>Ansvarig</dt><dd>${esc(ansvarig)}</dd></div>` : ''}
+      </dl>`
+      : `<dl class="kalender-detail-dl">
         <div><dt>Uppdrag</dt><dd>${esc(displayName(ev.typ, f))}</dd></div>
         <div><dt>Period</dt><dd>${esc(period)}</dd></div>
         <div><dt>Öppet från</dt><dd>${esc(toDate(ev.startDate) || '—')}</dd></div>
         <div><dt>Deadline</dt><dd>${esc(toDate(ev.deadline) || '—')}</dd></div>
         <div><dt>Avsatt tid</dt><dd data-avsatt-tid>${esc(blockLabel)}</dd></div>
         ${ansvarig ? `<div><dt>Ansvarig</dt><dd>${esc(ansvarig)}</dd></div>` : ''}
-      </dl>
+      </dl>`;
+    el.detailBody.innerHTML = `
+      <div class="kalender-detail-status kalender-detail-status--${cls}">${esc(statusLabel(st, ev.deadline))}${plan.fullyPlanned ? ' · Inplanerad' : ''}</div>
+      ${metaDl}
       ${estimateHtml}
       ${blocksHtml}
       ${tillfalleHtml}
       <div class="kalender-detail-scope">
-        <h4 class="kalender-detail-scope-title">${focusSched ? 'Hela körningen' : 'Åtgärder'}</h4>
+        <h4 class="kalender-detail-scope-title">${isUppgiftOnly ? 'Åtgärder' : (focusSched ? 'Hela körningen' : 'Åtgärder')}</h4>
         <div class="kalender-detail-actions">
           ${canKlar ? `<button type="button" class="${klarOnlyCls}" data-klar-only>
-            <i class="fas fa-check"></i> Klarmarkera hela
+            <i class="fas fa-check"></i> ${isUppgiftOnly ? 'Klarmarkera' : 'Klarmarkera hela'}
           </button>` : ''}
           ${canKlarTid ? `<button type="button" class="${klarTidCls}" data-klar-tid ${hasHours ? '' : 'disabled'}>
-            <i class="fas fa-check"></i> Klarmarkera hela & tid${hasHours ? ` (${esc(String(totalH))} t)` : ''}
+            <i class="fas fa-check"></i> ${isUppgiftOnly ? 'Klarmarkera & tid' : 'Klarmarkera hela & tid'}${hasHours ? ` (${esc(String(totalH))} t)` : ''}
           </button>` : ''}
-          ${isRunKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Hela körningen klarmarkerad</span>` : ''}
+          ${isRunKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> ${isUppgiftOnly ? 'Klarmarkerad' : 'Hela körningen klarmarkerad'}</span>` : ''}
           <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
         </div>
       </div>
