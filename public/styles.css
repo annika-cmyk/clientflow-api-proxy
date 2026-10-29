@@ -20611,7 +20611,7 @@ body.byra-resa-page .risk-header h1 {
   overflow: visible;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 16px; /* mellan sektioner i popupen */
   max-height: none;
 }
 .kundresa-step-host .kundresa-embedded-card {
@@ -20651,25 +20651,32 @@ body.byra-resa-page .risk-header h1 {
 #kundresa-step-host .collapsible-header:hover {
   background: transparent;
 }
-#kundresa-step-host .collapsible-title {
-  font-size: 16px;
+/* Sektionstitlar: Bolagsverket / Personer / VH / screening */
+#kundresa-step-host .collapsible-title,
+#kundresa-step-host .roller-screening-title,
+#kundresa-step-host .kundresa-vh-box-head h4 {
+  font-size: 14px;
   font-weight: 600;
   color: var(--title-text);
+}
+#kundresa-step-host .collapsible-title {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
   flex-wrap: wrap;
 }
-#kundresa-step-host .collapsible-title i {
-  width: 32px;
-  height: 32px;
+#kundresa-step-host .collapsible-title i,
+#kundresa-step-host .kundresa-sec-icon {
+  width: 28px;
+  height: 28px;
   border-radius: 8px;
   background: #E8F1F2;
   color: var(--accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 #kundresa-step-host .kundresa-sec-sub {
   font-size: 12px;
@@ -20697,17 +20704,36 @@ body.byra-resa-page .risk-header h1 {
 #kundresa-step-host .collapsible-chevron {
   display: none;
 }
+/* Fältgrid: 3 kolumner, tätare radavstånd */
 #kundresa-step-host .lead-fields {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1rem 1.25rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 1.25rem;
+  row-gap: 10px;
 }
 #kundresa-step-host .lead-field label,
-#kundresa-step-host .lead-section > label {
-  font-size: 11px;
+#kundresa-step-host .lead-section > label,
+#kundresa-step-host .kunduppgifter-form-row > label {
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: #5B6670;
+  margin-bottom: 2px;
+}
+#kundresa-step-host .lead-field span,
+#kundresa-step-host .lead-field .adress-utsatt-text,
+#kundresa-step-host .kunduppgifter-value,
+#kundresa-step-host .roller-person-name,
+#kundresa-step-host .sni-code-label,
+#kundresa-step-host .kundresa-vh-register,
+#kundresa-step-host .kundresa-vh-register li {
+  font-size: 13px;
+  line-height: 1.4;
+}
+#kundresa-step-host .roller-kontakt-line,
+#kundresa-step-host .roller-add-phone-btn {
+  font-size: 11.5px;
+  line-height: 1.35;
 }
 #kundresa-step-host .lead-field,
 #kundresa-step-host .lead-section {
@@ -20718,6 +20744,114 @@ body.byra-resa-page .risk-header h1 {
 }
 #kundresa-step-host .lead-field--full {
   grid-column: 1 / -1;
+}
+/* Chips / badges: e-post, telefon saknas, personnr, status, SNI, screeningdatum */
+#kundresa-step-host .lead-status,
+#kundresa-step-host .sni-code-badge,
+#kundresa-step-host .roller-detail-chip,
+#kundresa-step-host .roller-person-pep-datum,
+#kundresa-step-host .roller-person-pep-flag,
+#kundresa-step-host .adress-utsatt-bar .adress-utsatt-badge,
+#kundresa-step-host .kundresa-vh-badge {
+  font-size: 11.5px;
+  line-height: 1.35;
+  padding: 1px 7px;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  box-sizing: border-box;
+}
+#kundresa-step-host .roller-check-line,
+#kundresa-step-host .roller-person-submeta {
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+#kundresa-step-host .lead-status i,
+#kundresa-step-host .sni-code-badge i,
+#kundresa-step-host .roller-detail-chip i,
+#kundresa-step-host .roller-person-pep-datum i,
+#kundresa-step-host .roller-person-pep-flag i,
+#kundresa-step-host .roller-kontakt-line i,
+#kundresa-step-host .adress-utsatt-bar .adress-utsatt-badge i {
+  font-size: 11px;
+}
+/* Rollrad under namn / rollchips */
+#kundresa-step-host .roller-person-roll,
+#kundresa-step-host .roller-role-chip {
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  padding: 1px 7px;
+}
+#kundresa-step-host .roller-person-roll {
+  padding: 0;
+}
+/* Hjälp- / infotexter */
+#kundresa-step-host .kundresa-hint,
+#kundresa-step-host .kundresa-vh-kyc-note,
+#kundresa-step-host .kundresa-vh-saved-hint,
+#kundresa-step-host .roller-screening-sub,
+#kundresa-step-host .roller-ledamoter-placeholder-title,
+#kundresa-step-host .kundresa-orgnr-missing,
+#kundresa-step-host .kundresa-vh-label,
+#kundresa-step-host .kundresa-vh-empty,
+#kundresa-step-host .kundresa-vh-align,
+#kundresa-step-host .utsatt-omrade-hint,
+#kundresa-step-host .utsatt-omrade-meta {
+  font-size: 12px;
+  line-height: 1.4;
+}
+/* Senast uppdaterad + Uppdatera */
+#kundresa-step-host .bolagsverket-uppdaterad-meta,
+#kundresa-step-host #bolagsverket-refresh-btn {
+  font-size: 12px;
+  line-height: 1.3;
+}
+#kundresa-step-host #bolagsverket-refresh-btn {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-sizing: border-box;
+}
+/* Ikonknappar per person (screen/edit/delete) */
+#kundresa-step-host .roller-person-actions .btn-icon-note {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+#kundresa-step-host .roller-person-actions .btn-icon-note i {
+  font-size: 13px;
+  line-height: 1;
+}
+/* Personrader: 10px mellan rader */
+#kundresa-step-host .roller-person-list {
+  gap: 10px;
+}
+#kundresa-step-host .roller-person-list--table {
+  gap: 0;
+}
+#kundresa-step-host .roller-person-item {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+#kundresa-step-host .roller-person-item--row {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  gap: 12px;
 }
 #kundresa-step-host .adress-utsatt-bar {
   display: flex;
@@ -20733,12 +20867,6 @@ body.byra-resa-page .risk-header h1 {
 }
 #kundresa-step-host .adress-utsatt-bar .adress-utsatt-text {
   font-weight: 500;
-}
-#kundresa-step-host .adress-utsatt-bar .adress-utsatt-badge {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 2px 10px;
-  border-radius: 999px;
 }
 #kundresa-step-host .adress-utsatt-bar .adress-utsatt-badge.is-ok {
   color: #1E6B3C;
@@ -20768,6 +20896,8 @@ body.byra-resa-page .risk-header h1 {
 #kundresa-step-host #roles-list .lead-empty {
   display: block;
   margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
 }
 #kundresa-step-host #roles-list + .roller-add-actions {
   margin-top: 8px;
@@ -20781,6 +20911,7 @@ body.byra-resa-page .risk-header h1 {
   background: #FAFBFC;
   border-radius: 8px;
   font: inherit;
+  font-size: 13px;
   color: #5B6670;
   align-items: center;
   justify-content: center;
