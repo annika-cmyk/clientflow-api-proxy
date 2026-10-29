@@ -1,5 +1,6 @@
 /**
  * Kundresa steg 4 — review-and-send (popup only).
+ * Presentation: Steg 4 · Skicka KYC mock (send-panel + accordion-preview).
  */
 (function (global) {
   function esc(s) {
@@ -25,6 +26,10 @@
     const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
     return m ? m[1] : '';
   }
+  function questionsLabel(n) {
+    const c = Number(n) || 0;
+    return c === 1 ? '1 fråga' : `${c} frågor`;
+  }
 
   function resolveStatusLine(kyc, fields, recipientEmail) {
     const k = kyc || {};
@@ -40,7 +45,7 @@
       const d = isoDate(f['KYC UTFÖRD DATUM']);
       return d ? `Besvarat ${d}` : 'Besvarat (utanför ClientFlow)';
     }
-    if (/signerat/i.test(status) || signedAt) return signedAt ? `Signerat (BankID) ${signedAt}` : 'Signerat (BankID)';
+    if (/signerat/i.test(status) || signedAt) return signedAt ? `Signerat ${signedAt}` : 'Signerat';
     if (/besvarat/i.test(status) || answeredAt) return answeredAt ? `Besvarat ${answeredAt}` : 'Besvarat';
     if (/skickat|ifyllnad|invite|länk/i.test(status) || k.inviteToken || sentAt || k.inleedDokumentId) {
       if (sentAt && email) return `Skickat ${sentAt} till ${email}`;
@@ -60,7 +65,21 @@
 
   function q(label, value, opts) {
     const o = opts || {};
-    return { label, value: meaningful(value), prefilled: o.prefilled || '', note: o.note || '', empty: !meaningful(value) && !o.prefilled };
+    const prefilled = meaningful(o.prefilled);
+    const val = meaningful(value);
+    return {
+      label,
+      value: val,
+      prefilled,
+      empty: !val && !prefilled,
+      display: val || prefilled || ''
+    };
+  }
+
+  function yn(v) {
+    if (v === true || v === 'Ja' || /^ja$/i.test(String(v || ''))) return 'Ja';
+    if (v === false || v === 'Nej' || /^nej$/i.test(String(v || ''))) return 'Nej';
+    return meaningful(v);
   }
 
   function buildSections(ctx) {
@@ -70,65 +89,161 @@
     const verksamhetField = meaningful(f.Verksamhet) || meaningful(f['Beskrivning av kunden']);
     const kostnaderField = meaningful(f.Kostnader);
     const intakterField = meaningful(f['Intäkterna']);
-    const foretradare = Array.isArray(saved.foretradare) ? saved.foretradare : [];
-    const huvudman = Array.isArray(saved.huvudman) ? saved.huvudman : [];
-    const sections = [
-      { num: 1, name: 'Företaget', questions: [
-        q('Företagets namn', saved.foretagsnamn || f.Namn || ''),
-        q('Organisationsnummer', saved.orgnr || f.Orgnr || ''),
-        q('Skatterättslig hemvist', saved.skatterattslig_hemvist_foretag || 'Sverige')
-      ]},
-      { num: 2, name: 'Företrädare', questions: foretradare.length
-        ? foretradare.map((p, i) => q(foretradare.length > 1 ? `Företrädare ${i + 1}` : 'Företrädare', [p.namn, p.personnr, p.hemvist || p.skatterattslig_hemvist].filter(Boolean).join(' · ')))
-        : [q('Företrädare', '', { note: 'Kunden anger företrädare' })] }
-    ];
-    if (!arEnskild) {
-      sections.push({ num: 3, name: 'Verklig huvudman', questions: [
-        ...(huvudman.length
-          ? huvudman.map((p, i) => q(huvudman.length > 1 ? `Huvudman ${i + 1}` : 'Verklig huvudman', [p.namn, p.personnr, p.hemvist || p.skatterattslig_hemvist].filter(Boolean).join(' · ')))
-          : [q('Verklig huvudman', '', { note: 'Kunden anger verklig huvudman' })]),
-        q('Noterat bolag eller ägt av noterat bolag', saved.vh_noterat_bolag === true || saved.vh_noterat_bolag === 'Ja' ? 'Ja' : (saved.vh_noterat_bolag === false || saved.vh_noterat_bolag === 'Nej' ? 'Nej' : '')),
-        q('Utländska ägare eller styrelseledamöter', saved.vh_utlandska_agare === true || saved.vh_utlandska_agare === 'Ja' ? 'Ja' : (saved.vh_utlandska_agare === false || saved.vh_utlandska_agare === 'Nej' ? 'Nej' : ''))
-      ]});
+    const personer = Array.isArray(ctx.kontaktPersoner) ? ctx.kontaktPersoner : [];
+    let foretradare = Array.isArray(saved.foretradare) ? saved.foretradare : [];
+    let huvudman = Array.isArray(saved.huvudman) ? saved.huvudman : [];
+    if (!foretradare.length && personer.length) {
+      foretradare = personer.filter((p) => !hasVhRole(p) || personRoller(p).length > 1);
+      if (!foretradare.length) foretradare = personer.slice();
     }
-    const nPep = arEnskild ? 3 : 4;
+    if (!arEnskild && !huvudman.length) {
+      huvudman = personer.filter(hasVhRole);
+    }
+    const personCount = Math.max(personer.length, new Set([
+      ...foretradare.map((p) => trimStr(p && p.namn)),
+      ...huvudman.map((p) => trimStr(p && p.namn))
+    ].filter(Boolean)).size, 0);
+
+    const personLine = (p) => [p.namn, p.personnr || p.personnummer, p.hemvist || p.skatterattslig_hemvist]
+      .filter(Boolean).join(' · ');
+
+    const sections = [
+      {
+        num: 1,
+        name: 'Företaget',
+        questions: [
+          q('Företagets namn', saved.foretagsnamn || f.Namn || ''),
+          q('Organisationsnummer', saved.orgnr || f.Orgnr || ''),
+          q('Skatterättslig hemvist', saved.skatterattslig_hemvist_foretag || 'Sverige')
+        ]
+      },
+      {
+        num: 2,
+        name: 'Personer och verklig huvudman',
+        personCount: personCount || Math.max(foretradare.length + (arEnskild ? 0 : huvudman.length), 1),
+        questions: [
+          ...(foretradare.length
+            ? foretradare.map((p, i) => q(
+              foretradare.length > 1 ? `Företrädare ${i + 1}` : 'Företrädare',
+              personLine(p)
+            ))
+            : [q('Företrädare', '', {})]),
+          ...(!arEnskild
+            ? (huvudman.length
+              ? huvudman.map((p, i) => q(
+                huvudman.length > 1 ? `Verklig huvudman ${i + 1}` : 'Verklig huvudman',
+                personLine(p)
+              ))
+              : [q('Verklig huvudman', '', {})])
+            : [])
+        ]
+      }
+    ];
+
+    if (!arEnskild) {
+      sections.push({
+        num: 3,
+        name: 'Ägande',
+        questions: [
+          q('Noterat bolag eller ägt av noterat bolag', yn(saved.vh_noterat_bolag)),
+          q('Utländska ägare eller styrelseledamöter', yn(saved.vh_utlandska_agare))
+        ]
+      });
+    }
+
+    const nBase = arEnskild ? 3 : 4;
     sections.push(
-      { num: nPep, name: 'PEP', questions: [q('PEP-status', saved.pep), q('Familjemedlem/medarbetare till PEP', saved.pepFamilj)] },
-      { num: nPep + 1, name: 'Affärsförbindelsens syfte', questions: [
-        q('Syfte med affärsrelationen', saved.syfte_affarsrelation || 'sedvanliga redovisningstjänster'),
-        q('Byråns tjänster', saved.tjanster || ctx.tjanster || ''),
-        q('Pengarnas ursprung', saved.kapitalUrsprung),
-        q('Antal anställda', saved.anstallda),
-        q('Uppskattad årsomsättning', saved.omsattning || f['Omsättning']),
-        q('Verksamhet', saved.verksamhet && !verksamhetField ? saved.verksamhet : '', verksamhetField ? { prefilled: verksamhetField, note: 'Förifyllt från steg 2' } : { note: 'Kunden beskriver verksamheten' }),
-        q('Kostnader', saved.kostnader && !kostnaderField ? saved.kostnader : '', kostnaderField ? { prefilled: kostnaderField, note: 'Förifyllt från steg 2' } : { note: 'Kunden beskriver kostnaderna' }),
-        q('Intäkterna', saved.intakterna && !intakterField ? saved.intakterna : '', intakterField ? { prefilled: intakterField, note: 'Förifyllt från steg 2' } : { note: 'Kunden beskriver intäkterna' })
-      ]},
-      { num: nPep + 2, name: 'Internationell handel', questions: [q('Handel utanför Sverige', saved.internationellHandel), q('Länder', saved.internationellaLander)] },
-      { num: nPep + 3, name: 'Kontanter', questions: [q('Hanterar kontanter', saved.kontanter), q('Andel kontanter', saved.kontanterAndel)] },
-      { num: nPep + 4, name: 'Krypto', questions: [q('Transaktioner i kryptovaluta', saved.kryptovaluta)] }
+      {
+        num: nBase,
+        name: 'Pengarnas ursprung',
+        questions: [q('Pengarnas ursprung', saved.kapitalUrsprung)]
+      },
+      {
+        num: nBase + 1,
+        name: 'Verksamhet',
+        questions: [
+          q('Verksamhet', saved.verksamhet && !verksamhetField ? saved.verksamhet : '', verksamhetField ? { prefilled: verksamhetField } : {}),
+          q('Kostnader', saved.kostnader && !kostnaderField ? saved.kostnader : '', kostnaderField ? { prefilled: kostnaderField } : {}),
+          q('Intäkter', saved.intakterna && !intakterField ? saved.intakterna : '', intakterField ? { prefilled: intakterField } : {}),
+          q('Anställda', saved.anstallda),
+          q('Omsättning', saved.omsattning || f['Omsättning'])
+        ]
+      },
+      {
+        num: nBase + 2,
+        name: 'Internationell handel',
+        questions: [
+          q('Handel utanför Sverige', yn(saved.internationellHandel)),
+          q('Länder', saved.internationellaLander)
+        ]
+      },
+      {
+        num: nBase + 3,
+        name: 'Kontanter',
+        questions: [
+          q('Hanterar kontanter', yn(saved.kontanter)),
+          q('Andel kontanter', saved.kontanterAndel)
+        ]
+      },
+      {
+        num: nBase + 4,
+        name: 'Kryptovaluta',
+        questions: [q('Transaktioner i kryptovaluta', yn(saved.kryptovaluta))]
+      }
     );
+
     return sections.map((sec) => {
-      const qs = sec.questions.filter(Boolean);
-      return { ...sec, questions: qs, count: qs.length };
+      const qs = (sec.questions || []).filter(Boolean);
+      return { ...sec, questions: qs, count: qs.length, status: sectionStatus({ ...sec, questions: qs }) };
     });
   }
 
-  function prefilledHint(sec) {
-    const pref = (sec.questions || []).find((x) => x.prefilled);
-    if (!pref) return '';
-    const short = trimStr(pref.prefilled);
-    return `Förifyllt: ${short.length > 48 ? short.slice(0, 46) + '…' : short}`;
+  function sectionStatus(sec) {
+    const qs = sec.questions || [];
+    const filled = qs.filter((x) => !x.empty);
+    const primary = qs[0];
+    if (!filled.length) return { label: 'Kunden svarar', kind: 'customer' };
+    if (primary && /^(Ja|Nej)$/i.test(primary.display) && qs.length <= 2) {
+      return { label: `Förifyllt: ${primary.display}`, kind: 'prefilled' };
+    }
+    if (sec.name === 'Personer och verklig huvudman' && sec.personCount) {
+      const n = sec.personCount;
+      return { label: `Förifyllt · ${n} ${n === 1 ? 'person' : 'personer'}`, kind: 'prefilled' };
+    }
+    if (filled.length < qs.length && !filled.some((x) => x.display)) {
+      return { label: 'Kunden svarar', kind: 'customer' };
+    }
+    return { label: 'Förifyllt', kind: 'prefilled' };
   }
 
   function renderQuestion(qItem) {
-    if (qItem.prefilled) {
-      return `<div class="kundresa-kyc-q"><div class="kundresa-kyc-q-label">${esc(qItem.label)}</div><div class="kundresa-kyc-q-prefilled">Förifyllt från steg 2: ${esc(qItem.prefilled)}</div><div class="kundresa-kyc-q-note">Kunden behöver inte fylla i detta igen.</div></div>`;
-    }
-    if (qItem.value) {
-      return `<div class="kundresa-kyc-q"><div class="kundresa-kyc-q-label">${esc(qItem.label)}</div><div class="kundresa-kyc-q-value">${esc(qItem.value)}</div>${qItem.note ? `<div class="kundresa-kyc-q-note">${esc(qItem.note)}</div>` : ''}</div>`;
-    }
-    return `<div class="kundresa-kyc-q"><div class="kundresa-kyc-q-label">${esc(qItem.label)}</div><div class="kundresa-kyc-q-empty">${esc(qItem.note || 'Kunden svarar')}</div></div>`;
+    const valueHtml = qItem.display
+      ? `<span class="kundresa-kyc-q-value">${esc(qItem.display)}</span>`
+      : `<span class="kundresa-kyc-q-empty">Kunden svarar</span>`;
+    return `<div class="kundresa-kyc-q"><span class="kundresa-kyc-q-label">${esc(qItem.label)}</span>${valueHtml}</div>`;
+  }
+
+  function normalizeBlockers(blockers) {
+    return (Array.isArray(blockers) ? blockers : []).map((b) => {
+      if (b && typeof b === 'object') {
+        return {
+          reason: trimStr(b.reason || b.message || b.text || ''),
+          step: Number(b.step || b.gotoStep || 1) || 1
+        };
+      }
+      const text = trimStr(b);
+      let step = 1;
+      const m = text.match(/steg\s*(\d+)/i);
+      if (m) step = Number(m[1]) || 1;
+      return { reason: text, step };
+    }).filter((b) => b.reason);
+  }
+
+  function recipientOptionLabel(p) {
+    const namn = trimStr(p && p.namn) || 'Namnlös';
+    const email = trimStr(p && p.epost);
+    const vh = hasVhRole(p) ? ' (verklig huvudman)' : '';
+    return email ? `${namn} · ${email}${vh}` : `${namn}${vh}`;
   }
 
   function render(ctx) {
@@ -140,21 +255,20 @@
     const statusLine = resolveStatusLine(kyc, fields, selected && selected.epost);
     const sent = !/^Inte skickat$/i.test(statusLine);
     const inviteUrl = trimStr(ctx.inviteUrl || '');
-    const blockers = Array.isArray(ctx.blockers) ? ctx.blockers : [];
+    const blockers = normalizeBlockers(ctx.blockers);
     const canSend = blockers.length === 0 && !!selected;
     const sections = buildSections(ctx);
     const sendLabel = sent ? 'Skicka igen' : 'Skicka till kund';
+
     const recipientHtml = recipients.length
-      ? `<div class="kundresa-kyc-recipient" data-kundresa-kyc-recipient>
-          <div class="kundresa-kyc-recipient-main">
-            <strong class="kundresa-kyc-recipient-name">${esc(selected?.namn || 'Mottagare')}</strong>
-            <span class="kundresa-kyc-recipient-email">${esc(selected?.epost || '')}</span>
-          </div>
-          ${recipients.length > 1 ? `<button type="button" class="btn-link kundresa-kyc-swap" data-kundresa-kyc-swap>Byt mottagare</button>` : ''}
-          <select class="kundresa-kyc-recipient-select" data-kundresa-kyc-recipient-select hidden aria-label="Välj mottagare">
+      ? `<div class="kundresa-kyc-recipient-field">
+          <label class="kundresa-kyc-field-label" for="kundresa-kyc-mottagare">Skickas till</label>
+          <select id="kundresa-kyc-mottagare" class="kundresa-kyc-recipient-select" data-kundresa-kyc-recipient-select aria-label="Välj mottagare">
             ${recipients.map((p, i) => {
-              const isSel = selected && trimStr(selected.epost) === trimStr(p.epost) && trimStr(selected.namn) === trimStr(p.namn);
-              return `<option value="${i}"${isSel ? ' selected' : ''}>${esc(p.namn || 'Namnlös')} — ${esc(p.epost)}</option>`;
+              const isSel = selected
+                && trimStr(selected.epost) === trimStr(p.epost)
+                && trimStr(selected.namn) === trimStr(p.namn);
+              return `<option value="${i}"${isSel ? ' selected' : ''}>${esc(recipientOptionLabel(p))}</option>`;
             }).join('')}
           </select>
         </div>`
@@ -162,32 +276,44 @@
           <p class="kundresa-kyc-missing">Ingen person med e-post – <a href="#kundresa-step-1" data-kundresa-goto-step="1">lägg till i steg 1</a></p>
         </div>`;
 
+    const blockersHtml = blockers.length
+      ? blockers.map((b) => `<div class="kundresa-kyc-blocker" role="status">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5v.5"></path></svg>
+          <span>${esc(b.reason)}. <a href="#kundresa-step-${esc(String(b.step))}" data-kundresa-goto-step="${esc(String(b.step))}">Gå till steg ${esc(String(b.step))}</a></span>
+        </div>`).join('')
+      : '';
+
     return `<div class="kundresa-kyc-skicka" data-kundresa-kyc-skicka>
       <section class="kundresa-kyc-send-panel" aria-label="Skicka KYC">
-        ${recipientHtml}
-        <p class="kundresa-kyc-status-line" role="status">${esc(statusLine)}</p>
-        <div class="kundresa-kyc-send-actions">
-          <button type="button" class="btn btn-primary btn-sm" data-kundresa-kyc-send-panel ${canSend ? '' : 'disabled'} title="${esc(canSend ? sendLabel : (blockers[0] || 'Kan inte skicka ännu'))}">${esc(sendLabel)}</button>
-          <button type="button" class="btn btn-secondary btn-sm" data-kundresa-kyc-copy ${inviteUrl ? '' : 'disabled'} title="${esc(inviteUrl ? 'Kopiera kundlänk' : 'Skicka först för att få en länk')}">Kopiera länk</button>
+        <div class="kundresa-kyc-send-top">
+          ${recipientHtml}
+          <div class="kundresa-kyc-send-actions">
+            <button type="button" class="btn btn-secondary btn-sm kundresa-kyc-copy-btn" data-kundresa-kyc-copy ${inviteUrl ? '' : 'disabled'} title="${esc(inviteUrl ? 'Kopiera kundlänk' : 'Skicka först för att få en länk')}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a1 1 0 011-1h10"></path></svg>
+              Kopiera länk
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" data-kundresa-kyc-send-panel ${canSend ? '' : 'disabled'} title="${esc(canSend ? sendLabel : (blockers[0]?.reason || 'Kan inte skicka ännu'))}">${esc(sendLabel)}</button>
+          </div>
+        </div>
+        <div class="kundresa-kyc-status-row">
+          <p class="kundresa-kyc-status-line" role="status">Status: <strong>${esc(statusLine)}</strong>${sent ? '' : ' · kunden fyller i, kompletterar och signerar med BankID'}</p>
           <a class="kundresa-kyc-open-link" data-kundresa-kyc-open href="${esc(inviteUrl || '#')}" target="_blank" rel="noopener noreferrer" ${inviteUrl ? '' : 'aria-disabled="true" tabindex="-1"'}>Öppna som kunden ser det</a>
         </div>
-        <p class="kundresa-kyc-help">Kunden fyller i och intygar uppgifterna själv (Kundens uppgifter). Ingen riskinformation visas i formuläret.</p>
-        ${sent ? `<div class="kundresa-kyc-next" role="status">
-          <strong>Vad händer sen?</strong>
-          <p>När kunden svarat (Besvarat/Signerat) fortsätter ni med <em>Riskbedömning &amp; avtal</em> — ett separat flöde efter uppläggningen. Kedjan: Kunden lämnar uppgifter → byrån bedömer risken → beslut → avtal. Kunden ser aldrig riskbedömningen.</p>
-        </div>` : `<p class="kundresa-kyc-next-hint">Efter utskick: vänta på kundens svar, därefter Riskbedömning &amp; avtal (inte i samma steg som uppläggningen).</p>`}
+        ${blockersHtml}
       </section>
       <section class="kundresa-kyc-preview" aria-label="Förhandsgranskning">
-        <h5 class="kundresa-kyc-preview-title">Det här får kunden svara på</h5>
+        <div class="kundresa-kyc-preview-head">
+          <h5 class="kundresa-kyc-preview-title">Det här får kunden se</h5>
+          <span class="kundresa-kyc-preview-help">Förifyllt visas som förslag som kunden bekräftar</span>
+        </div>
         <ul class="kundresa-kyc-section-list">
           ${sections.map((sec) => {
-            const hint = prefilledHint(sec);
+            const st = sec.status || { label: questionsLabel(sec.count), kind: 'prefilled' };
             return `<li class="kundresa-kyc-section is-collapsed" data-kundresa-kyc-section>
               <button type="button" class="kundresa-kyc-section-row" data-kundresa-kyc-toggle aria-expanded="false">
-                <span class="kundresa-kyc-section-num">${esc(String(sec.num))}.</span>
+                <span class="kundresa-kyc-section-num">${esc(String(sec.num))}</span>
                 <span class="kundresa-kyc-section-name">${esc(sec.name)}</span>
-                <span class="kundresa-kyc-section-count">${esc(String(sec.count))} frågor</span>
-                ${hint ? `<span class="kundresa-kyc-section-pref">${esc(hint)}</span>` : ''}
+                <span class="kundresa-kyc-section-status is-${esc(st.kind)}">${esc(st.label)}</span>
                 <span class="kundresa-kyc-section-chevron" aria-hidden="true"></span>
               </button>
               <div class="kundresa-kyc-section-body" hidden>${sec.questions.map(renderQuestion).join('')}</div>
@@ -205,18 +331,27 @@
       btn.addEventListener('click', () => {
         const li = btn.closest('[data-kundresa-kyc-section]');
         if (!li) return;
-        const open = li.classList.contains('is-collapsed');
-        li.classList.toggle('is-collapsed', !open);
-        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        const body = li.querySelector('.kundresa-kyc-section-body');
-        if (body) body.hidden = !open;
+        const wasCollapsed = li.classList.contains('is-collapsed');
+        root.querySelectorAll('[data-kundresa-kyc-section]').forEach((other) => {
+          other.classList.add('is-collapsed');
+          const ob = other.querySelector('[data-kundresa-kyc-toggle]');
+          if (ob) ob.setAttribute('aria-expanded', 'false');
+          const body = other.querySelector('.kundresa-kyc-section-body');
+          if (body) body.hidden = true;
+        });
+        if (wasCollapsed) {
+          li.classList.remove('is-collapsed');
+          btn.setAttribute('aria-expanded', 'true');
+          const body = li.querySelector('.kundresa-kyc-section-body');
+          if (body) body.hidden = false;
+        }
       });
     });
-    const swap = root.querySelector('[data-kundresa-kyc-swap]');
     const sel = root.querySelector('[data-kundresa-kyc-recipient-select]');
-    if (swap && sel) {
-      swap.addEventListener('click', () => { sel.hidden = !sel.hidden; if (!sel.hidden) sel.focus(); });
-      sel.addEventListener('change', () => { if (typeof h.onRecipientChange === 'function') h.onRecipientChange(Number(sel.value)); });
+    if (sel) {
+      sel.addEventListener('change', () => {
+        if (typeof h.onRecipientChange === 'function') h.onRecipientChange(Number(sel.value));
+      });
     }
     const sendBtn = root.querySelector('[data-kundresa-kyc-send-panel]');
     if (sendBtn && typeof h.onSend === 'function') sendBtn.addEventListener('click', () => h.onSend({ source: 'panel' }));
@@ -239,7 +374,7 @@
     });
   }
 
-  const api = { render, bind, pickRecipients, resolveStatusLine, buildSections };
+  const api = { render, bind, pickRecipients, resolveStatusLine, buildSections, questionsLabel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   global.KundresaKycSkicka = api;
 })(typeof window !== 'undefined' ? window : globalThis);

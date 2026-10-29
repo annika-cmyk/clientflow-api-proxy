@@ -64,20 +64,20 @@
     return `<span class="tjanst-mall-progress ${p.stateClass}" role="img" aria-label="${esc(label)}"${style}></span>`;
   }
 
+  function formatVhRegisterEntry(p) {
+    const namn = String(p?.namn || '').trim();
+    if (!namn) return '';
+    const pn = String(p?.personnr || '').trim();
+    return pn ? `${namn} (${pn})` : namn;
+  }
+
   function renderRegisterList(register) {
     const list = Array.isArray(register) ? register.filter((p) => p && p.namn) : [];
     if (!list.length) {
       return `<p class="kundresa-vh-empty">Ingen VH registrerad ännu. Lägg till verklig huvudman under Personer ovan.</p>`;
     }
-    const names = list.map((p) => p.namn).join(', ');
-    return `<p class="kundresa-vh-register-line">Registrerad VH: <strong>${esc(names)}</strong></p>
-      <ul class="kundresa-vh-register" hidden aria-hidden="true">
-      ${list.map((p) => `<li>
-        <strong>${esc(p.namn)}</strong>
-        ${p.personnr ? `<span class="kundresa-vh-meta">${esc(p.personnr)}</span>` : ''}
-        ${p.hemvist ? `<span class="kundresa-vh-meta">${esc(p.hemvist)}</span>` : ''}
-      </li>`).join('')}
-    </ul>`;
+    const names = list.map(formatVhRegisterEntry).filter(Boolean).join(', ');
+    return `<p class="kundresa-vh-register-line">Registrerad VH: ${esc(names)}</p>`;
   }
 
   function isVhStep(step) {
@@ -148,7 +148,6 @@
     const onStep = typeof opts?.onStep === 'function' ? opts.onStep : null;
     const onVhSave = typeof opts?.onVhSave === 'function' ? opts.onVhSave : null;
     const onReady = typeof opts?.onReady === 'function' ? opts.onReady : null;
-    const onKycSend = typeof opts?.onKycSend === 'function' ? opts.onKycSend : null;
     const onClose = typeof opts?.onClose === 'function' ? opts.onClose : null;
     const s = summary || {};
     const steps = Array.isArray(s.steps) ? s.steps : [];
@@ -172,20 +171,11 @@
     const step2Sub = s.step2Substatus || null;
     const step3Sub = s.step3Substatus || null;
     const showChecklist = isStep1(activeStep) && step1Sub && Array.isArray(step1Sub.items) && step1Sub.items.length;
-    const step4Status = s.step4Status || activeStep?.step4 || null;
-    const step4Send = s.step4Send || null;
-    const step4Sent = !!(step4Status && step4Status.done);
-    const step4Blockers = Array.isArray(step4Send?.blockers) ? step4Send.blockers : [];
-    const step4CanSend = step4Send ? !!step4Send.canSend : step4Blockers.length === 0;
     const remainingLabel = isStep1(activeStep)
       ? (step1Sub?.remainingLabel || '')
       : (isStep2(activeStep)
         ? (step2Sub?.remainingLabel || '')
-        : (isStep3(activeStep)
-          ? (step3Sub?.remainingLabel || '')
-          : (isStep4(activeStep) && !step4Sent && step4Blockers.length
-            ? step4Blockers.join(' · ')
-            : '')));
+        : (isStep3(activeStep) ? (step3Sub?.remainingLabel || '') : ''));
     const totalSteps = steps.length || Number(s.total) || 4;
     const isLastStep = isStep4(activeStep);
     const stepNum = activeStep
@@ -198,9 +188,8 @@
       : (byraVal === 'Osaker' || byraVal === 'Nej'
         ? `<span class="kundresa-vh-badge is-attention">${esc(labelVh(byraVal))}</span>`
         : '');
-    const savedHint = byraVal
-      ? `<span class="kundresa-vh-saved-hint is-saved" data-kundresa-vh-saved>Sparat</span>`
-      : `<span class="kundresa-vh-saved-hint" data-kundresa-vh-saved hidden>Sparat</span>`;
+    const showSavedFlash = !!s.vhJustSaved;
+    const savedHint = `<span class="kundresa-vh-saved-hint${showSavedFlash ? ' is-saved is-fade' : ''}" data-kundresa-vh-saved${showSavedFlash ? '' : ' hidden'}>Sparat</span>`;
 
     container.innerHTML = `
       <div class="kundresa-popup-layout tjanst-modal-layout kundresa-popup-layout--embed">
@@ -279,11 +268,11 @@
                 ${align.kund ? `<span class="kundresa-vh-align-meta">Kund: ${esc(labelVh(align.kund))}</span>` : ''}
               </div>` : ''}
               <div class="kundresa-vh-layout">
-                <div class="kundresa-vh-block">
-                  ${renderRegisterList(register)}
-                </div>
                 <div class="kundresa-vh-form">
-                  <p class="kundresa-vh-label">Stämmer verklig huvudman mot Bolagsverket?</p>
+                  <div class="kundresa-vh-q">
+                    <p class="kundresa-vh-label">Stämmer verklig huvudman mot Bolagsverket?</p>
+                    ${renderRegisterList(register)}
+                  </div>
                   <div class="kundresa-vh-segment-row">
                     <div class="kundresa-vh-segments" role="group" aria-label="VH-bekräftelse">
                       <button type="button" class="kundresa-vh-seg${byraVal === 'Ja' ? ' is-active' : ''}"
@@ -319,24 +308,18 @@
               data-kundresa-step-id="${esc(String(activeStep.id))}">
               <i class="fas fa-arrow-left"></i> Föregående
             </button>
-            ${remainingLabel ? `<span class="kundresa-step-remaining" role="status">
+            ${isLastStep
+              ? ''
+              : (remainingLabel ? `<span class="kundresa-step-remaining" role="status">
               <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
               ${esc(remainingLabel)}
             </span>` : `<span class="kundresa-step-remaining is-ok" role="status">${esc(
-              isLastStep && step4Sent
-                ? 'KYC skickat'
-                : (progress.complete ? 'Alla steg klara' : '')
-            )}</span>`}
+              progress.complete ? 'Alla steg klara' : ''
+            )}</span>`)}
             ${isLastStep
-              ? (step4Sent
-                ? `<button type="button" class="btn btn-primary btn-sm" data-kundresa-klar>
-                    Klar
+              ? `<button type="button" class="btn btn-ghost btn-sm" data-kundresa-klar>
+                    Stäng
                   </button>`
-                : `<button type="button" class="btn btn-primary btn-sm" data-kundresa-kyc-send
-                    ${step4CanSend ? '' : 'disabled'}
-                    title="${esc(step4CanSend ? 'Skicka KYC-länk till kund' : (step4Blockers[0] || 'Kan inte skicka ännu'))}">
-                    Skicka till kund
-                  </button>`)
               : `<button type="button" class="btn btn-primary btn-sm" data-kundresa-next
                   ${!steps.some((st) => Number(st.number) === Number(activeStep.number) + 1) ? 'disabled' : ''}
                   data-kundresa-step-id="${esc(String(activeStep.id))}">
@@ -364,8 +347,19 @@
     function markVhSaved() {
       if (!savedEl) return;
       savedEl.hidden = false;
+      savedEl.classList.remove('is-fade');
       savedEl.classList.add('is-saved');
       savedEl.textContent = 'Sparat';
+      window.clearTimeout(markVhSaved._t);
+      markVhSaved._t = window.setTimeout(() => {
+        if (!savedEl.isConnected) return;
+        savedEl.classList.add('is-fade');
+        window.setTimeout(() => {
+          if (!savedEl.isConnected) return;
+          savedEl.hidden = true;
+          savedEl.classList.remove('is-saved', 'is-fade');
+        }, 400);
+      }, 2000);
     }
 
     function emitVhSave() {
@@ -376,6 +370,10 @@
         byraVhBekraftelse: sel ? sel.value : '',
         byraVhNote: note ? note.value : ''
       }, savedEl);
+      markVhSaved();
+    }
+
+    if (showSavedFlash) {
       markVhSaved();
     }
 
@@ -432,7 +430,6 @@
 
     const prevBtn = container.querySelector('[data-kundresa-prev]');
     const nextBtn = container.querySelector('[data-kundresa-next]');
-    const kycSendBtn = container.querySelector('[data-kundresa-kyc-send]');
     const klarBtn = container.querySelector('[data-kundresa-klar]');
     if (prevBtn && activeStep) {
       prevBtn.addEventListener('click', () => {
@@ -445,9 +442,6 @@
         const next = steps.find((st) => Number(st.number) === Number(activeStep.number) + 1);
         if (next && !next.gated) emitStep(next);
       });
-    }
-    if (kycSendBtn && onKycSend) {
-      kycSendBtn.addEventListener('click', () => onKycSend({ source: 'footer' }));
     }
     if (klarBtn && onClose) {
       klarBtn.addEventListener('click', () => onClose());

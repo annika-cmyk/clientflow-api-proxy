@@ -79,6 +79,13 @@
     return 'Huvudman kontrollerad mot Bolagsverket ' + hit.huvudmanBolagsverketDatum;
   }
 
+  /** Kort form för personrad i kundresa: «VH kontrollerad YYYY-MM-DD». */
+  function formatHuvudmanBolagsverketShort(person) {
+    var hit = fromPerson(person);
+    if (!hit.huvudmanBolagsverketDatum) return '';
+    return 'VH kontrollerad ' + hit.huvudmanBolagsverketDatum;
+  }
+
   function applyToPerson(person, datum, metod, huvudmanBolagsverketDatum) {
     var next = Object.assign({}, person || {});
     var d = formatDatum(datum);
@@ -109,6 +116,7 @@
     fromPerson: fromPerson,
     formatLabel: formatLabel,
     formatHuvudmanBolagsverketLabel: formatHuvudmanBolagsverketLabel,
+    formatHuvudmanBolagsverketShort: formatHuvudmanBolagsverketShort,
     applyToPerson: applyToPerson,
     datumValfrittForMetod: datumValfrittForMetod
   };

@@ -25728,26 +25728,22 @@ body.kalender-detail-open { overflow: hidden; }
 #kundresa-step-host .kundresa-vh-box-titles .kundresa-hint {
   display: none;
 }
-#kundresa-step-host .kundresa-vh-register-line {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: #18212B;
-}
-#kundresa-step-host .kundresa-vh-register-line strong {
-  font-weight: 600;
-}
+#kundresa-step-host .kundresa-vh-register-line,
 #kundresa-step-host .kundresa-vh-empty {
-  margin: 0;
+  margin: 0.15rem 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #5B6670;
 }
 #kundresa-step-host .kundresa-vh-form {
   width: 100%;
 }
-#kundresa-step-host .kundresa-vh-layout > .kundresa-vh-block {
-  order: 2;
-}
-#kundresa-step-host .kundresa-vh-layout > .kundresa-vh-form {
-  order: 1;
+#kundresa-step-host .kundresa-vh-q {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 /* Header-actions → textlänkar */
@@ -25853,28 +25849,70 @@ body.kalender-detail-open { overflow: hidden; }
   margin-top: 10px;
 }
 
-/* Personer: enkla radkort istället för tabell */
+/* Personer: två rader, tunn skiljelinje (Lugnare) */
 #kundresa-step-host .roller-person-table-head {
   display: none;
 }
 #kundresa-step-host .roller-person-list--table {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 #kundresa-step-host .roller-person-item--row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
-  padding: 8px 12px;
-  border: 1px solid #E6E9EC;
-  border-radius: 8px;
+  padding: 10px 0;
+  border: none;
+  border-bottom: 1px solid #E6E9EC;
+  border-radius: 0;
   grid-template-columns: none;
-  background: #fff;
+  background: transparent;
 }
 #kundresa-step-host .roller-person-item--row:last-child {
-  border-bottom: 1px solid #E6E9EC;
+  border-bottom: none;
+}
+#kundresa-step-host .roller-person-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+#kundresa-step-host .roller-person-line1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  text-align: left;
+}
+#kundresa-step-host .roller-person-line2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #5B6670;
+  text-align: left;
+}
+#kundresa-step-host .roller-person-roles-inline,
+#kundresa-step-host .roller-person-dot {
+  font-size: 13px;
+  font-weight: 500;
+  color: #3E4A55;
+}
+#kundresa-step-host .roller-meta-bit {
+  font-size: 12.5px;
+  color: #5B6670;
+}
+#kundresa-step-host .roller-meta-bit--muted {
+  color: #8A939C;
+}
+#kundresa-step-host .roller-meta-sep {
+  color: #5B6670;
 }
 #kundresa-step-host .roller-col-person {
   flex: 1 1 auto;
@@ -25890,7 +25928,9 @@ body.kalender-detail-open { overflow: hidden; }
   gap: 0.1rem;
   min-width: 0;
 }
-#kundresa-step-host .roller-col-kontakt[hidden] {
+#kundresa-step-host .roller-col-kontakt[hidden],
+#kundresa-step-host .roller-col-roles[hidden],
+#kundresa-step-host .roller-col-kontroller[hidden] {
   display: none !important;
 }
 #kundresa-step-host .roller-person-name {
@@ -25903,15 +25943,7 @@ body.kalender-detail-open { overflow: hidden; }
   color: #5B6670;
 }
 #kundresa-step-host .roller-col-roles {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0;
-  margin-left: 0.35rem;
-}
-#kundresa-step-host .roller-col-roles::before {
-  content: '·';
-  color: #3E4A55;
-  margin-right: 0.35rem;
+  display: none;
 }
 #kundresa-step-host .roller-role-chip {
   background: transparent;
@@ -25921,17 +25953,8 @@ body.kalender-detail-open { overflow: hidden; }
   font-weight: 500;
   color: #3E4A55;
 }
-#kundresa-step-host .roller-role-chip.is-vh {
-  background: transparent;
-  color: #3E4A55;
-  font-weight: 500;
-}
-#kundresa-step-host .roller-role-chip + .roller-role-chip::before {
-  content: ', ';
-  color: #3E4A55;
-}
 #kundresa-step-host .roller-col-kontroller {
-  display: none; /* kontroller sammanfattas i submeta / footer */
+  display: none;
 }
 #kundresa-step-host .roller-person-kontakt {
   display: flex;
@@ -25945,14 +25968,20 @@ body.kalender-detail-open { overflow: hidden; }
   font-weight: 400;
 }
 #kundresa-step-host .roller-person-kontakt .roller-detail-missing,
-#kundresa-step-host .roller-detail-missing {
+#kundresa-step-host .roller-detail-missing,
+#kundresa-step-host .roller-meta-bit.roller-detail-missing {
   color: #8A4105;
   font-weight: 500;
-  font-size: 12px;
+  font-size: 12.5px;
   background: transparent;
   padding: 0;
   border: none;
   cursor: pointer;
+}
+#kundresa-step-host .roller-person-actions {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-top: 1px;
 }
 #kundresa-step-host .roller-person-actions .btn-icon-note {
   width: auto;
@@ -25976,6 +26005,73 @@ body.kalender-detail-open { overflow: hidden; }
 #kundresa-step-host .roller-person-actions .btn-icon-note[aria-label*="Redigera"]::after,
 #kundresa-step-host .roller-person-actions .btn-icon-note.btn-edit::after {
   content: 'Redigera';
+}
+
+/* Adress: grå text utan grön badge i kundresa */
+#kundresa-step-host .adress-utsatt-line--calm {
+  display: inline;
+  padding: 0;
+  background: transparent;
+  border: none;
+  gap: 0;
+}
+#kundresa-step-host .adress-utsatt-line--calm .adress-utsatt-text {
+  font-size: 13px;
+  color: #18212B;
+}
+#kundresa-step-host .adress-utsatt-calm {
+  margin-left: 0.45rem;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #5B6670;
+  background: transparent;
+}
+#kundresa-step-host .adress-utsatt-line--calm .adress-utsatt-pin,
+#kundresa-step-host .adress-utsatt-line--calm .adress-utsatt-badge,
+#kundresa-step-host .adress-utsatt-line--calm .adress-utsatt-icon,
+#kundresa-step-host .adress-utsatt-line--calm .adress-utsatt-status {
+  display: none;
+}
+#kundresa-step-host .adress-utsatt-bar {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+/* Verksamhetsbeskrivning: 1 rad + Visa hela */
+#kundresa-step-host .kundresa-verksamhet-clamp {
+  display: block;
+  min-width: 0;
+}
+#kundresa-step-host .kundresa-verksamhet-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  font-size: 13px;
+  color: #18212B;
+  line-height: 1.45;
+}
+#kundresa-step-host .kundresa-verksamhet-clamp.is-expanded .kundresa-verksamhet-text {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+#kundresa-step-host .kundresa-verksamhet-toggle {
+  display: inline;
+  margin-left: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1D4E57;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+#kundresa-step-host .kundresa-verksamhet-toggle:hover {
+  color: #133940;
+  text-decoration: underline;
 }
 #kundresa-step-host .roller-ledamoter-placeholder {
   margin: 8px 0 0;
@@ -26031,6 +26127,9 @@ body.kalender-detail-open { overflow: hidden; }
 }
 #kundresa-step-host .kundresa-vh-segment-row {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 #kundresa-step-host .kundresa-vh-segments {
   border: 1px solid #CDD4DA;
@@ -26059,6 +26158,11 @@ body.kalender-detail-open { overflow: hidden; }
   font-size: 12px;
   font-weight: 500;
   color: #5B6670;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+#kundresa-step-host .kundresa-vh-saved-hint.is-fade {
+  opacity: 0;
 }
 #kundresa-step-host .kundresa-vh-saved-hint[hidden] {
   display: none;
@@ -26152,109 +26256,172 @@ body.kalender-detail-open { overflow: hidden; }
 #kundresa-step-host .kundresa-kyc-skicka {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 18px;
   font-size: 13px;
   line-height: 1.45;
   color: #18212B;
 }
 #kundresa-step-host .kundresa-kyc-send-panel {
   background: #fff;
-  border: 1px solid #E3E7EB;
+  border: 1px solid #E6E9EC;
   border-radius: 12px;
-  padding: 1rem 1.15rem;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
-#kundresa-step-host .kundresa-kyc-recipient {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem 0.85rem;
+#kundresa-step-host .kundresa-kyc-send-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
 }
-#kundresa-step-host .kundresa-kyc-recipient-main {
+#kundresa-step-host .kundresa-kyc-recipient-field {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 6px;
   min-width: 0;
 }
-#kundresa-step-host .kundresa-kyc-recipient-name {
-  font-size: 14px;
+#kundresa-step-host .kundresa-kyc-field-label {
+  font-size: 12px;
   font-weight: 600;
-}
-#kundresa-step-host .kundresa-kyc-recipient-email {
-  font-size: 13px;
   color: #5B6670;
 }
-#kundresa-step-host .kundresa-kyc-swap,
-#kundresa-step-host .kundresa-kyc-open-link,
-#kundresa-step-host .kundresa-kyc-missing a {
+#kundresa-step-host .kundresa-kyc-recipient-select {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #CDD4DA;
+  border-radius: 8px;
+  font: inherit;
   font-size: 13px;
-  color: var(--accent, #13505C);
+  background: #fff;
+  color: #18212B;
+  max-width: 420px;
+  width: 100%;
+}
+#kundresa-step-host .kundresa-kyc-send-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+#kundresa-step-host .kundresa-kyc-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+}
+#kundresa-step-host .kundresa-kyc-send-actions .btn-primary {
+  height: 36px;
+  padding: 0 16px;
+  font-weight: 600;
+}
+#kundresa-step-host .kundresa-kyc-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+#kundresa-step-host .kundresa-kyc-status-line {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: #5B6670;
+}
+#kundresa-step-host .kundresa-kyc-status-line strong {
+  color: #18212B;
+  font-weight: 500;
+}
+#kundresa-step-host .kundresa-kyc-open-link,
+#kundresa-step-host .kundresa-kyc-missing a,
+#kundresa-step-host .kundresa-kyc-blocker a {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent, #1D4E57);
   background: none;
   border: 0;
   padding: 0;
   cursor: pointer;
+  text-decoration: none;
+}
+#kundresa-step-host .kundresa-kyc-open-link:hover,
+#kundresa-step-host .kundresa-kyc-blocker a:hover {
+  color: #133940;
   text-decoration: underline;
-  text-underline-offset: 2px;
 }
 #kundresa-step-host .kundresa-kyc-open-link[aria-disabled="true"] {
   opacity: 0.45;
   pointer-events: none;
   text-decoration: none;
 }
-#kundresa-step-host .kundresa-kyc-recipient-select {
-  font: inherit;
-  font-size: 13px;
-  max-width: 100%;
-}
-#kundresa-step-host .kundresa-kyc-status-line {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: #3E4A55;
-}
-#kundresa-step-host .kundresa-kyc-send-actions {
+#kundresa-step-host .kundresa-kyc-blocker {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.55rem 0.75rem;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #FFF7ED;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #8A4105;
 }
-#kundresa-step-host .kundresa-kyc-help,
-#kundresa-step-host .kundresa-kyc-q-note,
+#kundresa-step-host .kundresa-kyc-blocker a {
+  font-weight: 600;
+  color: #8A4105;
+}
 #kundresa-step-host .kundresa-kyc-missing {
   margin: 0;
   font-size: 12px;
   color: #5B6670;
   line-height: 1.4;
 }
+#kundresa-step-host .kundresa-kyc-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#kundresa-step-host .kundresa-kyc-preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 #kundresa-step-host .kundresa-kyc-preview-title {
-  margin: 0 0 0.55rem;
+  margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--title-text, #0f172a);
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-kyc-preview-help {
+  font-size: 12px;
+  color: #5B6670;
 }
 #kundresa-step-host .kundresa-kyc-section-list {
   list-style: none;
   margin: 0;
   padding: 0;
   background: #fff;
-  border: 1px solid #E3E7EB;
-  border-radius: 12px;
+  border: 1px solid #E6E9EC;
+  border-radius: 10px;
   overflow: hidden;
+  font-size: 13px;
 }
 #kundresa-step-host .kundresa-kyc-section + .kundresa-kyc-section {
-  border-top: 1px solid #E3E7EB;
+  border-top: 1px solid #EEF0F2;
 }
 #kundresa-step-host .kundresa-kyc-section-row {
   width: 100%;
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-areas: "num name count" "num pref chev";
-  column-gap: 0.55rem;
-  row-gap: 0.15rem;
+  grid-template-columns: 28px minmax(0, 1fr) 150px 20px;
+  gap: 10px;
   align-items: center;
-  padding: 0.7rem 0.95rem;
+  padding: 9px 14px;
   background: transparent;
   border: 0;
   text-align: left;
@@ -26263,38 +26430,78 @@ body.kalender-detail-open { overflow: hidden; }
   font-size: 13px;
   color: inherit;
 }
-#kundresa-step-host .kundresa-kyc-section-num { grid-area: num; font-weight: 600; color: #5B6670; }
-#kundresa-step-host .kundresa-kyc-section-name { grid-area: name; font-size: 14px; font-weight: 600; }
-#kundresa-step-host .kundresa-kyc-section-count { grid-area: count; font-size: 12px; color: #5B6670; justify-self: end; }
-#kundresa-step-host .kundresa-kyc-section-pref { grid-area: pref; font-size: 12px; color: #8A939C; }
+#kundresa-step-host .kundresa-kyc-section:not(.is-collapsed) {
+  background: #F7F8F9;
+}
+#kundresa-step-host .kundresa-kyc-section:not(.is-collapsed) .kundresa-kyc-section-name {
+  font-weight: 600;
+}
+#kundresa-step-host .kundresa-kyc-section-num {
+  color: #5B6670;
+}
+#kundresa-step-host .kundresa-kyc-section-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-kyc-section-status {
+  font-size: 13px;
+  color: #5B6670;
+  justify-self: start;
+  text-align: left;
+}
+#kundresa-step-host .kundresa-kyc-section-status.is-customer {
+  color: var(--accent, #1D4E57);
+  font-weight: 600;
+}
 #kundresa-step-host .kundresa-kyc-section-chevron {
-  grid-area: chev;
-  width: 0.45rem;
-  height: 0.45rem;
-  border-right: 1.5px solid #8A939C;
-  border-bottom: 1.5px solid #8A939C;
-  transform: rotate(45deg);
+  width: 14px;
+  height: 14px;
   justify-self: end;
+  align-self: center;
+  position: relative;
+}
+#kundresa-step-host .kundresa-kyc-section-chevron::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid #5B6670;
+  border-bottom: 2px solid #5B6670;
+  transform: rotate(45deg);
   transition: transform 0.15s ease;
 }
-#kundresa-step-host .kundresa-kyc-section:not(.is-collapsed) .kundresa-kyc-section-chevron {
+#kundresa-step-host .kundresa-kyc-section:not(.is-collapsed) .kundresa-kyc-section-chevron::before {
+  top: 6px;
   transform: rotate(-135deg);
 }
 #kundresa-step-host .kundresa-kyc-section-body {
-  padding: 0 0.95rem 0.85rem 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 6px 16px;
+  padding: 0 14px 12px 52px;
+  font-size: 13px;
+}
+#kundresa-step-host .kundresa-kyc-q {
+  display: contents;
 }
 #kundresa-step-host .kundresa-kyc-q-label {
-  font-size: 12px;
-  font-weight: 600;
   color: #5B6670;
-  margin-bottom: 0.1rem;
+  font-size: 13px;
+  font-weight: 400;
+  margin: 0;
 }
-#kundresa-step-host .kundresa-kyc-q-value { font-size: 13px; color: #18212B; }
-#kundresa-step-host .kundresa-kyc-q-prefilled { font-size: 13px; color: #5B6670; }
-#kundresa-step-host .kundresa-kyc-q-empty { font-size: 13px; color: #8A939C; font-style: italic; }
+#kundresa-step-host .kundresa-kyc-q-value {
+  font-size: 13px;
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-kyc-q-empty {
+  font-size: 13px;
+  color: #8A939C;
+  font-style: italic;
+}
 #kundresa-step-host ::placeholder {
   font-family: inherit !important;
   font-size: inherit;
@@ -26303,6 +26510,19 @@ body.kalender-detail-open { overflow: hidden; }
 #kundresa-step-host textarea,
 #kundresa-step-host select {
   font-family: inherit;
+}
+@media (max-width: 720px) {
+  #kundresa-step-host .kundresa-kyc-send-top {
+    grid-template-columns: 1fr;
+  }
+  #kundresa-step-host .kundresa-kyc-section-row {
+    grid-template-columns: 22px minmax(0, 1fr) minmax(90px, auto) 18px;
+    gap: 6px;
+  }
+  #kundresa-step-host .kundresa-kyc-section-body {
+    grid-template-columns: 1fr;
+    padding-left: 14px;
+  }
 }
 
 

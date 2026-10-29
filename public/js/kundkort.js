@@ -5436,10 +5436,26 @@ class CustomerCardManager {
         };
     }
 
+    _adressUtsattCalmLabel(meta) {
+        if (!meta || meta.empty) return '';
+        if (meta.tone === 'ok' || meta.tone === 'approx') return 'Ej i utsatt område';
+        if (meta.tone === 'hit') return meta.statusText || 'Utsatt område';
+        if (meta.tone === 'geo') return meta.statusText || 'Kunde inte kontrolleras';
+        return meta.statusText || 'Ej kontrollerad';
+    }
+
     _adressMedUtsattHtml(fields, adress) {
         const addr = String(adress || '').trim();
         if (!addr) return '<span class="text-muted">—</span>';
         const meta = this._adressUtsattMeta(fields, adress);
+        const inKundresa = !!(this._kundresaModalOpen || document.getElementById('kundresa-step-host'));
+        if (inKundresa) {
+            const calm = this._adressUtsattCalmLabel(meta);
+            return `<span class="adress-utsatt-line adress-utsatt-bar adress-utsatt-line--calm adress-utsatt-line--${meta.tone}">`
+                + `<span class="adress-utsatt-text">${this._esc(addr)}</span>`
+                + (calm ? `<span class="adress-utsatt-calm" title="${this._esc(meta.tooltip || '')}">${this._esc(calm)}</span>` : '')
+                + '</span>';
+        }
         const badgeClass = meta.tone === 'ok' || meta.tone === 'approx'
             ? 'is-ok'
             : (meta.tone === 'hit' || meta.tone === 'geo' ? 'is-warn' : 'is-pending');
@@ -5451,6 +5467,27 @@ class CustomerCardManager {
             + `<i class="fas ${meta.icon}" aria-hidden="true"></i></span>`
             + `<span class="adress-utsatt-status">${this._esc(meta.statusText)}</span>`
             + '</span>';
+    }
+
+    _verksamhetClampHtml(verksamhet) {
+        const text = String(verksamhet || '').trim();
+        if (!text) return '<span class="missing-data">Saknas</span>';
+        const long = text.length > 90 || /\n/.test(text);
+        if (!long) return `<span id="bv-verksamhet-view">${this._esc(text)}</span>`;
+        return `<span class="kundresa-verksamhet-clamp" id="bv-verksamhet-view" data-kundresa-verksamhet-clamp>`
+            + `<span class="kundresa-verksamhet-text">${this._esc(text)}</span>`
+            + `<button type="button" class="btn-link kundresa-verksamhet-toggle" data-kundresa-verksamhet-toggle aria-expanded="false" onclick="event.preventDefault();event.stopPropagation();customerCardManager.toggleKundresaVerksamhetClamp(this);">Visa hela</button>`
+            + `</span>`;
+    }
+
+    toggleKundresaVerksamhetClamp(btn) {
+        const wrap = btn && btn.closest
+            ? btn.closest('[data-kundresa-verksamhet-clamp]')
+            : document.querySelector('[data-kundresa-verksamhet-clamp]');
+        if (!wrap) return;
+        const open = wrap.classList.toggle('is-expanded');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.textContent = open ? 'Visa mindre' : 'Visa hela';
     }
 
     _refreshAdressUtsattView() {
@@ -5804,7 +5841,11 @@ class CustomerCardManager {
                             <div class="lead-field lead-field--full"><label>Pågående avveckling/omstrukturering</label><span class="lead-avveckling">${this._esc(bvStatus.avveckling)}</span></div>
                             ` : ''}
                             <div class="lead-field lead-field--full"><label>Adress</label><span id="bv-adress-view">${this._adressMedUtsattHtml(fields, adress)}</span></div>
-                            <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label><span id="bv-verksamhet-view">${fmt(verksamhet)}</span></div>
+                            <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label>${
+                                (this._kundresaModalOpen || document.getElementById('kundresa-step-host'))
+                                    ? this._verksamhetClampHtml(verksamhet)
+                                    : `<span id="bv-verksamhet-view">${fmt(verksamhet)}</span>`
+                            }</div>
                         </div>
                         ${!orgnr ? `<p class="kundresa-orgnr-missing" id="bv-orgnr-missing-hint">Inget org.nr – lägg till org.nr för att hämta från Bolagsverket</p>` : ''}
                         <div class="lead-section" style="margin-top:1rem;">
@@ -7321,25 +7362,45 @@ class CustomerCardManager {
             })();
 
             if (inKundresa) {
+                const Id = window.IdentitetKontroll;
+                const idLabel = (!isForetag && Id && Id.formatLabel) ? Id.formatLabel(p) : '';
+                const hvShort = (!isForetag && Id && Id.formatHuvudmanBolagsverketShort)
+                    ? Id.formatHuvudmanBolagsverketShort(p)
+                    : '';
+                const row2Parts = [];
+                row2Parts.push(p.epost
+                    ? `<span class="roller-meta-bit">${this._esc(p.epost)}</span>`
+                    : `<span class="roller-meta-bit roller-detail-missing">e-post saknas</span>`);
+                row2Parts.push(telefon
+                    ? `<span class="roller-meta-bit">${this._esc(telefon)}</span>`
+                    : `<span class="roller-meta-bit roller-detail-missing" role="button" tabindex="0" data-idx="${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.editRollePerson(${idx});">telefon saknas</span>`);
+                row2Parts.push(personnrDisplay
+                    ? `<span class="roller-meta-bit">${this._esc(personnrDisplay)}</span>`
+                    : `<span class="roller-meta-bit roller-detail-missing">${this._esc(idMissing)}</span>`);
+                if (!isForetag) {
+                    row2Parts.push(idLabel
+                        ? `<span class="roller-meta-bit">${this._esc(idLabel)}</span>`
+                        : `<span class="roller-meta-bit roller-detail-missing">ID ej kontrollerad</span>`);
+                }
+                if (hvShort) {
+                    row2Parts.push(`<span class="roller-meta-bit roller-meta-bit--muted">${this._esc(hvShort)}</span>`);
+                }
+                const rolesInline = rollText
+                    ? `<span class="roller-person-roles-inline">${this._esc(rollText)}</span>`
+                    : '';
                 return `
                 <div class="roller-person-item roller-person-item--row" data-idx="${idx}">
-                    <div class="roller-col-person">
-                        <span class="roller-avatar-initials" aria-hidden="true">${this._esc(initials)}</span>
-                        <span class="roller-person-name-stack">
-                            <span class="roller-person-name">${this._esc(p.namn || 'Namnlös')}</span>
-                            <span class="roller-person-submeta">${personnrDisplay ? this._esc(personnrDisplay) : this._esc(idMissing)}${pepMarked ? ' · PEP' : ''}</span>
-                            ${kontaktHtml}
-                        </span>
+                    <div class="roller-person-main">
+                        <div class="roller-person-line1">
+                            <span class="roller-person-name">${this._esc(p.namn || 'Namnlös')}</span>${rolesInline ? ` <span class="roller-person-dot" aria-hidden="true">·</span> ${rolesInline}` : ''}
+                        </div>
+                        <div class="roller-person-line2">${row2Parts.join('<span class="roller-meta-sep" aria-hidden="true"> · </span>')}</div>
                     </div>
-                    <div class="roller-col-roles">${roleChips || '<span class="text-muted">—</span>'}</div>
+                    <div class="roller-col-roles" hidden aria-hidden="true">${roleChips}</div>
                     <div class="roller-col-kontakt" hidden aria-hidden="true">${kontaktHtml}</div>
-                    <div class="roller-col-kontroller">${kontrollerHtml}</div>
+                    <div class="roller-col-kontroller" hidden aria-hidden="true">${kontrollerHtml}</div>
                     <div class="roller-person-actions">
-                        <a href="javascript:void(0)" role="button" class="btn-icon-note btn-pep-screen" title="${screenTitle}" data-idx="${idx}" id="pep-btn-${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.pepScreening(${idx});return false;">
-                            <i class="fas fa-search-dollar"></i>
-                        </a>
                         <button type="button" class="btn-icon-note roller-edit-btn" title="Redigera" aria-label="Redigera ${this._esc(p.namn || '')}" data-idx="${idx}"><i class="fas fa-edit"></i></button>
-                        <button type="button" class="btn-icon-note btn-icon-delete roller-delete-btn" title="Ta bort" aria-label="Ta bort ${this._esc(p.namn || '')}" data-idx="${idx}"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>`;
             }
@@ -11568,6 +11629,7 @@ class CustomerCardManager {
                 ? fromKontakt
                 : (summary.vhRegister || summary.vhAlignment?.register || []),
             vhAlignment: summary.vhAlignment || null,
+            vhJustSaved: !!this._kundresaVhJustSaved,
             step4Status: summary.step4Status || null,
             step4Send
         };
@@ -11773,6 +11835,26 @@ class CustomerCardManager {
                 }
             }
         } catch (_) { /* ignore */ }
+    }
+
+    _enhanceKundresaStep1() {
+        const fields = this.customerData?.fields || {};
+        const adressEl = document.getElementById('bv-adress-view');
+        if (adressEl) {
+            adressEl.innerHTML = this._adressMedUtsattHtml(fields, fields.Address || fields.Adress || '');
+        }
+
+        const verksamhet = fields.Verksamhetsbeskrivning || '';
+        const verkEl = document.getElementById('bv-verksamhet-view');
+        if (verkEl && !verkEl.classList.contains('kundresa-verksamhet-clamp')) {
+            verkEl.outerHTML = this._verksamhetClampHtml(verksamhet);
+        }
+
+        const rolesList = document.getElementById('roles-list');
+        if (rolesList && Array.isArray(this._kontaktPersoner)) {
+            rolesList.innerHTML = this._renderRollerView(this._kontaktPersoner);
+            rolesList.classList.add('roles-list--kundresa');
+        }
     }
 
     _enhanceKundresaStep3() {
@@ -12338,6 +12420,7 @@ class CustomerCardManager {
                 // Tabell-layout för personer i popupen
                 const rolesList = document.getElementById('roles-list');
                 if (rolesList) rolesList.classList.add('roles-list--kundresa');
+                try { this._enhanceKundresaStep1(); } catch (e) { console.warn('_enhanceKundresaStep1:', e); }
             }
 
             if (gen !== this._kundresaMountGeneration) {
@@ -13178,14 +13261,21 @@ class CustomerCardManager {
     /** VH-register från personlistan (samma källa som «Verklig huvudman»-chip). */
     _vhRegisterFromKontakt() {
         const list = Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner : [];
+        const seen = new Set();
         return list
             .filter((p) => this._getRollerList(p).some((r) => /verklig\s+huvudman/i.test(String(r || ''))))
             .map((p) => ({
                 namn: String(p?.namn || '').trim(),
-                personnr: String(p?.personnr || '').trim(),
+                personnr: this._formatPersonnrDisplay(p?.personnr || ''),
                 hemvist: String(p?.hemvist || p?.hemland || p?.skatterattslig_hemvist || '').trim()
             }))
-            .filter((p) => p.namn);
+            .filter((p) => {
+                if (!p.namn) return false;
+                const key = `${p.namn}|${p.personnr}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
     }
 
     /** Visa personnummer som ÅÅÅÅMMDD-XXXX (display only). */
@@ -13220,7 +13310,9 @@ class CustomerCardManager {
             this._kundformular = data.form || this._kundformular;
             this._kundformularSummary = data.summary || this._kundformularSummary;
             this._kundresa = data.kundresa || this._kundresa;
+            this._kundresaVhJustSaved = true;
             this._renderKundresa();
+            this._kundresaVhJustSaved = false;
             if (document.getElementById('kundformular-content') && this._kundformular) {
                 this._renderKundformular({
                     form: this._kundformular,
