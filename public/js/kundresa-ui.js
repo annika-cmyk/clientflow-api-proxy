@@ -239,10 +239,10 @@
             <strong>VH blockerar.</strong> ${esc(gate.message || 'Bekräfta verklig huvudman innan ni går vidare.')}
           </div>` : ''}
 
-          ${activeStep ? `<header class="kundresa-popup-stepinfo kundresa-popup-stepinfo--compact${isStep2(activeStep) ? ' kundresa-popup-stepinfo--row' : ''}${isSteg1 ? ' kundresa-popup-stepinfo--steg1' : ''}">
+          ${activeStep ? `<header class="kundresa-popup-stepinfo kundresa-popup-stepinfo--compact${(isStep2(activeStep) || isStep3(activeStep)) ? ' kundresa-popup-stepinfo--row' : ''}${isSteg1 ? ' kundresa-popup-stepinfo--steg1' : ''}">
             <p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>
             <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
-            ${isStep2(activeStep) ? `<span class="kundresa-step2-autosave is-saved" data-kundresa-autosave><i class="fas fa-check" aria-hidden="true"></i> Sparas automatiskt</span>` : ''}
+            ${(isStep2(activeStep) || isStep3(activeStep)) ? `<span class="kundresa-step2-autosave is-saved" data-kundresa-autosave><i class="fas fa-check" aria-hidden="true"></i> Sparas automatiskt</span>` : ''}
             ${companyLabel ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
             <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
           </header>` : ''}

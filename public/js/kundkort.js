@@ -11783,11 +11783,15 @@ class CustomerCardManager {
 
     _setKundresaRedovisningStatus(msg) {
         const el = document.getElementById('kundresa-redovisning-status');
-        if (!el) return;
-        el.textContent = msg || '';
-        el.classList.toggle('is-error', /kunde inte/i.test(msg || ''));
-        el.classList.toggle('is-ok', /^Sparat/i.test(msg || ''));
-        el.classList.toggle('is-busy', /Sparar/i.test(msg || ''));
+        if (el) {
+            el.textContent = msg || '';
+            el.classList.toggle('is-error', /kunde inte/i.test(msg || ''));
+            el.classList.toggle('is-ok', /^Sparat/i.test(msg || ''));
+            el.classList.toggle('is-busy', /Sparar/i.test(msg || ''));
+        }
+        if (/Sparar/i.test(msg || '')) this._setKundresaStep2Autosave('saving');
+        else if (/kunde inte/i.test(msg || '')) this._setKundresaStep2Autosave('error');
+        else if (/^Sparat/i.test(msg || '') || !msg) this._setKundresaStep2Autosave('saved');
     }
 
     _refreshKundresaStep3Remaining() {
@@ -11860,6 +11864,8 @@ class CustomerCardManager {
 
     _enhanceKundresaStep3() {
         this._kundresaStep3Active = true;
+        const stepHost = document.getElementById('kundresa-step-host');
+        if (stepHost) stepHost.classList.add('kundresa-step3');
         this._enhanceKundresaRedovisning();
         if (document.getElementById('nykund-tjanster')) {
             const byraHighRisk = this.customerData?.fields?.['Lookup Byråns högrisktjänster'] || [];
@@ -11878,11 +11884,14 @@ class CustomerCardManager {
                 hint.dataset.kundresaHiddenHint = '1';
             });
         }
+        this._setKundresaStep2Autosave('saved');
         this._refreshKundresaStep3Remaining();
     }
 
     _teardownKundresaStep3() {
         this._teardownKundresaRedovisning();
+        const stepHost = document.getElementById('kundresa-step-host');
+        if (stepHost) stepHost.classList.remove('kundresa-step3');
         const tCard = document.getElementById('nykund-tjanster-card');
         if (tCard) {
             const titleSpan = tCard.querySelector('.collapsible-title span');
@@ -12020,59 +12029,136 @@ class CustomerCardManager {
         }
     }
 
-    _kundresaResidualRiskHtml(t) {
+    _kundresaTjanstGroupKey(t) {
+        const typ = String(t?.typ || '').trim().toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (/lopande/.test(typ)) return 'lopande';
+        if (/bokslut|skatt/.test(typ)) return 'bokslut';
+        if (/ovrig/.test(typ)) return 'ovrig';
+        const n = this._normalizeTjanstNamn(t?.namn || '')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (/lopande bokforing|avstamning|moms|kundreskontra|leverantorsreskontra|lonehantering|betalningsuppdrag/.test(n)) {
+            return 'lopande';
+        }
+        if (/bokslut|arsredovisning|deklaration|anlaggningsregister|lagervardering|kontrollbalans/.test(n)) {
+            return 'bokslut';
+        }
+        return 'ovrig';
+    }
+
+    _kundresaResidualRiskMeta(t) {
         const scored = this._scoredFromTjanst(t) || {};
         const residual = this._riskLabel(scored.residualLevel);
-        if (!residual) return '';
         const product = scored.residualProduct;
-        const title = product != null && product !== ''
-            ? `Residualrisk S×K = ${product} enligt byråns riskbedömning`
-            : 'Residualrisk enligt byråns riskbedömning';
+        const rank = this._tjanstRiskRank(residual);
         const key = (window.RiskSkala && RiskSkala.normalizeRiskKey)
             ? RiskSkala.normalizeRiskKey(residual)
             : '';
-        const isLow = key === 'low' || residual === 'Låg';
-        if (isLow) {
-            const txt = product != null && product !== '' ? `Låg ${product}` : 'Låg';
-            return `<span class="kundresa-tjanst-risk kundresa-tjanst-risk--low" title="${this._esc(title)}">${this._esc(txt)}</span>`;
+        return { residual, product, rank, key, scored };
+    }
+
+    /** Riskdot på chip — visas när residual > Låg (höjer risken). */
+    _kundresaResidualRiskHtml(t) {
+        const meta = this._kundresaResidualRiskMeta(t);
+        if (!meta.residual || meta.rank <= 1) return '';
+        const elevated = meta.rank >= 3;
+        const tone = elevated ? 'high' : 'normal';
+        const label = elevated ? 'Förhöjd risk' : 'Normal risk';
+        const title = meta.product != null && meta.product !== ''
+            ? `${meta.residual} residualrisk S×K = ${meta.product}`
+            : `${meta.residual} residualrisk enligt byråns riskbedömning`;
+        return `<span class="kundresa-tjanst-chip-dot kundresa-tjanst-chip-dot--${tone}" role="img" aria-label="${this._esc(label)}" title="${this._esc(title)}"></span>`;
+    }
+
+    _kundresaTjansterSummaryHtml(selected) {
+        const n = selected.length;
+        const names = selected.map((t) => t.namn).filter(Boolean);
+        const countLabel = n === 0
+            ? 'Inga tjänster valda'
+            : (n === 1 ? '1 tjänst vald' : `${n} tjänster valda`);
+        const left = n === 0
+            ? `<span>${this._esc(countLabel)}</span>`
+            : `<span><span class="kundresa-tjanster-summary-count">${this._esc(countLabel)}:</span> ${this._esc(names.join(', '))}</span>`;
+
+        let best = null;
+        selected.forEach((t) => {
+            const meta = this._kundresaResidualRiskMeta(t);
+            if (!meta.residual) return;
+            if (!best || meta.rank > best.rank
+                || (meta.rank === best.rank && Number(meta.product || 0) > Number(best.product || 0))) {
+                best = meta;
+            }
+        });
+        let right = '';
+        if (best && best.residual) {
+            const prod = best.product != null && best.product !== '' ? ` (${best.product})` : '';
+            right = `<span class="kundresa-tjanster-summary-risk">Högsta residualrisk: <strong>${this._esc(best.residual)}${this._esc(prod)}</strong></span>`;
         }
-        const cls = (window.RiskSkala && RiskSkala.riskPillClass(residual)) || 'risk-pill--normal';
-        return `<span class="risk-skala-pills kundresa-tjanst-risk-badge"><span class="risk-pill ${cls}" title="${this._esc(title)}">${this._esc(residual)}</span></span>`;
+        return `${left}${right}`;
+    }
+
+    _updateKundresaTjansterSummary(content, alla, isTjanstAktiv) {
+        const summary = content?.querySelector('#kundresa-tjanster-summary')
+            || document.getElementById('kundresa-tjanster-summary');
+        if (!summary) return;
+        const selected = (alla || []).filter((t) => isTjanstAktiv(t));
+        summary.innerHTML = this._kundresaTjansterSummaryHtml(selected);
     }
 
     _renderTjansterKundresaCompact(content, alla, aktSet, isTjanstAktiv) {
         const p = 'nykund-tjanster';
-        const onlySelected = !!this._kundresaTjansterOnlySelected;
-        const selectedCount = alla.filter((t) => isTjanstAktiv(t)).length;
-        const list = onlySelected ? alla.filter((t) => isTjanstAktiv(t)) : alla;
+        const selected = alla.filter((t) => isTjanstAktiv(t));
         const unmatched = this._unmatchedTjanster();
         const unmatchedHtml = unmatched.length
             ? `<div class="tjanster-unmatched-warn" role="status">Tjänster utanför katalogen: ${unmatched.map((n) => `<strong>${this._esc(n)}</strong>`).join(', ')}.</div>`
             : '';
 
-        const rows = list.length === 0
-            ? `<p class="lead-empty">${onlySelected ? 'Inga valda tjänster.' : 'Inga tjänster i katalogen.'}</p>`
-            : `<div class="kundresa-tjanster-grid" role="group" aria-label="Byråns tjänster">
-                ${list.map((t) => {
-                    const checked = isTjanstAktiv(t);
-                    return `<label class="kundresa-tjanst-row${checked ? ' is-selected' : ''}">
-                        <input type="checkbox" name="tjanst-${p}" value="${this._esc(t.id)}" ${checked ? 'checked' : ''}
-                            data-kundresa-tjanst-id="${this._esc(t.id)}">
-                        <span class="kundresa-tjanst-name">${this._esc(t.namn)}</span>
-                        ${this._kundresaResidualRiskHtml(t)}
-                    </label>`;
-                }).join('')}
-            </div>`;
+        const groups = [
+            { key: 'lopande', label: 'Löpande' },
+            { key: 'bokslut', label: 'Bokslut & skatt' },
+            { key: 'ovrig', label: 'Övrigt' }
+        ];
+        const byGroup = { lopande: [], bokslut: [], ovrig: [] };
+        alla.forEach((t) => {
+            byGroup[this._kundresaTjanstGroupKey(t)].push(t);
+        });
+
+        const chipHtml = (t) => {
+            const checked = isTjanstAktiv(t);
+            return `<label class="kundresa-tjanst-chip${checked ? ' is-selected' : ''}">
+                <input type="checkbox" name="tjanst-${p}" value="${this._esc(t.id)}" ${checked ? 'checked' : ''}
+                    data-kundresa-tjanst-id="${this._esc(t.id)}" aria-label="${this._esc(t.namn || 'Tjänst')}">
+                <span class="kundresa-tjanst-chip-check" aria-hidden="true"><i class="fas fa-check"></i></span>
+                <span class="kundresa-tjanst-chip-name">${this._esc(t.namn)}</span>
+                ${this._kundresaResidualRiskHtml(t)}
+            </label>`;
+        };
+
+        const groupsHtml = alla.length === 0
+            ? '<p class="lead-empty">Inga tjänster i katalogen.</p>'
+            : groups.map((g) => {
+                const list = byGroup[g.key] || [];
+                if (!list.length) return '';
+                return `<div class="kundresa-tjanster-group" data-kundresa-tjanst-group="${g.key}">
+                    <span class="kundresa-tjanster-group-label">${this._esc(g.label)}</span>
+                    <div class="kundresa-tjanster-chips" role="group" aria-label="${this._esc(g.label)}">
+                        ${list.map(chipHtml).join('')}
+                    </div>
+                </div>`;
+            }).join('');
 
         content.innerHTML = `
-            <p class="kundresa-tjanster-help" id="kundresa-tjanster-help">Välj de tjänster byrån ska utföra. Valen används i riskbedömningen.</p>
-            <div class="kundresa-tjanster-toolbar">
-                <span class="kundresa-tjanster-count" id="kundresa-tjanster-count">${selectedCount} valda</span>
-                <button type="button" class="kundresa-tjanster-filter-link" id="kundresa-tjanster-filter"
-                    aria-pressed="${onlySelected ? 'true' : 'false'}">${onlySelected ? 'Visa alla' : 'Visa bara valda'}</button>
+            <div class="kundresa-tjanster-head">
+                <p class="kundresa-tjanster-help" id="kundresa-tjanster-help">Klicka för att välja. Valen styr kundens riskbedömning.</p>
+                <span class="kundresa-tjanster-legend"><span class="kundresa-tjanst-chip-dot kundresa-tjanst-chip-dot--normal" aria-hidden="true"></span>höjer risken</span>
             </div>
             ${unmatchedHtml}
-            ${rows}
+            <div class="kundresa-tjanster-groups">
+                ${groupsHtml}
+            </div>
+            <div class="kundresa-tjanster-summary" id="kundresa-tjanster-summary" role="status">
+                ${this._kundresaTjansterSummaryHtml(selected)}
+            </div>
             <div class="kundresa-tjanster-save-status" id="kundresa-tjanster-save-status" aria-live="polite"></div>
         `;
 
@@ -12080,16 +12166,6 @@ class CustomerCardManager {
         if (tjanstBody) {
             const fab = tjanstBody.querySelector(`#tjanster-edit-btn-${p}`);
             if (fab) fab.style.display = 'none';
-        }
-
-        const filterBtn = content.querySelector('#kundresa-tjanster-filter');
-        if (filterBtn) {
-            filterBtn.addEventListener('click', () => {
-                this._kundresaTjansterOnlySelected = !this._kundresaTjansterOnlySelected;
-                const akt = this._aktivaTjansterIds || aktSet;
-                const isAkt = (t) => this._tjanstIdMatchSet(t).some((id) => akt.has(id));
-                this._renderTjansterKundresaCompact(content, alla, akt, isAkt);
-            });
         }
 
         content.querySelectorAll(`input[name="tjanst-${p}"]`).forEach((cb) => {
@@ -12103,10 +12179,14 @@ class CustomerCardManager {
         const customerId = this.customerId;
         const statusEl = document.getElementById('kundresa-tjanster-save-status');
         const setStatus = (msg, kind) => {
-            if (!statusEl) return;
-            statusEl.textContent = msg || '';
-            statusEl.classList.toggle('is-error', kind === 'error');
-            statusEl.classList.toggle('is-ok', kind === 'ok');
+            if (statusEl) {
+                statusEl.textContent = msg || '';
+                statusEl.classList.toggle('is-error', kind === 'error');
+                statusEl.classList.toggle('is-ok', kind === 'ok');
+            }
+            if (kind === 'error') this._setKundresaStep2Autosave('error');
+            else if (kind === 'saving') this._setKundresaStep2Autosave('saving');
+            else this._setKundresaStep2Autosave('saved');
         };
         if (!customerId) {
             if (changedCb) changedCb.checked = !changedCb.checked;
@@ -12124,15 +12204,14 @@ class CustomerCardManager {
 
         const prevAktiva = this._aktivaTjansterIds;
         this._aktivaTjansterIds = new Set(toSave);
-        const countEl = document.getElementById('kundresa-tjanster-count');
-        if (countEl) {
-            const n = (this._byransTjanster || []).filter((t) => this._tjanstIdMatchSet(t).some((id) => this._aktivaTjansterIds.has(id))).length;
-            countEl.textContent = `${n} valda`;
-        }
-        content.querySelectorAll('.kundresa-tjanst-row').forEach((row) => {
+        const alla = this._byransTjanster || [];
+        const isAkt = (t) => this._tjanstIdMatchSet(t).some((id) => this._aktivaTjansterIds.has(id));
+        content.querySelectorAll('.kundresa-tjanst-chip').forEach((row) => {
             const inp = row.querySelector('input[type="checkbox"]');
             row.classList.toggle('is-selected', !!(inp && inp.checked));
         });
+        this._updateKundresaTjansterSummary(content, alla, isAkt);
+        setStatus('', 'saving');
 
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -12164,14 +12243,12 @@ class CustomerCardManager {
             console.error('kundresa tjänster autosave:', error);
             this._aktivaTjansterIds = prevAktiva instanceof Set ? prevAktiva : new Set(prevAktiva || []);
             if (changedCb) changedCb.checked = !changedCb.checked;
-            content.querySelectorAll('.kundresa-tjanst-row').forEach((row) => {
+            const isPrev = (t) => this._tjanstIdMatchSet(t).some((id) => this._aktivaTjansterIds.has(id));
+            content.querySelectorAll('.kundresa-tjanst-chip').forEach((row) => {
                 const inp = row.querySelector('input[type="checkbox"]');
                 row.classList.toggle('is-selected', !!(inp && inp.checked));
             });
-            if (countEl) {
-                const n = (this._byransTjanster || []).filter((t) => this._tjanstIdMatchSet(t).some((id) => this._aktivaTjansterIds.has(id))).length;
-                countEl.textContent = `${n} valda`;
-            }
+            this._updateKundresaTjansterSummary(content, alla, isPrev);
             setStatus('Kunde inte spara – försök igen', 'error');
         }
     }
