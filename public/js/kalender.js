@@ -1084,9 +1084,6 @@
   function applyScheduleLocal(ev, blocks) {
     const list = Array.isArray(blocks) ? SB.sortBlocks(blocks) : [];
     const primary = list[0] || null;
-    ev.scheduleBlocks = list;
-    ev.scheduledStart = primary ? primary.start : '';
-    ev.scheduledEnd = primary ? primary.end : '';
     const fieldPatch = SB.fieldsForBlocks(list);
     if (ev.runRec) {
       ev.runRec.fields = ev.runRec.fields || {};
@@ -1097,6 +1094,37 @@
       rr.fields = rr.fields || {};
       Object.assign(rr.fields, fieldPatch);
     }
+    // Uppdatera alla lokala instanser av samma körning — inte bara den vi sparade från.
+    // Annars kan syskon behålla gamla tider/scheduleBlocks tills nästa fulla rebuild.
+    const runId = String(ev.runRec?.id || '').trim();
+    const runKey = String(ev.runKey || String(ev.key || '').split('#')[0] || '').trim();
+    const touch = (row) => {
+      if (!row || isOverlayCalendarEvent(row)) return;
+      const sameRun = (runId && String(row.runRec?.id || '') === runId)
+        || (runKey && String(row.runKey || String(row.key || '').split('#')[0]) === runKey);
+      if (!sameRun && row !== ev) return;
+      row.scheduleBlocks = list;
+      if (row.runRec && ev.runRec) row.runRec = ev.runRec;
+      if (row.blockId) {
+        const mine = list.find((b) => b.id === row.blockId);
+        if (mine) {
+          row.scheduledStart = mine.start;
+          row.scheduledEnd = mine.end;
+          row.blockDone = !!mine.done;
+          row.blockNote = mine.note || '';
+          row.status = SB.instanceStatus(
+            String(row.runRec?.fields?.Status || row.status || '').trim(),
+            mine,
+            list
+          );
+          return;
+        }
+      }
+      row.scheduledStart = primary ? primary.start : '';
+      row.scheduledEnd = primary ? primary.end : '';
+    };
+    touch(ev);
+    events.forEach(touch);
   }
 
   /**
@@ -1113,13 +1141,26 @@
     }
     const options = opts || {};
     let mode = String(options.mode || '').trim().toLowerCase();
-    let blockId = options.blockId != null ? options.blockId : (ev.blockId || null);
+    const hasExplicitBlockId = Object.prototype.hasOwnProperty.call(options, 'blockId');
+    // Vid mode=add: ärv aldrig syskonets blockId (eventByKey(runKey) hittar oftast
+    // första expanderade tillfället). Annars återanvänds id → första blocket «hoppar».
+    let blockId;
+    if (hasExplicitBlockId) {
+      blockId = options.blockId != null && options.blockId !== ''
+        ? String(options.blockId).trim()
+        : null;
+    } else if (mode === 'add') {
+      blockId = null;
+    } else {
+      blockId = ev.blockId || null;
+    }
     const hasNote = Object.prototype.hasOwnProperty.call(options, 'note');
     if (!mode) {
       if (blockId) mode = 'update';
       else if (blocksOf(ev).length) mode = 'add';
       else mode = 'set';
     }
+    if (mode === 'add' && !hasExplicitBlockId) blockId = null;
     const body = { start: startIso, end: endIso, mode };
     if (blockId) body.blockId = blockId;
     if (hasNote) body.note = options.note;
@@ -1282,7 +1323,7 @@
         const startIso = KV.toLocalDateTimeIso(date, startMin);
         const endIso = KV.toLocalDateTimeIso(date, Math.min(endMin, KV.dayEndMinutes()));
         const ok = await persistSchedule(ev, startIso, endIso, fromSide
-          ? { mode: 'add' }
+          ? { mode: 'add', blockId: null }
           : { mode: ev.blockId ? 'update' : 'set', blockId: ev.blockId || null });
         if (ok) {
           render();
@@ -1612,10 +1653,10 @@
         if (elBtn) elBtn.dataset.suppressClick = '1';
         const fromSide = dragState?.mode === 'side-add';
         const ok = await persistSchedule(ev, startIso, endIso, fromSide
-          ? { mode: 'add' }
+          ? { mode: 'add', blockId: null }
           : {
             mode: dragState?.mode === 'untimed-to-grid' ? 'set' : (ev.blockId ? 'update' : 'set'),
-            blockId: fromSide ? null : (ev.blockId || dragState?.blockId || null)
+            blockId: ev.blockId || dragState?.blockId || null
           });
         if (ok) {
           render();
@@ -1931,7 +1972,7 @@
 
     const startIso = KV.toLocalDateTimeIso(date, startMin);
     const endIso = KV.toLocalDateTimeIso(date, endMin);
-    const schedOpts = { mode: 'add' };
+    const schedOpts = { mode: 'add', blockId: null };
     if (note) schedOpts.note = note;
     const ok = await persistSchedule(ev, startIso, endIso, schedOpts);
     if (!ok) throw new Error('Uppgift skapad men tidblocket sparades inte.');
@@ -2084,7 +2125,7 @@
           btn.disabled = true;
           const startIso = KV.toLocalDateTimeIso(date, startMin);
           const endIso = KV.toLocalDateTimeIso(date, endMin);
-          const ok = await persistSchedule(ev, startIso, endIso, { mode: 'add' });
+          const ok = await persistSchedule(ev, startIso, endIso, { mode: 'add', blockId: null });
           if (ok) {
             closeDetail();
             render();
@@ -2622,7 +2663,7 @@
         const endIso = KV.toLocalDateTimeIso(date, 9 * 60 + KV.DEFAULT_BLOCK_MINUTES);
         const fromSide = dragState?.mode === 'side-add';
         const ok = await persistSchedule(ev, startIso, endIso, fromSide
-          ? { mode: 'add' }
+          ? { mode: 'add', blockId: null }
           : { mode: ev.blockId ? 'update' : 'set', blockId: ev.blockId || null });
         if (ok) {
           render();

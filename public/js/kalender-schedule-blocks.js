@@ -302,7 +302,10 @@
       if (!(new Date(endVal).getTime() > new Date(startVal).getTime())) {
         throw new Error('Slut måste vara efter start');
       }
-      const id = blockId || newBlockId();
+      // Aldrig återanvända ett befintligt block-id — det skulle få första tillfället
+      // att «hoppa» till det nya (samma key i kalendern / Google).
+      let id = blockId || newBlockId();
+      if (blocks.some((b) => b.id === id)) id = newBlockId();
       const next = { id, start: startVal, end: endVal };
       if (hasNote) {
         const note = normalizeNote(mutation.note);
