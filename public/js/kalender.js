@@ -141,12 +141,13 @@
   }
 
   function statusOf(ev) {
-    // Klarmarkerat tillfälle (enskilt tidblock) syns kvar som Klar i kalendern
-    if (ev && (ev.blockDone === true || (ev.blockId && SB.isBlockDone
-      && Array.isArray(ev.scheduleBlocks)
-      && SB.isBlockDone(ev.scheduleBlocks.find((b) => b && b.id === ev.blockId))))) {
-      return 'Klar';
+    // Per tillfälle: Klar bara för det block som är done — inte via körningens Status
+    if (ev && ev.blockId && Array.isArray(ev.scheduleBlocks) && typeof SB.instanceStatus === 'function') {
+      const block = ev.scheduleBlocks.find((b) => b && b.id === ev.blockId);
+      const runSt = String(ev.status || ev.runRec?.fields?.Status || '').trim();
+      return SB.instanceStatus(runSt, block || { id: ev.blockId, done: !!ev.blockDone }, ev.scheduleBlocks);
     }
+    if (ev && ev.blockDone === true) return 'Klar';
     const st = String(ev.status || '').trim();
     if (st) return st;
     const pk = String(ev.periodKey || '').trim();
@@ -330,7 +331,31 @@
     return tidData;
   }
 
-  /** Delvis: regga tid för ett tillfälle, ta bort blocket, körningen förblir öppen. */
+  async function patchRunStatus(ev, runId, status) {
+    const stRes = await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/status`, {
+      method: 'PATCH',
+      ...authOpts(),
+      headers: {
+        ...(authOpts().headers || {}),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ status })
+    });
+    const stData = await stRes.json().catch(() => ({}));
+    if (!stRes.ok) throw new Error(stData.error || 'Statusuppdatering misslyckades');
+    if (stData.record) {
+      ev.runRec = stData.record;
+      const idx = runRecords.findIndex((r) => r.id === stData.record.id);
+      if (idx >= 0) runRecords[idx] = stData.record;
+      else runRecords.push(stData.record);
+    }
+    return stData;
+  }
+
+  /**
+   * Delvis: klarmarkera ETT tillfälle (block.done).
+   * Körningens Status blir Klar först när ALLA tillfällen är klara.
+   */
   async function klarTillfalle(ev, opts) {
     const options = opts || {};
     const withTid = options.withTid !== false;
@@ -367,32 +392,22 @@
         showDone = true;
         syncUi();
       }
-      // Körningen förblir aktiv om fler tillfällen återstår; Planerad → Pågående
-      const runStatus = String(ev.runRec?.fields?.Status || ev.status || '').trim();
-      if (runStatus === 'Planerad') {
+      const nextBlocks = blocksOf(ev);
+      const everyDone = typeof SB.allBlocksDone === 'function'
+        ? SB.allBlocksDone(nextBlocks)
+        : nextBlocks.every((b) => SB.isBlockDone(b));
+      // Viktigt: läs körningsstatus från runRec — inte ev.status (som är Klar för tillfället)
+      const runStatus = String(ev.runRec?.fields?.Status || '').trim();
+      if (everyDone) {
+        await patchRunStatusKlar(ev, runId);
+      } else if (runStatus === 'Planerad' || !runStatus) {
         try {
-          await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/status`, {
-            method: 'PATCH',
-            ...authOpts(),
-            headers: {
-              ...(authOpts().headers || {}),
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ status: 'Pågående' })
-          }).then(async (res) => {
-            const data = await res.json().catch(() => ({}));
-            if (res.ok && data.record) {
-              ev.runRec = data.record;
-              // Tillfället i fokus är fortfarande Klar via blockDone; run-status uppdateras lokalt
-              const idx = runRecords.findIndex((r) => r.id === data.record.id);
-              if (idx >= 0) runRecords[idx] = data.record;
-            }
-          });
+          await patchRunStatus(ev, runId, 'Pågående');
         } catch (_) { /* best-effort */ }
       }
       showSaveToast(withTid
         ? `Tillfälle klart · ${sched.hours} t registrerad`
-        : 'Tillfälle klarmarkerat');
+        : (everyDone ? 'Sista tillfället klarmarkerat · körningen klar' : 'Tillfälle klarmarkerat'));
       render();
       refreshOpenDetail();
     } catch (err) {
@@ -543,22 +558,38 @@
   }
 
   /** Synka klarmarkeringsknappar när avsatt tid ändras i detaljpanelen. */
-  function syncKlarActionButtons(hours) {
+  function syncKlarActionButtons(hours, opts) {
     if (!el.detailBody) return;
-    const hasHours = Number(hours) > 0;
+    const options = opts || {};
+    const focusHours = Number(hours) > 0 ? Number(hours) : 0;
+    const totalHours = options.totalHours != null ? Number(options.totalHours) : focusHours;
+    const hasFocusHours = focusHours > 0;
+    const hasTotalHours = totalHours > 0;
+    const klarTillfalleTidBtn = el.detailBody.querySelector('[data-klar-tillfalle-tid]');
     const klarTidBtn = el.detailBody.querySelector('[data-klar-tid]');
     const klarOnlyBtn = el.detailBody.querySelector('[data-klar-only]');
+    if (klarTillfalleTidBtn) {
+      klarTillfalleTidBtn.disabled = !hasFocusHours;
+      klarTillfalleTidBtn.innerHTML = hasFocusHours
+        ? `<i class="fas fa-check"></i> Klarmarkera tillfälle & tid (${focusHours} t)`
+        : '<i class="fas fa-check"></i> Klarmarkera tillfälle & tid';
+      klarTillfalleTidBtn.classList.toggle('btn-primary', hasFocusHours);
+      klarTillfalleTidBtn.classList.toggle('btn-ghost', !hasFocusHours);
+    }
     if (klarTidBtn) {
-      klarTidBtn.disabled = !hasHours;
-      klarTidBtn.innerHTML = hasHours
-        ? `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${hours} t)`
-        : '<i class="fas fa-check"></i> Klarmarkera & registrera tid';
-      klarTidBtn.classList.toggle('btn-primary', hasHours);
-      klarTidBtn.classList.toggle('btn-ghost', !hasHours);
+      klarTidBtn.disabled = !hasTotalHours;
+      klarTidBtn.innerHTML = hasTotalHours
+        ? `<i class="fas fa-check"></i> Klarmarkera hela & tid (${totalHours} t)`
+        : '<i class="fas fa-check"></i> Klarmarkera hela & tid';
+      // Hela-körningen är alltid sekundär när ett tillfälle är i fokus
+      const focusScoped = !!el.detailBody.querySelector('[data-klar-tillfalle]');
+      klarTidBtn.classList.toggle('btn-primary', hasTotalHours && !focusScoped);
+      klarTidBtn.classList.toggle('btn-ghost', !hasTotalHours || focusScoped);
     }
     if (klarOnlyBtn) {
-      klarOnlyBtn.classList.toggle('btn-primary', !hasHours);
-      klarOnlyBtn.classList.toggle('btn-ghost', hasHours);
+      const focusScoped = !!el.detailBody.querySelector('[data-klar-tillfalle]');
+      klarOnlyBtn.classList.toggle('btn-primary', !hasTotalHours && !focusScoped);
+      klarOnlyBtn.classList.toggle('btn-ghost', hasTotalHours || focusScoped);
     }
   }
 
@@ -570,7 +601,9 @@
     const label = `${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)} (${hours} t)`;
     const dd = el.detailBody.querySelector('[data-avsatt-tid]');
     if (dd) dd.textContent = label;
-    syncKlarActionButtons(hours);
+    const openEv = eventByKey(openDetailKey);
+    const totalH = openEv ? totalScheduledHours(openEv) : hours;
+    syncKlarActionButtons(hours, { totalHours: totalH });
   }
 
   function applyKlarLocally(ev) {
@@ -637,6 +670,15 @@
     return navigatedToMejl;
   }
 
+  /** Markera alla tidblock som done innan hel-körning sätts till Klar. */
+  async function completeAllScheduleBlocks(ev) {
+    const list = blocksOf(ev);
+    if (!list.length) return true;
+    const open = list.filter((b) => !SB.isBlockDone(b));
+    if (!open.length) return true;
+    return persistSchedule(ev, null, null, { mode: 'complete-all' });
+  }
+
   async function klarOnly(ev) {
     const runF = ev.runRec?.fields || {};
     const runId = String(ev.runRec?.id || '').trim();
@@ -644,6 +686,14 @@
     if (!runId) {
       showSaveToast('Saknar uppdragskörning – kan inte klarmarkera.', true);
       return;
+    }
+
+    const unfinished = blocksOf(ev).filter((b) => !SB.isBlockDone(b));
+    if (unfinished.length > 1) {
+      const okConfirm = window.confirm(
+        `Klarmarkera hela körningen? Det markerar alla ${unfinished.length} tillfällen som klara.`
+      );
+      if (!okConfirm) return;
     }
 
     const btn = el.detailBody && el.detailBody.querySelector('[data-klar-only]');
@@ -655,8 +705,11 @@
     if (tidBtn) tidBtn.disabled = true;
 
     try {
+      // Markera alla tillfällen done så syskon inte «ärver» Klar utan egen done-flagga
+      const blocksOk = await completeAllScheduleBlocks(ev);
+      if (!blocksOk && blocksOf(ev).length) return;
       await patchRunStatusKlar(ev, runId);
-      showSaveToast('Klarmarkerad');
+      showSaveToast('Hela körningen klarmarkerad');
       const navigatedToMejl = afterKlarMejlLink(runId, uppdragId);
       if (navigatedToMejl) return;
       closeDetail();
@@ -664,13 +717,14 @@
     } catch (err) {
       console.error('Kalender klar:', err);
       showSaveToast((err && err.message) || 'Kunde inte klarmarkera', true);
+      const totalH = totalScheduledHours(ev);
       const sched = scheduleOf(ev);
       const hours = sched && sched.hours > 0 ? sched.hours : 0;
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-check"></i> Klarmarkera';
+        btn.innerHTML = '<i class="fas fa-check"></i> Klarmarkera hela';
       }
-      syncKlarActionButtons(hours);
+      syncKlarActionButtons(hours, { totalHours: totalH });
     }
   }
 
@@ -696,14 +750,23 @@
       return;
     }
 
+    const unfinished = blockList.filter((b) => !SB.isBlockDone(b));
+    if (unfinished.length > 1) {
+      const okConfirm = window.confirm(
+        `Klarmarkera hela körningen och registrera tid för alla ${unfinished.length} tillfällen?`
+      );
+      if (!okConfirm) return;
+    }
+
     const helper = window.KalenderKlarTid;
     const build = helper && helper.buildKalenderTidPayload
       ? helper.buildKalenderTidPayload
       : null;
     const payloads = [];
     try {
+      // Bara ej klara tillfällen — redan klarmarkerade ska inte dubbelregistreras
       const sources = blockList.length
-        ? blockList.map((b) => {
+        ? unfinished.map((b) => {
           const n = KV.normalizeSchedule(b.start, b.end);
           return n || { hours: 0, date: String(b.start || '').slice(0, 10), start: b.start, end: b.end, startMin: 0, endMin: 0 };
         })
@@ -743,7 +806,7 @@
       showSaveToast((err && err.message) || 'Kunde inte bygga tidpost', true);
       return;
     }
-    if (!payloads.length) {
+    if (!payloads.length && unfinished.length) {
       showSaveToast('Avsätt tid i kalendern först (dra från listan eller i nederkant).', true);
       return;
     }
@@ -772,8 +835,12 @@
         if (!tidRes.ok) throw new Error(tidData.error || 'Kunde inte registrera tid');
       }
 
+      const blocksOk = await completeAllScheduleBlocks(ev);
+      if (!blocksOk && blockList.length) return;
       await patchRunStatusKlar(ev, runId);
-      showSaveToast(`Klarmarkerad · ${totalH} t registrerad`);
+      showSaveToast(totalH > 0
+        ? `Hela körningen klarmarkerad · ${totalH} t registrerad`
+        : 'Hela körningen klarmarkerad');
 
       const navigatedToMejl = afterKlarMejlLink(runId, uppdragId);
       if (navigatedToMejl) return;
@@ -784,10 +851,10 @@
       showSaveToast((err && err.message) || 'Kunde inte spara', true);
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fas fa-check"></i> Klarmarkera & registrera tid (${totalH} t)`;
+        btn.innerHTML = `<i class="fas fa-check"></i> Klarmarkera hela & tid (${totalH} t)`;
       }
       if (onlyBtn) onlyBtn.disabled = false;
-      syncKlarActionButtons(totalH);
+      syncKlarActionButtons(totalH, { totalHours: totalH });
     }
   }
 
@@ -855,9 +922,13 @@
     const body = { start: startIso, end: endIso, mode };
     if (blockId) body.blockId = blockId;
     if (hasNote) body.note = options.note;
-    if (mode === 'remove' || mode === 'complete' || mode === 'done') {
+    if (mode === 'remove' || mode === 'complete' || mode === 'done'
+      || mode === 'complete-all' || mode === 'done-all') {
       delete body.start;
       delete body.end;
+    }
+    if (mode === 'complete-all' || mode === 'done-all') {
+      delete body.blockId;
     }
     if (hasNote && mode === 'update' && (startIso == null || startIso === '') && (endIso == null || endIso === '')) {
       delete body.start;
@@ -889,6 +960,9 @@
         ev.blockDone = true;
         ev.status = 'Klar';
         showSaveToast('Tillfälle kvar i kalendern som klart');
+      } else if (mode === 'complete-all' || mode === 'done-all') {
+        ev.blockDone = true;
+        ev.status = 'Klar';
       } else if (hasNote && !startIso && !endIso) {
         const saved = nextBlocks.find((b) => b.id === blockId);
         ev.blockNote = saved && saved.note ? saved.note : '';
@@ -2002,8 +2076,14 @@
     const focusBlock = focusBlockId ? blockList.find((b) => b.id === focusBlockId) : null;
     const focusSched = focusBlock ? KV.normalizeSchedule(focusBlock.start, focusBlock.end) : null;
     const isKlar = cls === 'klar';
-    const canKlar = !isKlar && !!ev.runRec?.id;
-    const canKlarTid = canKlar && !!kundId;
+    const runStatusRaw = String(ev.runRec?.fields?.Status || '').trim();
+    const isRunKlar = runStatusRaw === 'Klar' || runStatusRaw === 'Avslutad';
+    // Tillfälle-knappar styrs av detta block; hela-körningen av run-status
+    const canKlarTillfalle = !isKlar && !!ev.runRec?.id && !!focusSched;
+    const canKlarHela = !isRunKlar && !!ev.runRec?.id;
+    const canKlar = canKlarHela; // estimate/remove block medan körningen är öppen
+    const canKlarTid = canKlarHela && !!kundId;
+    const canKlarTillfalleTid = canKlarTillfalle && !!kundId;
     const hasHours = totalH > 0;
     const hasFocusHours = !!(focusSched && focusSched.hours > 0);
     let blockLabel = 'Ej avsatt — dra från listan till kalendern';
@@ -2070,14 +2150,14 @@
           <h4 class="kalender-detail-scope-title">Detta tillfälle</h4>
           <p class="kalender-detail-blocks-hint">${esc(fmtDate(focusSched.date))} · ${esc(KV.fmtTimeLabel(focusSched.startMin))}–${esc(KV.fmtTimeLabel(focusSched.endMin))} (${esc(String(focusSched.hours))} t)</p>
           ${noteHtml}
-          ${canKlar ? `<div class="kalender-detail-actions kalender-detail-actions--scope">
+          ${canKlarTillfalle ? `<div class="kalender-detail-actions kalender-detail-actions--scope">
             <button type="button" class="btn btn-ghost btn-sm" data-klar-tillfalle>
               <i class="fas fa-check"></i> Klarmarkera tillfälle
             </button>
-            ${canKlarTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tillfalle-tid ${hasFocusHours ? '' : 'disabled'}>
+            ${canKlarTillfalleTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tillfalle-tid ${hasFocusHours ? '' : 'disabled'}>
               <i class="fas fa-check"></i> Klarmarkera tillfälle & tid (${esc(String(focusSched.hours))} t)
             </button>` : ''}
-          </div>` : ''}
+          </div>` : (isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>` : '')}
         </div>`
       : '';
 
@@ -2088,8 +2168,10 @@
         el.detailTitle.textContent = name;
       }
     }
-    const klarOnlyCls = hasHours ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm';
-    const klarTidCls = hasHours ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+    // När ett tillfälle är i fokus: tillfälle-knappar är primära; hela-körningen sekundär
+    const focusScoped = !!focusSched;
+    const klarOnlyCls = (hasHours || focusScoped) ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm';
+    const klarTidCls = (hasHours && !focusScoped) ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
     el.detailBody.innerHTML = `
       <div class="kalender-detail-status kalender-detail-status--${cls}">${esc(statusLabel(st, ev.deadline))}${plan.fullyPlanned ? ' · Inplanerad' : ''}</div>
       <dl class="kalender-detail-dl">
@@ -2112,7 +2194,7 @@
           ${canKlarTid ? `<button type="button" class="${klarTidCls}" data-klar-tid ${hasHours ? '' : 'disabled'}>
             <i class="fas fa-check"></i> Klarmarkera hela & tid${hasHours ? ` (${esc(String(totalH))} t)` : ''}
           </button>` : ''}
-          ${isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Klarmarkerad</span>` : ''}
+          ${isRunKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Hela körningen klarmarkerad</span>` : ''}
           <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
         </div>
       </div>
