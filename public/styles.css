@@ -23368,6 +23368,36 @@ body.kalender-detail-open { overflow: hidden; }
     white-space: nowrap;
     max-width: 100%;
 }
+.kalender-block-draft {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    z-index: 3;
+    pointer-events: none;
+    border: 1px dashed color-mix(in srgb, var(--accent, #13505c) 55%, transparent);
+    background: color-mix(in srgb, var(--accent, #13505c) 18%, white);
+    color: var(--title-text, #0f172a);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.25rem 0.4rem;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+.kalender-create-slot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: min(50vh, 22rem);
+    overflow: auto;
+    margin-top: 0.35rem;
+}
+.kalender-block,
+.kalender-block-main {
+    cursor: pointer;
+}
+.kalender-block.is-draggable .kalender-block-main {
+    cursor: grab;
+}
 .kalender-block-resize {
     position: absolute;
     left: 0;
