@@ -22854,6 +22854,29 @@ a.byra-profil-chip:hover {
 .kalender-detail-estimate-row input {
     max-width: 7rem;
 }
+.kalender-detail-note {
+    margin: 0 0 0.65rem;
+}
+.kalender-detail-note label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--text);
+}
+.kalender-detail-note-input {
+    width: 100%;
+    min-height: 2.6rem;
+    resize: vertical;
+    margin-bottom: 0.35rem;
+}
+.kalender-detail-note-readonly {
+    margin: 0 0 0.5rem;
+    font-size: 0.82rem;
+    color: var(--text);
+    opacity: 0.9;
+    white-space: pre-wrap;
+}
 .kalender-detail-scope {
     margin: 0 0 0.85rem;
 }
@@ -23236,6 +23259,7 @@ body.kalender-detail-open { overflow: hidden; }
 .kalender-time-track {
     position: relative;
     flex: 0 0 auto;
+    cursor: crosshair;
 }
 .kalender-time-hour {
     box-sizing: border-box;
@@ -23335,26 +23359,47 @@ body.kalender-detail-open { overflow: hidden; }
     letter-spacing: 0.02em;
     opacity: 0.7;
 }
+.kalender-block-note {
+    font-size: 0.65rem;
+    font-weight: 500;
+    opacity: 0.85;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
 .kalender-block-resize {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 0;
     height: 10px;
     cursor: ns-resize;
     touch-action: none;
+    z-index: 2;
+}
+.kalender-block-resize--end {
+    bottom: 0;
     background: linear-gradient(to bottom, transparent, rgb(15 23 42 / 12%));
+}
+.kalender-block-resize--start {
+    top: 0;
+    background: linear-gradient(to top, transparent, rgb(15 23 42 / 12%));
 }
 .kalender-block-resize::after {
     content: '';
     position: absolute;
     left: 50%;
-    bottom: 3px;
     width: 22px;
     height: 3px;
     margin-left: -11px;
     border-radius: 2px;
     background: rgb(15 23 42 / 28%);
+}
+.kalender-block-resize--end::after {
+    bottom: 3px;
+}
+.kalender-block-resize--start::after {
+    top: 3px;
 }
 .kalender-toast {
     position: fixed;

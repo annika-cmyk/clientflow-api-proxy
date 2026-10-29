@@ -22645,6 +22645,7 @@ app.post('/api/uppdrag/ensure-runs', authenticateToken, async (req, res) => {
 //   { start, end } — legacy: ersätt med ett block (eller null/null för att rensa)
 //   { start, end, mode: 'add' } — lägg till ytterligare tillfälle
 //   { start, end, blockId, mode: 'update' } — flytta/ändra ett block
+//   { blockId, note, mode: 'update' } — anteckning-only (utan start/end)
 //   { blockId, mode: 'remove' } — ta bort ett block
 app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, res) => {
   try {
@@ -22657,14 +22658,17 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
     const hasEnd = Object.prototype.hasOwnProperty.call(body, 'end');
     const hasMode = Object.prototype.hasOwnProperty.call(body, 'mode');
     const hasBlockId = Object.prototype.hasOwnProperty.call(body, 'blockId');
+    const hasNote = Object.prototype.hasOwnProperty.call(body, 'note');
     const modeRaw = String(body.mode || '').trim().toLowerCase();
     const modeNeedsNoTimes = modeRaw === 'remove' || modeRaw === 'complete' || modeRaw === 'done';
-    if (!hasStart && !hasEnd && !modeNeedsNoTimes) {
+    const noteOnlyUpdate = hasNote && hasBlockId && body.blockId && (modeRaw === 'update' || (!modeRaw && !hasStart && !hasEnd));
+    if (!hasStart && !hasEnd && !modeNeedsNoTimes && !noteOnlyUpdate) {
       return res.status(400).json({ error: 'Ange start och/eller end (ISO-datetime), eller null för att rensa.' });
     }
 
     let mode = modeRaw || 'set';
     if (!modeRaw && hasBlockId && body.blockId) mode = 'update';
+    if (noteOnlyUpdate) mode = 'update';
     if ((mode === 'remove' || mode === 'complete' || mode === 'done') && !body.blockId) {
       return res.status(400).json({ error: `blockId krävs för mode=${mode}` });
     }
@@ -22695,12 +22699,14 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
     let nextBlocks;
     try {
       const current = KalenderScheduleBlocks.parseBlocksFromFields(f);
-      nextBlocks = KalenderScheduleBlocks.applyMutation(current, {
+      const mut = {
         mode,
         blockId: body.blockId,
         start: hasStart ? body.start : undefined,
         end: hasEnd ? body.end : undefined
-      });
+      };
+      if (hasNote) mut.note = body.note;
+      nextBlocks = KalenderScheduleBlocks.applyMutation(current, mut);
     } catch (mutErr) {
       return res.status(400).json({ error: mutErr.message || 'Ogiltig tidblock-ändring' });
     }

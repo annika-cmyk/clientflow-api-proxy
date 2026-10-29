@@ -835,7 +835,7 @@
    * @param {object} ev
    * @param {string|null} startIso
    * @param {string|null} endIso
-   * @param {{ mode?: string, blockId?: string|null }} [opts]
+   * @param {{ mode?: string, blockId?: string|null, note?: string|null }} [opts]
    */
   async function persistSchedule(ev, startIso, endIso, opts) {
     const runId = String(ev.runRec?.id || '').trim();
@@ -846,6 +846,7 @@
     const options = opts || {};
     let mode = String(options.mode || '').trim().toLowerCase();
     let blockId = options.blockId != null ? options.blockId : (ev.blockId || null);
+    const hasNote = Object.prototype.hasOwnProperty.call(options, 'note');
     if (!mode) {
       if (blockId) mode = 'update';
       else if (blocksOf(ev).length) mode = 'add';
@@ -853,7 +854,12 @@
     }
     const body = { start: startIso, end: endIso, mode };
     if (blockId) body.blockId = blockId;
+    if (hasNote) body.note = options.note;
     if (mode === 'remove' || mode === 'complete' || mode === 'done') {
+      delete body.start;
+      delete body.end;
+    }
+    if (hasNote && mode === 'update' && (startIso == null || startIso === '') && (endIso == null || endIso === '')) {
       delete body.start;
       delete body.end;
     }
@@ -883,6 +889,10 @@
         ev.blockDone = true;
         ev.status = 'Klar';
         showSaveToast('Tillfälle kvar i kalendern som klart');
+      } else if (hasNote && !startIso && !endIso) {
+        const saved = nextBlocks.find((b) => b.id === blockId);
+        ev.blockNote = saved && saved.note ? saved.note : '';
+        showSaveToast('Anteckning sparad');
       } else {
         showSaveToast(mode === 'remove' ? 'Tidblock borttaget' : 'Tidblock sparat');
       }
@@ -1047,17 +1057,35 @@
     const layout = KV.blockLayout(sched.startMin, sched.endMin);
     const done = st === 'Klar' || st === 'Avslutad';
     const canDrag = !!ev.runRec?.id && !done;
+    const note = String(ev.blockNote || (focusBlockNoteOf(ev)) || '').trim();
+    const titleParts = [
+      `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`,
+      name,
+      done ? 'Klar' : '',
+      note
+    ].filter(Boolean);
     return `<div class="kalender-block kalender-block--${cls}${canDrag ? ' is-draggable' : ''}"
       data-key="${esc(ev.key)}" data-timed="1"
       style="${KV.blockPositionStyleAttr(layout)}"
-      title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name}${done ? ' · Klar' : ''}`)}">
+      title="${esc(titleParts.join(' · '))}">
+      ${canDrag ? '<span class="kalender-block-resize kalender-block-resize--start" data-resize="start" title="Ändra start" aria-hidden="true"></span>' : ''}
       <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}" ${canDrag ? 'draggable="true"' : ''}>
         <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
         <span class="kalender-block-name">${esc(name)}</span>
+        ${note ? `<span class="kalender-block-note">${esc(note)}</span>` : ''}
         <span class="kalender-block-typ">${esc(done ? 'Klar' : typShort(ev.typ))}</span>
       </button>
-      ${canDrag ? '<span class="kalender-block-resize" data-resize="1" title="Ändra längd" aria-hidden="true"></span>' : ''}
+      ${canDrag ? '<span class="kalender-block-resize kalender-block-resize--end" data-resize="end" title="Ändra slut" aria-hidden="true"></span>' : ''}
     </div>`;
+  }
+
+  function focusBlockNoteOf(ev) {
+    if (!ev) return '';
+    if (ev.blockNote) return String(ev.blockNote);
+    const bid = String(ev.blockId || '').trim();
+    if (!bid || !Array.isArray(ev.scheduleBlocks)) return '';
+    const b = ev.scheduleBlocks.find((x) => x && x.id === bid);
+    return b && b.note ? String(b.note) : '';
   }
 
   function untimedChipHtml(ev) {
@@ -1159,6 +1187,7 @@
     gridEl.querySelectorAll('.kalender-block-resize').forEach((handle) => {
       const block = handle.closest('.kalender-block');
       const key = block?.getAttribute('data-key');
+      const edge = handle.getAttribute('data-resize') === 'start' ? 'start' : 'end';
       handle.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1170,7 +1199,9 @@
         dragState = {
           key,
           mode: 'resize',
+          edge,
           startMin: sched.startMin,
+          endMin: sched.endMin,
           date: col.getAttribute('data-date')
         };
         block.classList.add('is-resizing');
@@ -1180,8 +1211,10 @@
         const col = block?.closest('.kalender-time-col');
         if (!col) return;
         const { y, height } = pointerYInCol(e.clientY, col);
-        const endMin = KV.yToMinutes(y, height) + KV.SNAP_MINUTES;
-        const resized = KV.resizeBlock(dragState.startMin, endMin);
+        const atMin = KV.yToMinutes(y, height);
+        const resized = dragState.edge === 'start'
+          ? KV.resizeBlockStart(atMin, dragState.endMin)
+          : KV.resizeBlock(dragState.startMin, atMin + KV.SNAP_MINUTES);
         const layout = KV.blockLayout(resized.startMin, resized.endMin);
         const pos = KV.blockPositionStyle(layout);
         block.style.top = pos.top;
@@ -1190,6 +1223,7 @@
         if (timeEl) {
           timeEl.textContent = `${KV.fmtTimeLabel(resized.startMin)}–${KV.fmtTimeLabel(resized.endMin)}`;
         }
+        dragState.startMin = resized.startMin;
         dragState.endMin = resized.endMin;
         previewDetailSchedule(key, resized.startMin, resized.endMin);
       });
@@ -1201,7 +1235,7 @@
         const date = dragState.date;
         const startMin = dragState.startMin;
         dragState = null;
-        if (endMin == null || !date) return;
+        if (endMin == null || startMin == null || !date) return;
         const ev = byKey.get(String(key || ''));
         if (!ev) {
           render();
@@ -1829,8 +1863,9 @@
             const sched = KV.normalizeSchedule(b.start, b.end);
             if (!sched) return '';
             const isFocus = focusBlockId && b.id === focusBlockId;
+            const rowNote = b.note ? ` — ${String(b.note).trim()}` : '';
             return `<li class="kalender-detail-block-row${isFocus ? ' is-focus' : ''}">
-              <span>${esc(fmtDate(sched.date))} · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))} (${esc(String(sched.hours))} t)${isFocus ? ' · valt' : ''}</span>
+              <span>${esc(fmtDate(sched.date))} · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))} (${esc(String(sched.hours))} t)${isFocus ? ' · valt' : ''}${esc(rowNote)}</span>
               ${canKlar ? `<button type="button" class="btn btn-ghost btn-sm" data-remove-block="${esc(b.id)}" title="Ta bort tillfälle"><i class="fas fa-times"></i></button>` : ''}
             </li>`;
           }).join('')}
@@ -1851,18 +1886,34 @@
         </div>`
       : '';
 
-    const tillfalleHtml = (canKlar && focusSched)
+    const focusNote = focusBlock ? String(focusBlock.note || '').trim() : String(ev.blockNote || '').trim();
+    const canEditNote = !!focusSched && !!focusBlockId && !!ev.runRec?.id;
+    const noteHtml = canEditNote
+      ? `<div class="kalender-detail-note">
+          <label for="kal-block-note">Anteckning</label>
+          <textarea id="kal-block-note" class="kunduppgifter-input kalender-detail-note-input" rows="2"
+            maxlength="${SB.NOTE_MAX_LEN || 2000}"
+            placeholder="T.ex. mejla ut dokumenten för signering">${esc(focusNote)}</textarea>
+          <div class="kalender-detail-estimate-row">
+            <button type="button" class="btn btn-ghost btn-sm" data-save-note>Spara anteckning</button>
+          </div>
+        </div>`
+      : (focusNote
+        ? `<p class="kalender-detail-note-readonly">${esc(focusNote)}</p>`
+        : '');
+    const tillfalleHtml = focusSched
       ? `<div class="kalender-detail-scope">
           <h4 class="kalender-detail-scope-title">Detta tillfälle</h4>
           <p class="kalender-detail-blocks-hint">${esc(fmtDate(focusSched.date))} · ${esc(KV.fmtTimeLabel(focusSched.startMin))}–${esc(KV.fmtTimeLabel(focusSched.endMin))} (${esc(String(focusSched.hours))} t)</p>
-          <div class="kalender-detail-actions kalender-detail-actions--scope">
+          ${noteHtml}
+          ${canKlar ? `<div class="kalender-detail-actions kalender-detail-actions--scope">
             <button type="button" class="btn btn-ghost btn-sm" data-klar-tillfalle>
               <i class="fas fa-check"></i> Klarmarkera tillfälle
             </button>
             ${canKlarTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tillfalle-tid ${hasFocusHours ? '' : 'disabled'}>
               <i class="fas fa-check"></i> Klarmarkera tillfälle & tid (${esc(String(focusSched.hours))} t)
             </button>` : ''}
-          </div>
+          </div>` : ''}
         </div>`
       : '';
 
@@ -1959,6 +2010,25 @@
           refreshOpenDetail();
         } else {
           saveEstBtn.disabled = false;
+        }
+      });
+    }
+    const saveNoteBtn = el.detailBody.querySelector('[data-save-note]');
+    if (saveNoteBtn) {
+      saveNoteBtn.addEventListener('click', async () => {
+        const ta = el.detailBody.querySelector('#kal-block-note');
+        const note = ta ? String(ta.value || '') : '';
+        saveNoteBtn.disabled = true;
+        const ok = await persistSchedule(ev, null, null, {
+          mode: 'update',
+          blockId: focusBlockId,
+          note
+        });
+        if (ok) {
+          render();
+          refreshOpenDetail();
+        } else {
+          saveNoteBtn.disabled = false;
         }
       });
     }
