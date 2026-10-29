@@ -24536,6 +24536,19 @@ body.kalender-detail-open { overflow: hidden; }
     overflow: auto;
     margin-top: 0.35rem;
 }
+.kalender-meeting-invite-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.kalender-meeting-invite-form .kunduppgifter-input {
+    margin-bottom: 0.15rem;
+}
+.kalender-meeting-invite-form .kalender-detail-actions {
+    margin-top: 0.85rem;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
 .kalender-block,
 .kalender-block-main {
     cursor: pointer;

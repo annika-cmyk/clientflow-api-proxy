@@ -1430,15 +1430,31 @@
     const runs = selectableRunsForSlot();
     if (el.detailTitle) el.detailTitle.textContent = 'Ny tidsbokning';
     el.detailBody.innerHTML = `
-      <p class="kalender-detail-blocks-hint">Vald tid: <strong>${esc(timeLabel)}</strong>. Välj kundens uppdragskörning att koppla till.</p>
-      <div class="kalender-detail-note">
-        <label for="kal-create-slot-q">Sök kund eller uppdrag</label>
-        <input type="search" id="kal-create-slot-q" class="kunduppgifter-input" placeholder="T.ex. kundnamn eller bokslut" autocomplete="off">
+      <p class="kalender-detail-blocks-hint">Vald tid: <strong>${esc(timeLabel)}</strong>.</p>
+      <div class="kalender-detail-scope">
+        <h4 class="kalender-detail-scope-title">Bjud in till möte</h4>
+        <p class="kalender-detail-blocks-hint">Skicka en inbjudan med Google-kalender (och Meet vid Distans).</p>
+        <button type="button" class="btn btn-primary btn-sm" data-open-meeting-invite>
+          <i class="fas fa-envelope"></i> Bjud in till möte
+        </button>
       </div>
-      <div class="kalender-create-slot-list" data-create-slot-list></div>
-      ${runs.length ? '' : '<p class="kalender-side-empty">Inga öppna körningar i listan — byt filter eller dra från Att planera.</p>'}`;
+      <div class="kalender-detail-scope">
+        <h4 class="kalender-detail-scope-title">Koppla till uppdrag</h4>
+        <p class="kalender-detail-blocks-hint">Välj kundens uppdragskörning att koppla till.</p>
+        <div class="kalender-detail-note">
+          <label for="kal-create-slot-q">Sök kund eller uppdrag</label>
+          <input type="search" id="kal-create-slot-q" class="kunduppgifter-input" placeholder="T.ex. kundnamn eller bokslut" autocomplete="off">
+        </div>
+        <div class="kalender-create-slot-list" data-create-slot-list></div>
+        ${runs.length ? '' : '<p class="kalender-side-empty">Inga öppna körningar i listan — byt filter eller dra från Att planera.</p>'}
+      </div>`;
     el.detail.hidden = false;
     document.body.classList.add('kalender-detail-open');
+
+    const inviteBtn = el.detailBody.querySelector('[data-open-meeting-invite]');
+    if (inviteBtn) {
+      inviteBtn.addEventListener('click', () => openMeetingInviteForm(date, startMin, endMin));
+    }
 
     const listEl = el.detailBody.querySelector('[data-create-slot-list]');
     const qInput = el.detailBody.querySelector('#kal-create-slot-q');
@@ -1501,6 +1517,133 @@
       qInput.addEventListener('input', paint);
       setTimeout(() => qInput.focus(), 0);
     }
+  }
+
+  function openMeetingInviteForm(date, startMin, endMin) {
+    if (!el.detail || !el.detailBody) return;
+    openDetailKey = null;
+    const timeLabel = `${fmtDate(date)} · ${KV.fmtTimeLabel(startMin)}–${KV.fmtTimeLabel(endMin)}`;
+    const startIso = KV.toLocalDateTimeIso(date, startMin);
+    const endIso = KV.toLocalDateTimeIso(date, endMin);
+    if (el.detailTitle) el.detailTitle.textContent = 'Bjud in till möte';
+    el.detailBody.innerHTML = `
+      <p class="kalender-detail-blocks-hint">Tid: <strong>${esc(timeLabel)}</strong>. Mottagaren får en Google-kalenderinbjudan (och Meet vid Distans).</p>
+      <form class="kalender-meeting-invite-form" data-meeting-invite-form>
+        <label class="kalender-gcal-label" for="kal-invite-name">Namn</label>
+        <input type="text" id="kal-invite-name" class="kunduppgifter-input" name="bookerName" required autocomplete="name" placeholder="Mottagarens namn">
+
+        <label class="kalender-gcal-label" for="kal-invite-email">E-post</label>
+        <input type="email" id="kal-invite-email" class="kunduppgifter-input" name="bookerEmail" required autocomplete="email" placeholder="namn@foretag.se">
+
+        <label class="kalender-gcal-label" for="kal-invite-title">Mötestitel</label>
+        <input type="text" id="kal-invite-title" class="kunduppgifter-input" name="title" value="Möte" placeholder="Möte">
+
+        <label class="kalender-gcal-label" for="kal-invite-type">Typ</label>
+        <select id="kal-invite-type" class="kunduppgifter-input" name="meetingType">
+          <option value="Distans" selected>Distans (Google Meet)</option>
+          <option value="På plats">På plats</option>
+          <option value="Telefon">Telefon</option>
+        </select>
+
+        <div data-invite-location-wrap hidden>
+          <label class="kalender-gcal-label" for="kal-invite-location">Adress / plats</label>
+          <input type="text" id="kal-invite-location" class="kunduppgifter-input" name="location" placeholder="Kontorsadress">
+        </div>
+
+        <label class="kalender-gcal-label" for="kal-invite-note">Anteckning / agenda (valfritt)</label>
+        <textarea id="kal-invite-note" class="kunduppgifter-input kalender-gcal-note" name="note" rows="3" placeholder="Vad ska ni gå igenom?"></textarea>
+
+        <p class="kalender-detail-blocks-hint" data-invite-error style="color:var(--error,#b42318);display:none;"></p>
+        <div class="kalender-detail-actions kalender-detail-actions--scope">
+          <button type="button" class="btn btn-ghost btn-sm" data-invite-back>Tillbaka</button>
+          <button type="submit" class="btn btn-primary btn-sm" data-invite-submit>
+            <i class="fas fa-paper-plane"></i> Skicka inbjudan
+          </button>
+        </div>
+      </form>`;
+    el.detail.hidden = false;
+    document.body.classList.add('kalender-detail-open');
+
+    const form = el.detailBody.querySelector('[data-meeting-invite-form]');
+    const typeEl = el.detailBody.querySelector('#kal-invite-type');
+    const locWrap = el.detailBody.querySelector('[data-invite-location-wrap]');
+    const errEl = el.detailBody.querySelector('[data-invite-error]');
+    const backBtn = el.detailBody.querySelector('[data-invite-back]');
+    const submitBtn = el.detailBody.querySelector('[data-invite-submit]');
+
+    const syncType = () => {
+      const t = typeEl?.value || 'Distans';
+      if (locWrap) locWrap.hidden = t !== 'På plats';
+    };
+    if (typeEl) typeEl.addEventListener('change', syncType);
+    syncType();
+
+    if (backBtn) {
+      backBtn.addEventListener('click', () => openCreateSlotPicker(date, startMin, endMin));
+    }
+
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (errEl) {
+          errEl.style.display = 'none';
+          errEl.textContent = '';
+        }
+        const fd = new FormData(form);
+        const meetingType = String(fd.get('meetingType') || 'Distans').trim();
+        const payload = {
+          bookerName: String(fd.get('bookerName') || '').trim(),
+          bookerEmail: String(fd.get('bookerEmail') || '').trim(),
+          title: String(fd.get('title') || 'Möte').trim() || 'Möte',
+          meetingType,
+          location: meetingType === 'På plats' ? String(fd.get('location') || '').trim() : '',
+          note: String(fd.get('note') || '').trim(),
+          start: startIso,
+          end: endIso
+        };
+        if (!payload.bookerName || !payload.bookerEmail) {
+          if (errEl) {
+            errEl.textContent = 'Namn och e-post krävs';
+            errEl.style.display = '';
+          }
+          return;
+        }
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skickar...';
+        }
+        try {
+          const res = await fetch(`${baseUrl}/api/motesbokning/invites/schedule`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(authOpts().headers || {}) },
+            credentials: authOpts().credentials || 'same-origin',
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Kunde inte skicka inbjudan');
+          closeDetail();
+          const meetHint = data.meetCreated || meetingType === 'Distans'
+            ? ' Google Meet skapas på händelsen.'
+            : '';
+          showSaveToast(`Inbjudan skickad till ${payload.bookerEmail}.${meetHint}`);
+          if (gcalPullEnabled()) {
+            try { await pullGoogleEvents(); } catch (_) { /* ignore */ }
+          }
+          render();
+        } catch (err) {
+          if (errEl) {
+            errEl.textContent = err.message || 'Kunde inte skicka inbjudan';
+            errEl.style.display = '';
+          }
+          showSaveToast(err.message || 'Kunde inte skicka inbjudan', true);
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Skicka inbjudan';
+          }
+        }
+      });
+    }
+    setTimeout(() => el.detailBody.querySelector('#kal-invite-name')?.focus(), 0);
   }
 
   function nowMarkerHtml(dayIso) {
