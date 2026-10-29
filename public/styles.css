@@ -24791,6 +24791,13 @@ body.kalender-detail-open { overflow: hidden; }
   font-size: 0.72rem; margin-left: 0.25rem;
 }
 .mb-host-label { margin-right: 0.5rem; color: #64748b; }
+.mb-host-hint {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    font-weight: 400;
+}
 .mb-host-slug {
   font-size: 0.9rem; background: #f1f5f9; padding: 0.2rem 0.5rem;
   border-radius: 6px; color: #1a73e8;

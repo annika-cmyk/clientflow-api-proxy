@@ -1,5 +1,6 @@
 /**
- * Publik mötesbokning: engångstoken, möteslänk (?lank=) eller delning (?dela=).
+ * Publik mötesbokning: engångstoken, möteslänk (?lank=), delning (?dela=)
+ * eller central bokningssida (?host=).
  */
 (function () {
   'use strict';
@@ -9,7 +10,16 @@
   const manageToken = String(params.get('hantera') || params.get('manage') || '').trim();
   const linkSlug = String(params.get('lank') || params.get('link') || '').trim();
   const shareToken = String(params.get('dela') || params.get('share') || '').trim();
+  const hostKey = String(params.get('host') || '').trim();
   const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || window.location.origin;
+
+  const HUB_ICONS = {
+    bolt: 'fa-bolt',
+    lightbulb: 'fa-lightbulb',
+    sun: 'fa-sun',
+    comments: 'fa-comments',
+    briefcase: 'fa-briefcase'
+  };
 
   const el = {
     loading: document.getElementById('boka-loading'),
@@ -29,6 +39,12 @@
     note: document.getElementById('boka-note'),
     submit: document.getElementById('boka-submit'),
     formError: document.getElementById('boka-form-error'),
+    hubWrap: document.getElementById('boka-hub-wrap'),
+    hubAvatar: document.getElementById('boka-hub-avatar'),
+    hubTitle: document.getElementById('boka-hub-title'),
+    hubWith: document.getElementById('boka-hub-with'),
+    hubList: document.getElementById('boka-hub-list'),
+    backHub: document.getElementById('boka-back-hub'),
     linkWrap: document.getElementById('boka-link-wrap'),
     linkTitle: document.getElementById('boka-link-title'),
     linkHost: document.getElementById('boka-link-host'),
@@ -89,9 +105,29 @@
   };
 
   function hideAll() {
-    ['loading', 'error', 'done', 'closed', 'formWrap', 'linkWrap', 'manage'].forEach((k) => {
+    ['loading', 'error', 'done', 'closed', 'formWrap', 'linkWrap', 'hubWrap', 'manage'].forEach((k) => {
       if (el[k]) el[k].classList.add('hidden');
     });
+  }
+
+  function locLabel(locations) {
+    const locs = locations || [];
+    if (!locs.length) return '';
+    const first = locs[0];
+    if (first.type === 'meet') return 'Google Meet';
+    if (first.type === 'phone') return first.value || first.label || 'Telefon';
+    return first.value || first.label || 'På plats';
+  }
+
+  function fmtDurationsList(arr) {
+    return (arr || [])
+      .map((n) => fmtDur(n))
+      .join(', ')
+      .replace(/, ([^,]+)$/, ' eller $1');
+  }
+
+  function hubUrlFor(key) {
+    return `boka-mote.html?host=${encodeURIComponent(key)}`;
   }
 
   function setManageMsg(okText, errText) {
@@ -755,6 +791,51 @@
     }
   }
 
+  async function loadHostPage() {
+    show('loading');
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/motesbokning/public/host/${encodeURIComponent(hostKey)}`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Bokningssidan hittades inte');
+      const host = data.host || {};
+      const list = Array.isArray(data.links) ? data.links : [];
+      if (el.hubAvatar) el.hubAvatar.textContent = hostInitial(host.email || host.displayName || hostKey);
+      if (el.hubTitle) el.hubTitle.textContent = 'Välj mötestyp';
+      if (el.hubWith) {
+        el.hubWith.textContent = host.displayName
+          ? `Med ${host.displayName}`
+          : '';
+      }
+      if (el.hubList) {
+        el.hubList.innerHTML = list.map((link) => {
+          const icon = HUB_ICONS[link.icon] || 'fa-bolt';
+          const color = esc(link.color || '#13505c');
+          const desc = String(link.description || '').trim();
+          const meta = [fmtDurationsList(link.durations), locLabel(link.locations)].filter(Boolean).join(' · ');
+          const href = link.url
+            || `boka-mote.html?lank=${encodeURIComponent(link.slug)}&host=${encodeURIComponent(host.key || hostKey)}`;
+          return `
+            <a class="boka-hub-card" role="listitem" href="${esc(href)}">
+              <span class="boka-hub-icon" style="background:${color}"><i class="fas ${icon}"></i></span>
+              <span>
+                <h2>${esc(link.title || 'Möte')}</h2>
+                ${desc ? `<p>${esc(desc.length > 140 ? desc.slice(0, 137) + '…' : desc)}</p>` : ''}
+                ${meta ? `<p class="boka-hub-meta">${esc(meta)}</p>` : ''}
+              </span>
+              <i class="fas fa-chevron-right boka-hub-chevron" aria-hidden="true"></i>
+            </a>`;
+        }).join('');
+      }
+      if (el.root) el.root.classList.add('boka-wrap--narrow');
+      show('hubWrap');
+    } catch (err) {
+      show('error');
+      if (el.errorText) el.errorText.textContent = err.message || 'Kunde inte ladda bokningssidan.';
+    }
+  }
+
   async function loadLinkOrShare() {
     show('loading');
     try {
@@ -764,6 +845,14 @@
       const data = await fetchLinkAvailability();
       if (data.link?.slug) linkState.slug = data.link.slug;
       applyLinkData(data);
+      if (el.backHub) {
+        if (hostKey) {
+          el.backHub.classList.remove('hidden');
+          el.backHub.href = hubUrlFor(hostKey);
+        } else {
+          el.backHub.classList.add('hidden');
+        }
+      }
       show('linkWrap');
     } catch (err) {
       show('error');
@@ -793,6 +882,8 @@
     loadManage();
   } else if (linkSlug || shareToken) {
     loadLinkOrShare();
+  } else if (hostKey) {
+    loadHostPage();
   } else {
     loadToken();
   }

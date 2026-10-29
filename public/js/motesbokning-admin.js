@@ -62,6 +62,7 @@
   let invites = [];
   let currentTab = 'lankar';
   let userEmail = '';
+  let hostPageUrl = '';
 
   const DAY_LABELS = ['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag', 'Söndag'];
   const DEFAULT_INTERVAL = { start: '09:00', end: '16:30' };
@@ -197,13 +198,16 @@
     if (el.badgeLankar) el.badgeLankar.textContent = String(visible.length);
     if (el.badgeHidden) el.badgeHidden.textContent = String(hidden.length);
 
-    const first = visible[0] || links[0];
-    if (first && el.hostSlug) {
-      const slugPart = first.slug ? first.slug.split('-')[0] : 'mote';
-      const hostPath = `boka-mote.html?lank=${encodeURIComponent(first.slug)}`;
-      const full = (first.url || hostPath).replace(/\?.*$/, '') + `?host=${encodeURIComponent(userEmail.split('@')[0] || 'mote')}`;
+    if (el.hostSlug) {
+      const full = hostPageUrl
+        || (() => {
+          const local = String(userEmail || '').split('@')[0] || 'mote';
+          const origin = (typeof window !== 'undefined' && window.location && window.location.origin)
+            || 'https://www.app.clientflow.se';
+          return `${origin}/boka-mote.html?host=${encodeURIComponent(local.toLowerCase())}`;
+        })();
       el.hostSlug.textContent = full.replace(/^https?:\/\//, '');
-      if (el.openHost) el.openHost.href = first.url || hostPath;
+      if (el.openHost) el.openHost.href = full;
     }
 
     document.querySelectorAll('.mb-link-card').forEach((card) => {
@@ -688,6 +692,7 @@
       ]);
       links = Array.isArray(linkData.links) ? linkData.links : [];
       invites = Array.isArray(inviteData.invites) ? inviteData.invites : [];
+      hostPageUrl = String(linkData.hostUrl || '').trim();
       renderLinks();
       renderInvites();
       show(el.loading, false);
@@ -801,8 +806,8 @@
 
     el.shareCopy?.addEventListener('click', () => copyText(el.shareUrl?.value || ''));
     el.copyHost?.addEventListener('click', () => {
-      const t = el.openHost?.href || el.hostSlug?.textContent || '';
-      copyText(t);
+      const t = hostPageUrl || el.openHost?.href || '';
+      copyText(t.startsWith('http') ? t : (t ? `https://${t}` : ''));
     });
   }
 
