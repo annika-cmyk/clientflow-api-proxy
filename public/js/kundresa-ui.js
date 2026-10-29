@@ -1,7 +1,7 @@
 /**
  * Kundresa-UI — popup «Din resa» (analyskorts-design) med INBÄDDAT steg-innehåll.
  * Stegytan (#kundresa-step-host) fylls av CustomerCardManager via reparent av befintliga kort.
- * Layout: Förslag 1 · Företag & personer i steg 1 (#kundresa-step-host: kort, checklista),
+ * Steg 1: checklista «Att göra först» i #kundresa-step-host (auktoritativ över Förslag 1).
  * övriga steg behåller Förslag 2 · Lugnare-chrome. Spar-API oförändrat.
  */
 (function (global) {
@@ -171,7 +171,7 @@
     const step1Sub = s.step1Substatus || null;
     const step2Sub = s.step2Substatus || null;
     const step3Sub = s.step3Substatus || null;
-    const showChecklist = isStep1(activeStep) && step1Sub && Array.isArray(step1Sub.items) && step1Sub.items.length;
+    const showChecklist = false; /* checklista byggs i #kundresa-step-host */
     const remainingLabel = isStep1(activeStep)
       ? (step1Sub?.remainingLabel || '')
       : (isStep2(activeStep)
