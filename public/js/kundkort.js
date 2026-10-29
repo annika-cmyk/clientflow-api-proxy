@@ -7373,14 +7373,14 @@ class CustomerCardManager {
                     : `<span class="roller-meta-bit roller-detail-missing">e-post saknas</span>`);
                 row2Parts.push(telefon
                     ? `<span class="roller-meta-bit">${this._esc(telefon)}</span>`
-                    : `<span class="roller-meta-bit roller-detail-missing" role="button" tabindex="0" data-idx="${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.editRollePerson(${idx});">telefon saknas</span>`);
+                    : `<span class="roller-meta-bit roller-detail-missing${needsContact ? ' roller-detail-missing--vh' : ''}" role="button" tabindex="0" data-idx="${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.editRollePerson(${idx});">${needsContact ? 'Lägg till telefon (krävs för VH)' : 'telefon saknas'}</span>`);
                 row2Parts.push(personnrDisplay
                     ? `<span class="roller-meta-bit">${this._esc(personnrDisplay)}</span>`
                     : `<span class="roller-meta-bit roller-detail-missing">${this._esc(idMissing)}</span>`);
                 if (!isForetag) {
                     row2Parts.push(idLabel
                         ? `<span class="roller-meta-bit">${this._esc(idLabel)}</span>`
-                        : `<span class="roller-meta-bit roller-detail-missing">ID ej kontrollerad</span>`);
+                        : `<span class="roller-meta-bit roller-detail-missing">Identitet ej kontrollerad</span>`);
                 }
                 if (hvShort) {
                     row2Parts.push(`<span class="roller-meta-bit roller-meta-bit--muted">${this._esc(hvShort)}</span>`);
@@ -7401,6 +7401,7 @@ class CustomerCardManager {
                     <div class="roller-col-kontroller" hidden aria-hidden="true">${kontrollerHtml}</div>
                     <div class="roller-person-actions">
                         <button type="button" class="btn-icon-note roller-edit-btn" title="Redigera" aria-label="Redigera ${this._esc(p.namn || '')}" data-idx="${idx}"><i class="fas fa-edit"></i></button>
+                        <button type="button" class="btn-icon-note btn-icon-delete roller-delete-btn" title="Ta bort" aria-label="Ta bort ${this._esc(p.namn || '')}" data-idx="${idx}"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>`;
             }
