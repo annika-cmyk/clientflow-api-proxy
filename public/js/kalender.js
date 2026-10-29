@@ -52,6 +52,9 @@
     modeDeadline: document.getElementById('kal-mode-deadline'),
     modeOpen: document.getElementById('kal-mode-open'),
     sideLabel: document.getElementById('kal-side-label'),
+    filterBtn: document.getElementById('kal-filter-btn'),
+    filterMenu: document.getElementById('kal-filter-menu'),
+    filterBadge: document.getElementById('kal-filter-badge'),
     typeTabs: Array.from(document.querySelectorAll('[data-kal-typ]')),
     viewTabs: Array.from(document.querySelectorAll('[data-kal-view]'))
   };
@@ -86,6 +89,12 @@
   /** Kundlista för Google-möte → tid/anteckning. */
   let gcalCustomers = [];
   let gcalCustomersLoaded = false;
+  /** Helg expand/kollaps: null = auto, true/false = användarval (localStorage). */
+  let weekendExpandedPref = KV.loadStoredWeekendExpanded();
+  /** Sidopanel: antal synliga rader per grupp (Visa N till). */
+  let sideGroupVisible = {};
+  /** Popover för «N deadlines» i heldagsrad. */
+  let deadlinesPopover = null;
 
   function show(node, on) { if (node) node.style.display = on ? '' : 'none'; }
   function esc(s) {
@@ -434,13 +443,17 @@
     return '';
   }
 
-  /** Inline-stil för Google-färger; tom sträng om ingen giltig färg. */
-  function googleColorStyleAttr(ev) {
+  /** Google-färg som liten prick — block/chip själva är neutrala. */
+  function googleColorDotHtml(ev) {
     if (!isGoogleEvent(ev)) return '';
-    const bg = safeCssColor(ev.backgroundColor);
-    if (!bg) return '';
-    const fg = safeCssColor(ev.foregroundColor) || '#1d1d1d';
-    return `background-color:${bg};border-left-color:${bg};border-color:${bg};color:${fg}`;
+    const bg = safeCssColor(ev.backgroundColor) || '#9aa3ab';
+    return `<span class="kalender-gcal-dot" style="background-color:${esc(bg)}" aria-hidden="true"></span>`;
+  }
+
+  function workHoursPerDay() {
+    const user = window.AuthManager && AuthManager.getCurrentUser ? AuthManager.getCurrentUser() : null;
+    const raw = user && (user.workHoursPerDay != null ? user.workHoursPerDay : user[KV.WORK_HOURS_FIELD]);
+    return KV.parseWorkHoursPerDay(raw);
   }
 
   function mergeStyleAttr(...parts) {
@@ -984,9 +997,8 @@
       const sched = scheduleOf(ev);
       const timeBit = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : (ev.allDay ? 'Heldag · ' : '');
       const title = `${timeBit}${name} · Google`;
-      const colorStyle = googleColorStyleAttr(ev);
-      return `<button type="button" class="kalender-chip kalender-chip--google" data-key="${esc(ev.key)}" title="${esc(title)}"${colorStyle ? ` style="${esc(colorStyle)}"` : ''}>
-        <span class="kalender-chip-typ">GCal</span>
+      return `<button type="button" class="kalender-chip kalender-chip--google" data-key="${esc(ev.key)}" title="${esc(title)}">
+        ${googleColorDotHtml(ev)}
         <span class="kalender-chip-name">${esc(name)}</span>
         ${sched ? `<span class="kalender-chip-time">${esc(KV.fmtTimeLabel(sched.startMin))}</span>` : ''}
       </button>`;
@@ -1111,14 +1123,12 @@
       const sched = scheduleOf(ev);
       if (!sched) return '';
       const layout = KV.blockLayout(sched.startMin, sched.endMin);
-      const style = mergeStyleAttr(KV.blockPositionStyleAttr(layout), googleColorStyleAttr(ev));
       return `<div class="kalender-block kalender-block--google" data-key="${esc(ev.key)}" data-timed="1"
-        style="${esc(style)}"
+        style="${KV.blockPositionStyleAttr(layout)}"
         title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name} · Google`)}">
         <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}">
-          <span class="kalender-block-time">${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
-          <span class="kalender-block-name">${esc(name)}</span>
-          <span class="kalender-block-typ">GCal</span>
+          <span class="kalender-block-name">${googleColorDotHtml(ev)}${esc(name)}</span>
+          <span class="kalender-block-time">Google · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
         </button>
       </div>`;
     }
@@ -1426,7 +1436,7 @@
         <input type="search" id="kal-create-slot-q" class="kunduppgifter-input" placeholder="T.ex. kundnamn eller bokslut" autocomplete="off">
       </div>
       <div class="kalender-create-slot-list" data-create-slot-list></div>
-      ${runs.length ? '' : '<p class="kalender-side-empty">Inga öppna körningar i listan — byt filter eller dra från Deadlines/Öppna.</p>'}`;
+      ${runs.length ? '' : '<p class="kalender-side-empty">Inga öppna körningar i listan — byt filter eller dra från Att planera.</p>'}`;
     el.detail.hidden = false;
     document.body.classList.add('kalender-detail-open');
 
@@ -1538,30 +1548,135 @@
     nowMarkerTimer = setInterval(syncNowMarker, 60000);
   }
 
-  function renderTimedGrid(dayIsos, dayMap, ariaLabel) {
+  function dayCapacityHtml(iso, dayMap) {
+    const list = dayMap.get(iso) || [];
+    const booked = KV.bookedHoursForDay(list, KV.durationHours);
+    const showCapacity = scope === 'mine';
+    const cap = KV.dayCapacityDisplay(booked, workHoursPerDay(), { showCapacity });
+    const statusCls = cap.status ? ` kalender-capacity--${cap.status}` : '';
+    const bar = showCapacity && cap.barPct != null
+      ? `<div class="kalender-capacity-bar" aria-hidden="true"><span style="width:${cap.barPct}%"></span></div>`
+      : '';
+    return `<div class="kalender-capacity${statusCls}">
+      <span class="kalender-capacity-label">${esc(cap.label)}</span>
+      ${bar}
+    </div>`;
+  }
+
+  function allDayCellHtml(iso, dayMap) {
+    const t = today();
+    const list = (dayMap.get(iso) || []).filter((ev) => !scheduleOf(ev));
+    const googleAllDay = list.filter((ev) => isGoogleEvent(ev));
+    const cfDeadlines = list.filter((ev) => !isGoogleEvent(ev));
+    const parts = [];
+    if (cfDeadlines.length) {
+      const n = cfDeadlines.length;
+      parts.push(`<button type="button" class="kalender-deadlines-chip" data-deadlines-date="${esc(iso)}"
+        aria-haspopup="dialog" title="${esc(`${n} deadline${n === 1 ? '' : 's'}`)}">${esc(String(n))} deadline${n === 1 ? '' : 's'}</button>`);
+    }
+    googleAllDay.forEach((ev) => {
+      const name = String(ev.summary || 'Google');
+      parts.push(`<button type="button" class="kalender-allday-gcal" data-key="${esc(ev.key)}" title="${esc(name)}">${esc(name)}</button>`);
+    });
+    return `<div class="kalender-untimed${iso === t ? ' is-today' : ''}" data-date="${esc(iso)}">
+      ${parts.length ? parts.join('') : '<span class="kalender-untimed-hint">Utan tid · dra till rutnät</span>'}
+    </div>`;
+  }
+
+  function closeDeadlinesPopover() {
+    if (deadlinesPopover) {
+      deadlinesPopover.remove();
+      deadlinesPopover = null;
+    }
+  }
+
+  function openDeadlinesPopover(dateIso, anchor) {
+    closeDeadlinesPopover();
+    const list = (byDay(filtered()).get(dateIso) || []).filter((ev) => !scheduleOf(ev) && !isGoogleEvent(ev));
+    if (!list.length || !anchor) return;
+    const pop = document.createElement('div');
+    pop.className = 'kalender-deadlines-popover';
+    pop.setAttribute('role', 'dialog');
+    pop.innerHTML = `<div class="kalender-deadlines-popover-title">${esc(fmtDate(dateIso))}</div>
+      ${list.map((ev) => {
+        const f = ev.record?.fields || {};
+        const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
+        return `<button type="button" class="kalender-side-item kalender-side-item--${statusClass(statusOf(ev), ev.deadline)}" data-key="${esc(ev.key)}">
+          <span class="kalender-side-main">
+            <span class="kalender-side-name">${esc(name)}</span>
+            <span class="kalender-side-meta">${esc(displayName(ev.typ, f))}${ev.deadline ? ` · ${esc(fmtDate(ev.deadline))}` : ''}</span>
+          </span>
+        </button>`;
+      }).join('')}`;
+    document.body.appendChild(pop);
+    deadlinesPopover = pop;
+    const rect = anchor.getBoundingClientRect();
+    const top = Math.min(window.innerHeight - 12, rect.bottom + 6);
+    let left = rect.left;
+    pop.style.top = `${top}px`;
+    pop.style.left = `${left}px`;
+    requestAnimationFrame(() => {
+      const w = pop.offsetWidth || 240;
+      if (left + w > window.innerWidth - 8) {
+        pop.style.left = `${Math.max(8, window.innerWidth - w - 8)}px`;
+      }
+    });
+    pop.querySelectorAll('[data-key]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        closeDeadlinesPopover();
+        openDetail(btn.getAttribute('data-key'));
+      });
+    });
+  }
+
+  function weekendHasBlocks(dayMap, weekIsos) {
+    return (weekIsos || []).some((iso) => {
+      if (!KV.isWeekendIso(iso)) return false;
+      const list = dayMap.get(iso) || [];
+      return list.length > 0;
+    });
+  }
+
+  function scrollTimedGridIntoView(dayIsos) {
+    requestAnimationFrame(() => {
+      const track = gridEl.querySelector('.kalender-time-track');
+      if (!track) return;
+      const offsetInTrack = KV.timedScrollOffsetPx(new Date(), dayIsos);
+      const abs = track.offsetTop + offsetInTrack - 4;
+      gridEl.scrollTop = Math.max(0, abs);
+    });
+  }
+
+  function renderTimedGrid(dayIsos, dayMap, ariaLabel, opts) {
     const t = today();
     const hours = KV.hourLabels();
     const trackH = (KV.DAY_END_HOUR - KV.DAY_START_HOUR) * KV.PX_PER_HOUR;
-    const colCount = dayIsos.length;
+    const weekMode = !!(opts && opts.weekMode);
+    const collapseWeekend = !!(opts && opts.collapseWeekend);
+    const visibleIsos = collapseWeekend
+      ? dayIsos.filter((iso) => !KV.isWeekendIso(iso))
+      : dayIsos;
+    const colCount = visibleIsos.length + (collapseWeekend ? 1 : 0);
 
-    const heads = dayIsos.map((iso) => {
-      const list = dayMap.get(iso) || [];
+    const heads = visibleIsos.map((iso) => {
       const day = Number(iso.slice(8, 10));
       const weekday = new Date(`${iso}T00:00:00`).toLocaleDateString('sv-SE', { weekday: 'short' });
       return `<div class="kalender-time-col-head${iso === t ? ' is-today' : ''}" data-date="${esc(iso)}">
-        <span class="kalender-daynum"><span class="kalender-weekday-label">${esc(weekday)}</span> ${day}</span>
-        ${list.length ? `<span class="kalender-cell-count">${list.length}</span>` : ''}
+        <div class="kalender-time-col-head-main">
+          <span class="kalender-daynum"><span class="kalender-weekday-label">${esc(weekday)}</span> ${day}</span>
+          ${dayCapacityHtml(iso, dayMap)}
+        </div>
       </div>`;
-    }).join('');
+    }).join('') + (collapseWeekend
+      ? `<button type="button" class="kalender-time-col-head kalender-time-col-head--weekend-collapsed" data-kal-weekend-toggle="1" title="Visa lördag–söndag" aria-expanded="false">
+          <span class="kalender-daynum">Lör–Sön</span>
+        </button>`
+      : '');
 
-    const untimed = dayIsos.map((iso) => {
-      const list = (dayMap.get(iso) || []).filter((ev) => !scheduleOf(ev));
-      return `<div class="kalender-untimed${iso === t ? ' is-today' : ''}" data-date="${esc(iso)}">
-        ${list.length ? list.map(untimedChipHtml).join('') : '<span class="kalender-untimed-hint">Utan tid · dra till rutnät</span>'}
-      </div>`;
-    }).join('');
+    const untimed = visibleIsos.map((iso) => allDayCellHtml(iso, dayMap)).join('')
+      + (collapseWeekend ? '<div class="kalender-untimed kalender-untimed--weekend-collapsed" aria-hidden="true"></div>' : '');
 
-    const tracks = dayIsos.map((iso) => {
+    const tracks = visibleIsos.map((iso) => {
       const timed = (dayMap.get(iso) || []).filter((ev) => scheduleOf(ev));
       return `<div class="kalender-time-col${iso === t ? ' is-today' : ''}" data-date="${esc(iso)}">
         <div class="kalender-time-track" style="height:${trackH}px">
@@ -1570,28 +1685,88 @@
           ${nowMarkerHtml(iso)}
         </div>
       </div>`;
-    }).join('');
+    }).join('') + (collapseWeekend
+      ? `<button type="button" class="kalender-time-col kalender-time-col--weekend-collapsed" data-kal-weekend-toggle="1" style="height:${trackH}px" title="Visa lördag–söndag" aria-label="Visa helg">
+          <span class="kalender-weekend-collapsed-label">Helg</span>
+        </button>`
+      : '');
+
+    // Expanded week: weekend heads also toggle collapse
+    let headsHtml = heads;
+    if (weekMode && !collapseWeekend) {
+      headsHtml = dayIsos.map((iso) => {
+        const day = Number(iso.slice(8, 10));
+        const weekday = new Date(`${iso}T00:00:00`).toLocaleDateString('sv-SE', { weekday: 'short' });
+        const weekendCls = KV.isWeekendIso(iso) ? ' kalender-time-col-head--weekend' : '';
+        const toggleAttr = KV.isWeekendIso(iso) ? ' data-kal-weekend-toggle="1" title="Dölj helg"' : '';
+        const tag = KV.isWeekendIso(iso) ? 'button type="button"' : 'div';
+        const close = KV.isWeekendIso(iso) ? 'button' : 'div';
+        return `<${tag} class="kalender-time-col-head${iso === t ? ' is-today' : ''}${weekendCls}" data-date="${esc(iso)}"${toggleAttr}>
+          <div class="kalender-time-col-head-main">
+            <span class="kalender-daynum"><span class="kalender-weekday-label">${esc(weekday)}</span> ${day}</span>
+            ${dayCapacityHtml(iso, dayMap)}
+          </div>
+        </${close}>`;
+      }).join('');
+    }
 
     const gutter = hours.map((h) =>
       `<div class="kalender-time-gutter-label" style="height:${KV.PX_PER_HOUR}px">${esc(h)}</div>`
     ).join('');
 
-    gridEl.className = `kalender-grid kalender-grid--timed kalender-grid--${colCount === 1 ? 'day' : 'week'}`;
+    const gridMods = [
+      'kalender-grid',
+      'kalender-grid--timed',
+      colCount === 1 ? 'kalender-grid--day' : 'kalender-grid--week',
+      collapseWeekend ? 'kalender-grid--weekend-collapsed' : ''
+    ].filter(Boolean).join(' ');
+
+    gridEl.className = gridMods;
     gridEl.setAttribute('aria-label', ariaLabel);
     gridEl.innerHTML = `
-      <div class="kalender-timed-wrap" style="--kal-cols:${colCount}">
+      <div class="kalender-timed-wrap" style="--kal-cols:${weekMode && !collapseWeekend ? dayIsos.length : colCount}">
         <div class="kalender-timed-corner" aria-hidden="true"></div>
-        <div class="kalender-timed-heads">${heads}</div>
+        <div class="kalender-timed-heads">${weekMode && !collapseWeekend ? headsHtml : heads}</div>
         <div class="kalender-timed-allday-label" aria-hidden="true">Heldag</div>
-        <div class="kalender-timed-allday">${untimed}</div>
+        <div class="kalender-timed-allday">${weekMode && !collapseWeekend
+          ? dayIsos.map((iso) => allDayCellHtml(iso, dayMap)).join('')
+          : untimed}</div>
         <div class="kalender-time-gutter">${gutter}</div>
-        <div class="kalender-timed-cols">${tracks}</div>
+        <div class="kalender-timed-cols">${weekMode && !collapseWeekend
+          ? dayIsos.map((iso) => {
+            const timed = (dayMap.get(iso) || []).filter((ev) => scheduleOf(ev));
+            return `<div class="kalender-time-col${iso === t ? ' is-today' : ''}${KV.isWeekendIso(iso) ? ' kalender-time-col--weekend' : ''}" data-date="${esc(iso)}">
+              <div class="kalender-time-track" style="height:${trackH}px">
+                ${hours.map(() => `<div class="kalender-time-hour" style="height:${KV.PX_PER_HOUR}px"></div>`).join('')}
+                ${timed.map(timedBlockHtml).join('')}
+                ${nowMarkerHtml(iso)}
+              </div>
+            </div>`;
+          }).join('')
+          : tracks}</div>
       </div>`;
 
     bindGridClicks(dayMap);
     bindTimedInteractions();
     ensureNowMarkerTimer();
+    bindAllDayInteractions(dayMap);
+    bindWeekendToggle();
+    scrollTimedGridIntoView(dayIsos);
+  }
 
+  function bindAllDayInteractions(dayMap) {
+    gridEl.querySelectorAll('.kalender-deadlines-chip').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const date = btn.getAttribute('data-deadlines-date');
+        if (deadlinesPopover) {
+          closeDeadlinesPopover();
+          return;
+        }
+        openDeadlinesPopover(date, btn);
+      });
+    });
     gridEl.querySelectorAll('.kalender-untimed[data-date]').forEach((strip) => {
       strip.addEventListener('dragover', (e) => {
         if (!dragState || !isCalendarDropMode(dragState.mode)) return;
@@ -1620,8 +1795,30 @@
     });
   }
 
+  function bindWeekendToggle() {
+    gridEl.querySelectorAll('[data-kal-weekend-toggle]').forEach((node) => {
+      node.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentlyExpanded = KV.resolveWeekendExpanded(
+          weekendHasBlocks(byDay(filtered()), KV.weekDays(focus)),
+          weekendExpandedPref
+        );
+        weekendExpandedPref = !currentlyExpanded;
+        KV.saveStoredWeekendExpanded(weekendExpandedPref);
+        render();
+      });
+    });
+  }
+
   function renderWeek(dayMap) {
-    renderTimedGrid(KV.weekDays(focus), dayMap, 'Veckokalender med tider');
+    const days = KV.weekDays(focus);
+    const hasBlocks = weekendHasBlocks(dayMap, days);
+    const expanded = KV.resolveWeekendExpanded(hasBlocks, weekendExpandedPref);
+    renderTimedGrid(days, dayMap, 'Veckokalender med tider', {
+      weekMode: true,
+      collapseWeekend: !expanded
+    });
   }
 
   function dayEventRow(ev) {
@@ -1670,78 +1867,123 @@
     });
   }
 
+  function sideRowHtml(ev) {
+    const f = ev.record?.fields || {};
+    const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
+    const st = statusOf(ev);
+    const cls = statusClass(st, ev.deadline);
+    const period = ev.periodLabel || ev.periodKey || '';
+    const plan = planningOf(ev);
+    const runKey = String(ev.runKey || ev.key || '');
+    const canDrag = !!ev.runRec?.id;
+    const deadlineBit = ev.deadline ? ` · deadline ${fmtDate(ev.deadline)}` : '';
+    const meta = `${displayName(ev.typ, f)}${period ? ` · ${period}` : ''}${deadlineBit}`;
+    let right = '';
+    if (plan.hasEstimate) {
+      const pct = plan.estimated > 0
+        ? Math.min(100, Math.round((plan.scheduled / plan.estimated) * 100))
+        : 0;
+      right = `<span class="kalender-side-progress">
+        <span class="kalender-side-progress-label">${esc(`${plan.scheduled} / ${plan.estimated} t`)}</span>
+        <span class="kalender-side-progress-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
+      </span>`;
+    } else {
+      right = '<span class="kalender-side-status">snabb</span>';
+    }
+    return `<button type="button" class="kalender-side-item kalender-side-item--${cls}${canDrag ? ' is-draggable' : ''}${plan.hasEstimate ? ' has-estimate' : ''}${cls === 'sen' ? ' is-overdue' : ''}"
+      data-key="${esc(runKey)}" ${canDrag ? 'draggable="true"' : ''}
+      title="${canDrag ? 'Dra till kalendern för att avsätta tid (kan göras flera gånger)' : ''}">
+      <span class="kalender-side-main">
+        <span class="kalender-side-name">${esc(name)}</span>
+        <span class="kalender-side-meta">${esc(meta)}</span>
+      </span>
+      ${right}
+    </button>`;
+  }
+
+  function bindSideItem(btn) {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.suppressClick === '1') {
+        btn.dataset.suppressClick = '';
+        return;
+      }
+      openDetail(btn.getAttribute('data-key'));
+    });
+    if (btn.getAttribute('draggable') === 'true') {
+      btn.addEventListener('dragstart', (e) => {
+        const key = btn.getAttribute('data-key');
+        e.dataTransfer.setData('text/plain', key);
+        e.dataTransfer.effectAllowed = 'copy';
+        btn.classList.add('is-dragging');
+        dragState = { key, mode: 'side-add', duration: KV.DEFAULT_BLOCK_MINUTES };
+      });
+      btn.addEventListener('dragend', () => {
+        btn.classList.remove('is-dragging');
+        if (dragState && dragState.mode === 'side-add') {
+          btn.dataset.suppressClick = '1';
+        }
+        dragState = null;
+        gridEl.querySelectorAll('.is-drop-target').forEach((c) => c.classList.remove('is-drop-target'));
+      });
+    }
+  }
+
   function renderSide(list) {
     if (!el.sideList) return;
     const expanded = sidePanelEvents(list);
     const items = typeof KE.uniqueRunEvents === 'function'
       ? KE.uniqueRunEvents(expanded)
       : SB.uniqueRunEvents(expanded);
-    if (el.sideLabel) el.sideLabel.textContent = eventMode === 'open' ? 'Öppna' : 'Deadlines';
-    if (el.sideCount) el.sideCount.textContent = items.length ? `(${items.length})` : '';
+    if (el.sideLabel) {
+      el.sideLabel.textContent = eventMode === 'open' ? 'Kan göras nu' : 'Efter deadline';
+    }
+    if (el.sideCount) el.sideCount.textContent = items.length ? String(items.length) : '';
     const emptyWhen = KV.rangeEmptyLabel(view);
-    const emptyNoun = eventMode === 'open' ? 'öppna körningar' : 'deadlines';
+    const emptyNoun = eventMode === 'open' ? 'körningar att göra nu' : 'körningar efter deadline';
     if (!items.length) {
       el.sideList.innerHTML = `<p class="kalender-side-empty">Inga ${esc(emptyNoun)} ${esc(emptyWhen)} med aktuella filter.</p>`;
       return;
     }
-    let last = '';
-    el.sideList.innerHTML = items.map((ev) => {
-      const f = ev.record?.fields || {};
-      const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
+
+    const weekRange = KV.visibleRange('week', focus);
+    const groupItems = items.map((ev) => {
       const st = statusOf(ev);
       const cls = statusClass(st, ev.deadline);
-      const place = placeDateOf(ev);
-      const head = place !== last ? `<div class="kalender-side-date">${esc(fmtDate(place))}</div>` : '';
-      last = place;
-      const period = ev.periodLabel || ev.periodKey || '';
-      const plan = planningOf(ev);
-      let timeMeta = '';
-      if (plan.hasEstimate) {
-        timeMeta = `${plan.scheduled}/${plan.estimated} t · ${plan.remaining} t kvar · `;
-      } else if (plan.scheduled > 0) {
-        timeMeta = `${plan.scheduled} t avsatt · `;
-      }
-      const runKey = String(ev.runKey || ev.key || '');
-      const canDrag = !!ev.runRec?.id;
-      const statusBit = plan.hasEstimate && plan.scheduled > 0
-        ? `${plan.scheduled}/${plan.estimated} t`
-        : statusLabel(st, ev.deadline);
-      return `${head}
-        <button type="button" class="kalender-side-item kalender-side-item--${cls}${canDrag ? ' is-draggable' : ''}${plan.hasEstimate ? ' has-estimate' : ''}"
-          data-key="${esc(runKey)}" ${canDrag ? 'draggable="true"' : ''}
-          title="${canDrag ? 'Dra till kalendern för att avsätta tid (kan göras flera gånger)' : ''}">
-          <span class="kalender-side-main">
-            <span class="kalender-side-name">${esc(name)}</span>
-            <span class="kalender-side-meta">${esc(timeMeta)}${esc(displayName(ev.typ, f))}${period ? ` · ${esc(period)}` : ''}${plan.hasEstimate ? '' : ' · snabb'}</span>
-          </span>
-          <span class="kalender-side-status">${esc(statusBit)}</span>
-        </button>`;
+      return {
+        ev,
+        deadline: toDate(ev.deadline) || placeDateOf(ev),
+        placeDate: placeDateOf(ev),
+        overdue: cls === 'sen'
+      };
+    });
+    const groups = KV.groupSidePanelItems(groupItems, {
+      todayIso: today(),
+      weekStart: weekRange.start,
+      weekEnd: weekRange.end
+    });
+
+    el.sideList.innerHTML = groups.map((g) => {
+      const shown = sideGroupVisible[g.key] || KV.SIDE_GROUP_PAGE;
+      const visible = g.items.slice(0, shown);
+      const rest = g.count - visible.length;
+      const headingCls = g.key === 'overdue' ? ' kalender-side-group-title--overdue' : '';
+      return `<div class="kalender-side-group" data-side-group="${esc(g.key)}">
+        <div class="kalender-side-group-title${headingCls}">${esc(g.label)} · ${g.count}</div>
+        <div class="kalender-side-group-list">
+          ${visible.map((row) => sideRowHtml(row.ev)).join('')}
+        </div>
+        ${rest > 0 ? `<button type="button" class="kalender-side-more" data-side-more="${esc(g.key)}">Visa ${rest} till</button>` : ''}
+      </div>`;
     }).join('');
-    el.sideList.querySelectorAll('[data-key]').forEach((btn) => {
+
+    el.sideList.querySelectorAll('.kalender-side-item[data-key]').forEach(bindSideItem);
+    el.sideList.querySelectorAll('[data-side-more]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        if (btn.dataset.suppressClick === '1') {
-          btn.dataset.suppressClick = '';
-          return;
-        }
-        openDetail(btn.getAttribute('data-key'));
+        const key = btn.getAttribute('data-side-more');
+        const g = groups.find((x) => x.key === key);
+        sideGroupVisible[key] = g ? g.count : (sideGroupVisible[key] || KV.SIDE_GROUP_PAGE) + KV.SIDE_GROUP_PAGE;
+        renderSide(list);
       });
-      if (btn.getAttribute('draggable') === 'true') {
-        btn.addEventListener('dragstart', (e) => {
-          const key = btn.getAttribute('data-key');
-          e.dataTransfer.setData('text/plain', key);
-          e.dataTransfer.effectAllowed = 'copy';
-          btn.classList.add('is-dragging');
-          dragState = { key, mode: 'side-add', duration: KV.DEFAULT_BLOCK_MINUTES };
-        });
-        btn.addEventListener('dragend', () => {
-          btn.classList.remove('is-dragging');
-          if (dragState && dragState.mode === 'side-add') {
-            btn.dataset.suppressClick = '1';
-          }
-          dragState = null;
-          gridEl.querySelectorAll('.is-drop-target').forEach((c) => c.classList.remove('is-drop-target'));
-        });
-      }
     });
   }
 
@@ -1970,7 +2212,6 @@
       ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`
       : (ev.allDay ? 'Heldag' : '—');
     const siblings = Array.isArray(group) && group.length > 1 ? group : null;
-    const colorStyle = googleColorStyleAttr(ev);
     const timed = !!(sched && !ev.allDay);
     openDetailKey = String(ev.key || '');
 
@@ -1984,7 +2225,7 @@
 
     if (el.detailTitle) el.detailTitle.textContent = name;
     el.detailBody.innerHTML = `
-      <div class="kalender-detail-status kalender-detail-status--google"${colorStyle ? ` style="${esc(colorStyle)}"` : ''}>Google-kalender</div>
+      <div class="kalender-detail-status kalender-detail-status--google">${googleColorDotHtml(ev)} Google-kalender</div>
       <dl class="kalender-detail-dl">
         <div><dt>Titel</dt><dd>${esc(name)}</dd></div>
         <div><dt>Datum</dt><dd>${esc(dateIso || '—')}</dd></div>
@@ -2031,8 +2272,7 @@
       ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
         ${siblings.map((s) => {
           const label = isGoogleEvent(s) ? (s.summary || 'Google') : String(s.record?.fields?.Kundnamn || s.key);
-          const sibStyle = googleColorStyleAttr(s);
-          return `<button type="button" class="kalender-side-item${isGoogleEvent(s) ? ' kalender-side-item--google' : ''}" data-key="${esc(s.key)}"${sibStyle ? ` style="${esc(sibStyle)}"` : ''}><span class="kalender-side-name">${esc(label)}</span></button>`;
+          return `<button type="button" class="kalender-side-item${isGoogleEvent(s) ? ' kalender-side-item--google' : ''}" data-key="${esc(s.key)}"><span class="kalender-side-name">${isGoogleEvent(s) ? googleColorDotHtml(s) : ''}${esc(label)}</span></button>`;
         }).join('')}
       </div>` : ''}`;
     el.detail.hidden = false;
@@ -2322,11 +2562,32 @@
       el.weekdays.style.display = showWeekdays ? '' : 'none';
     }
     if (el.side) {
-      const label = eventMode === 'open' ? 'Öppna' : 'Deadlines';
-      el.side.setAttribute('aria-label', `${label} ${KV.rangeEmptyLabel(view)}`);
+      const label = eventMode === 'open' ? 'Kan göras nu' : 'Efter deadline';
+      el.side.setAttribute('aria-label', `Att planera · ${label}`);
     }
-    if (el.sideLabel) el.sideLabel.textContent = eventMode === 'open' ? 'Öppna' : 'Deadlines';
+    if (el.sideLabel) {
+      el.sideLabel.textContent = eventMode === 'open' ? 'Kan göras nu' : 'Efter deadline';
+    }
     syncNavLabels();
+  }
+
+  function syncFilterBadge() {
+    const n = KV.filterBadgeCount({ activeType, showOpen, showDone });
+    if (!el.filterBadge) return;
+    if (n > 0) {
+      el.filterBadge.hidden = false;
+      el.filterBadge.textContent = String(n);
+    } else {
+      el.filterBadge.hidden = true;
+      el.filterBadge.textContent = '0';
+    }
+  }
+
+  function setFilterMenuOpen(open) {
+    if (!el.filterMenu || !el.filterBtn) return;
+    el.filterMenu.hidden = !open;
+    el.filterBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    el.filterBtn.classList.toggle('is-open', open);
   }
 
   function render() {
@@ -2358,6 +2619,7 @@
     if (m === eventMode) return;
     eventMode = m;
     KV.saveStoredEventMode(eventMode);
+    sideGroupVisible = {};
     syncUi();
     render();
   }
@@ -2377,6 +2639,7 @@
       tab.classList.toggle('is-active', on);
       tab.setAttribute('aria-selected', on ? 'true' : 'false');
     });
+    syncFilterBadge();
   }
 
   function gcalPullEnabled() {
@@ -2526,6 +2789,23 @@
   });
   if (el.modeDeadline) el.modeDeadline.addEventListener('click', () => setEventMode('deadline'));
   if (el.modeOpen) el.modeOpen.addEventListener('click', () => setEventMode('open'));
+  if (el.filterBtn) {
+    el.filterBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = el.filterMenu && el.filterMenu.hidden;
+      setFilterMenuOpen(!!open);
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (el.filterMenu && !el.filterMenu.hidden) {
+      const wrap = el.filterBtn && el.filterBtn.closest('.kalender-filter-wrap');
+      if (wrap && !wrap.contains(e.target)) setFilterMenuOpen(false);
+    }
+    if (deadlinesPopover && !deadlinesPopover.contains(e.target)
+      && !(e.target && e.target.closest && e.target.closest('.kalender-deadlines-chip'))) {
+      closeDeadlinesPopover();
+    }
+  });
   if (el.search) {
     let t = null;
     el.search.addEventListener('input', () => {
@@ -2541,7 +2821,11 @@
       n.addEventListener('click', closeDetail);
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeDetail();
+      if (e.key === 'Escape') {
+        closeDeadlinesPopover();
+        setFilterMenuOpen(false);
+        closeDetail();
+      }
     });
   }
 

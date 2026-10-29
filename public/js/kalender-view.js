@@ -504,6 +504,210 @@
     return nowMarkerOffsetPx(d) != null;
   }
 
+  /** Helg (lör–sön) kollapsad som standard; auto-expand om helgen har block. */
+  const WEEKEND_STORAGE_KEY = 'clientflow-kalender-weekend';
+
+  function loadStoredWeekendExpanded(storage) {
+    try {
+      const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+      if (!store || !store.getItem) return null;
+      const raw = String(store.getItem(WEEKEND_STORAGE_KEY) || '').trim().toLowerCase();
+      if (raw === '1' || raw === 'true' || raw === 'expanded') return true;
+      if (raw === '0' || raw === 'false' || raw === 'collapsed') return false;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveStoredWeekendExpanded(expanded, storage) {
+    try {
+      const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+      if (!store || !store.setItem) return;
+      store.setItem(WEEKEND_STORAGE_KEY, expanded ? 'expanded' : 'collapsed');
+    } catch (_) { /* ignore */ }
+  }
+
+  /**
+   * null-sparat = auto: expandera om helgen har block, annars kollapsa.
+   * Explicit true/false från localStorage vinner över auto.
+   */
+  function resolveWeekendExpanded(hasWeekendBlocks, stored) {
+    if (stored === true || stored === false) return stored;
+    return !!hasWeekendBlocks;
+  }
+
+  function isWeekendIso(iso) {
+    const d = parseIso(iso);
+    if (!d) return false;
+    const wd = d.getDay();
+    return wd === 0 || wd === 6;
+  }
+
+  /** Filter-badge: antal avvikelser från standard (Alla typer + Ej klara + Klara). */
+  function filterBadgeCount({ activeType, showOpen, showDone } = {}) {
+    let n = 0;
+    if (String(activeType || 'Alla').trim() !== 'Alla') n += 1;
+    if (!showOpen) n += 1;
+    if (!showDone) n += 1;
+    return n;
+  }
+
+  const SIDE_GROUP_KEYS = ['overdue', 'thisWeek', 'nextWeek', 'later'];
+  const SIDE_GROUP_LABELS = {
+    overdue: 'Försenade',
+    thisWeek: 'Den här veckan',
+    nextWeek: 'Nästa vecka',
+    later: 'Senare'
+  };
+  const SIDE_GROUP_PAGE = 5;
+
+  /**
+   * Gruppera sidopanelrader efter deadline (fallback: placeDate).
+   * @param {Array<{ deadline?: string, placeDate?: string, overdue?: boolean }>} items
+   * @param {{ todayIso: string, weekStart: string, weekEnd: string }} ctx
+   */
+  function groupSidePanelItems(items, ctx) {
+    const todayIso = String((ctx && ctx.todayIso) || '').slice(0, 10);
+    const weekStart = String((ctx && ctx.weekStart) || '').slice(0, 10);
+    const weekEnd = String((ctx && ctx.weekEnd) || '').slice(0, 10);
+    const nextStart = weekEnd ? dateIso(addDays(parseIso(weekEnd) || new Date(), 1)) : '';
+    const nextEnd = nextStart ? dateIso(addDays(parseIso(nextStart) || new Date(), 6)) : '';
+    const groups = {
+      overdue: [],
+      thisWeek: [],
+      nextWeek: [],
+      later: []
+    };
+    (items || []).forEach((item) => {
+      if (!item) return;
+      const deadline = String(item.deadline || item.placeDate || '').slice(0, 10);
+      const overdue = item.overdue === true
+        || (!!deadline && !!todayIso && deadline < todayIso && item.overdue !== false);
+      if (overdue) {
+        groups.overdue.push(item);
+        return;
+      }
+      if (deadline && weekStart && weekEnd && deadline >= weekStart && deadline <= weekEnd) {
+        groups.thisWeek.push(item);
+        return;
+      }
+      if (deadline && nextStart && nextEnd && deadline >= nextStart && deadline <= nextEnd) {
+        groups.nextWeek.push(item);
+        return;
+      }
+      groups.later.push(item);
+    });
+    return SIDE_GROUP_KEYS.map((key) => ({
+      key,
+      label: SIDE_GROUP_LABELS[key],
+      items: groups[key],
+      count: groups[key].length
+    })).filter((g) => g.count > 0);
+  }
+
+  /** Arbetstid per dag (t) – default 8 om tomt/ogiltigt. */
+  const DEFAULT_WORK_HOURS_PER_DAY = 8;
+  const WORK_HOURS_FIELD = 'Arbetstid per dag (t)';
+
+  function parseWorkHoursPerDay(raw) {
+    if (raw == null || raw === '') return DEFAULT_WORK_HOURS_PER_DAY;
+    const n = Number(String(raw).replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0) return DEFAULT_WORK_HOURS_PER_DAY;
+    return Math.round(n * 100) / 100;
+  }
+
+  /**
+   * Bokad tid för en dag: ClientFlow-block + timed Google (ej heldag, ej free/transparent).
+   * Förväntar expanderade kalenderinstanser (en post per synligt tidblock).
+   * @param {Array} dayEvents
+   * @param {(start:string,end:string)=>number|null} durationHoursFn
+   */
+  function bookedHoursForDay(dayEvents, durationHoursFn) {
+    const dur = typeof durationHoursFn === 'function' ? durationHoursFn : durationHours;
+    let total = 0;
+    (dayEvents || []).forEach((ev) => {
+      if (!ev || !ev.scheduledStart) return;
+      if (ev.allDay) return;
+      const isGoogle = ev.source === 'google' || String(ev.key || '').startsWith('gcal:');
+      if (isGoogle) {
+        const tr = String(ev.transparency || '').toLowerCase();
+        if (tr === 'transparent' || tr === 'free') return;
+      }
+      const h = dur(ev.scheduledStart, ev.scheduledEnd);
+      if (h != null && h > 0) total += h;
+    });
+    return Math.round(total * 100) / 100;
+  }
+
+  /**
+   * Kapacitetsvisning i dagshuvud.
+   * @param {number} booked
+   * @param {number} capacity
+   * @param {{ showCapacity?: boolean }} opts showCapacity=false → bara bokade timmar (Byrån)
+   */
+  function dayCapacityDisplay(booked, capacity, opts) {
+    const showCapacity = !opts || opts.showCapacity !== false;
+    const b = Math.round((Number(booked) || 0) * 100) / 100;
+    const cap = parseWorkHoursPerDay(capacity);
+    if (!showCapacity) {
+      return {
+        booked: b,
+        capacity: null,
+        pct: null,
+        label: `${formatHoursShort(b)} t`,
+        status: null,
+        statusLabel: '',
+        barPct: null
+      };
+    }
+    const pct = cap > 0 ? (b / cap) * 100 : 0;
+    let status = null;
+    let statusLabel = '';
+    if (pct > 110) {
+      status = 'overbooked';
+      statusLabel = 'Överbokad';
+    } else if (pct >= 100) {
+      status = 'full';
+      statusLabel = 'Fullt';
+    }
+    const label = statusLabel || `${formatHoursShort(b)} / ${formatHoursShort(cap)} t`;
+    return {
+      booked: b,
+      capacity: cap,
+      pct: Math.round(pct * 10) / 10,
+      label,
+      status,
+      statusLabel,
+      barPct: Math.min(100, Math.round(pct))
+    };
+  }
+
+  function formatHoursShort(n) {
+    const x = Math.round((Number(n) || 0) * 100) / 100;
+    if (Number.isInteger(x)) return String(x);
+    return String(x).replace(/\.?0+$/, '');
+  }
+
+  /**
+   * Pixel-offset att scrolla tidsrutnät till (08:00, eller «nu» om idag ingår).
+   * Relativt trackens topp.
+   */
+  function timedScrollOffsetPx(now, weekDayIsos) {
+    const d = now instanceof Date ? now : new Date();
+    const todayStr = dateIso(d);
+    const days = Array.isArray(weekDayIsos) ? weekDayIsos : [];
+    const hasToday = days.some((iso) => String(iso).slice(0, 10) === todayStr);
+    let targetMin = 8 * 60;
+    if (hasToday) {
+      const mins = d.getHours() * 60 + d.getMinutes();
+      if (mins >= dayStartMinutes() && mins <= dayEndMinutes()) {
+        targetMin = mins;
+      }
+    }
+    return ((targetMin - dayStartMinutes()) / 60) * PX_PER_HOUR;
+  }
+
   return {
     VIEWS,
     STORAGE_KEY,
@@ -561,6 +765,23 @@
     fmtTimeLabel,
     tidPrefillHours,
     nowMarkerOffsetPx,
-    shouldShowNowMarker
+    shouldShowNowMarker,
+    WEEKEND_STORAGE_KEY,
+    loadStoredWeekendExpanded,
+    saveStoredWeekendExpanded,
+    resolveWeekendExpanded,
+    isWeekendIso,
+    filterBadgeCount,
+    SIDE_GROUP_KEYS,
+    SIDE_GROUP_LABELS,
+    SIDE_GROUP_PAGE,
+    groupSidePanelItems,
+    DEFAULT_WORK_HOURS_PER_DAY,
+    WORK_HOURS_FIELD,
+    parseWorkHoursPerDay,
+    bookedHoursForDay,
+    dayCapacityDisplay,
+    formatHoursShort,
+    timedScrollOffsetPx
   };
 });
