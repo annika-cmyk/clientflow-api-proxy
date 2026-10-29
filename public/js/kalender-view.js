@@ -630,7 +630,8 @@
       if (!ev || !ev.scheduledStart) return;
       if (ev.allDay) return;
       const isGoogle = ev.source === 'google' || String(ev.key || '').startsWith('gcal:');
-      if (isGoogle) {
+      const isMeeting = ev.source === 'meeting' || String(ev.key || '').startsWith('meeting:');
+      if (isGoogle || isMeeting) {
         const tr = String(ev.transparency || '').toLowerCase();
         if (tr === 'transparent' || tr === 'free') return;
       }
