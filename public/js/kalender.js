@@ -22,6 +22,7 @@
     return;
   }
   const GA = window.KalenderGcalActions;
+  const ME = window.KalenderMeetingEvents;
 
   const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || 'http://localhost:3001';
   const authOpts = () => (window.AuthManager && AuthManager.getAuthFetchOptions
@@ -84,6 +85,9 @@
   /** Händelser hämtade från Google Calendar (source: google). */
   let googleEvents = [];
   let gcalPullSeq = 0;
+  /** Bokade mötesinbjudningar från Airtable (source: meeting). */
+  let meetingEvents = [];
+  let meetingPullSeq = 0;
   /** Uppdaterar «nu»-markören i vecko-/dagsvy (varje minut). */
   let nowMarkerTimer = null;
   /** Kundlista för Google-möte → tid/anteckning. */
@@ -203,7 +207,14 @@
     const expanded = typeof KE.expandScheduleInstances === 'function'
       ? KE.expandScheduleInstances(cf)
       : SB.expandScheduleInstances(cf);
-    return expanded.concat(Array.isArray(googleEvents) ? googleEvents : []);
+    let gcal = Array.isArray(googleEvents) ? googleEvents : [];
+    let meetings = Array.isArray(meetingEvents) ? meetingEvents : [];
+    if (ME && typeof ME.mergeMeetingWithGoogleEvents === 'function') {
+      const merged = ME.mergeMeetingWithGoogleEvents(meetings, gcal);
+      gcal = merged.googleEvents;
+      meetings = merged.meetingEvents;
+    }
+    return expanded.concat(gcal).concat(meetings);
   }
 
   function eventByKey(key) {
@@ -217,7 +228,7 @@
   }
 
   function blocksOf(ev) {
-    if (!ev || isGoogleEvent(ev)) return [];
+    if (!ev || isOverlayCalendarEvent(ev)) return [];
     if (Array.isArray(ev.scheduleBlocks) && ev.scheduleBlocks.length) {
       return SB.sortBlocks(ev.scheduleBlocks);
     }
@@ -237,7 +248,7 @@
   }
 
   function estimatedHoursOf(ev) {
-    if (!ev || isGoogleEvent(ev)) return null;
+    if (!ev || isOverlayCalendarEvent(ev)) return null;
     if (ev.estimatedHours != null) return SB.parseEstimatedHours({ [SB.FIELD_ESTIMATE]: ev.estimatedHours });
     if (ev.runRec) return SB.parseEstimatedHours(ev.runRec.fields || {});
     return null;
@@ -362,6 +373,106 @@
   }
 
   /**
+   * Ångra klarmarkering av ETT tillfälle (clear block.done).
+   * Om körningen var Klar och inte alla tillfällen längre är klara → Status Pågående.
+   */
+  async function angraKlarTillfalle(ev, opts) {
+    const options = opts || {};
+    const blockId = String(options.blockId || ev.blockId || '').trim();
+    if (!blockId) {
+      showSaveToast('Välj ett tillfälle i kalendern först.', true);
+      return;
+    }
+    const block = blocksOf(ev).find((b) => b.id === blockId);
+    if (!block) {
+      showSaveToast('Tillfället hittades inte.', true);
+      return;
+    }
+    const runId = String(ev.runRec?.id || '').trim();
+    if (!runId) {
+      showSaveToast('Saknar uppdragskörning.', true);
+      return;
+    }
+
+    try {
+      const ok = await persistSchedule(ev, null, null, { mode: 'uncomplete', blockId });
+      if (!ok) return;
+      const nextBlocks = blocksOf(ev);
+      const everyDone = typeof SB.allBlocksDone === 'function'
+        ? SB.allBlocksDone(nextBlocks)
+        : nextBlocks.every((b) => SB.isBlockDone(b));
+      const runStatus = String(ev.runRec?.fields?.Status || '').trim();
+      if (!everyDone && (runStatus === 'Klar' || runStatus === 'Avslutad')) {
+        try {
+          await patchRunStatus(ev, runId, 'Pågående');
+          ev.status = 'Pågående';
+          const runKey = String(ev.runKey || String(ev.key || '').split('#')[0] || '').trim();
+          if (runKey) {
+            events.forEach((e) => {
+              if (String(e.runKey || String(e.key || '').split('#')[0] || '') !== runKey) return;
+              if (e.runRec) {
+                e.runRec.fields = { ...(e.runRec.fields || {}), Status: 'Pågående' };
+              }
+            });
+          }
+        } catch (_) { /* best-effort */ }
+      }
+      showSaveToast('Klarmarkering ångrad');
+      render();
+      refreshOpenDetail();
+    } catch (err) {
+      console.error('Kalender ångra klar tillfälle:', err);
+      showSaveToast((err && err.message) || 'Kunde inte ångra', true);
+    }
+  }
+
+  /** Ångra hela körningens klarmarkering (alla tillfällen öppna + Status Pågående). */
+  async function angraKlarHela(ev) {
+    const runId = String(ev.runRec?.id || '').trim();
+    if (!runId) {
+      showSaveToast('Saknar uppdragskörning.', true);
+      return;
+    }
+    try {
+      const list = blocksOf(ev);
+      if (list.length) {
+        const ok = await persistSchedule(ev, null, null, { mode: 'uncomplete-all' });
+        if (!ok) return;
+      }
+      const runStatus = String(ev.runRec?.fields?.Status || '').trim();
+      if (runStatus === 'Klar' || runStatus === 'Avslutad' || !list.length) {
+        await patchRunStatus(ev, runId, 'Pågående');
+      }
+      ev.status = 'Pågående';
+      const runKey = String(ev.runKey || String(ev.key || '').split('#')[0] || '').trim();
+      if (runKey) {
+        events.forEach((e) => {
+          if (String(e.runKey || String(e.key || '').split('#')[0] || '') !== runKey) return;
+          e.status = 'Pågående';
+          e.blockDone = false;
+          if (e.runRec) {
+            e.runRec.fields = { ...(e.runRec.fields || {}), Status: 'Pågående' };
+          }
+          if (Array.isArray(e.scheduleBlocks)) {
+            e.scheduleBlocks = e.scheduleBlocks.map((b) => {
+              if (!b || typeof b !== 'object') return b;
+              const next = { id: b.id, start: b.start, end: b.end };
+              if (b.note) next.note = b.note;
+              return next;
+            });
+          }
+        });
+      }
+      showSaveToast('Klarmarkering ångrad');
+      render();
+      refreshOpenDetail();
+    } catch (err) {
+      console.error('Kalender ångra klar hela:', err);
+      showSaveToast((err && err.message) || 'Kunde inte ångra', true);
+    }
+  }
+
+  /**
    * Delvis: klarmarkera ETT tillfälle (block.done).
    * Körningens Status blir Klar först när ALLA tillfällen är klara.
    */
@@ -427,6 +538,38 @@
 
   function isGoogleEvent(ev) {
     return !!(ev && (ev.source === 'google' || String(ev.key || '').startsWith('gcal:')));
+  }
+
+  function isMeetingEvent(ev) {
+    return !!(ev && (ev.source === 'meeting' || String(ev.key || '').startsWith('meeting:')));
+  }
+
+  /** Google-händelse eller CF-mötesbokning — overlay i rutnätet. */
+  function isOverlayCalendarEvent(ev) {
+    return isGoogleEvent(ev) || isMeetingEvent(ev);
+  }
+
+  function eventMeetingUrl(ev) {
+    if (!ev) return '';
+    if (GA && typeof GA.extractMeetingUrl === 'function') {
+      const fromGa = GA.extractMeetingUrl(ev);
+      if (fromGa) return fromGa;
+    }
+    if (ME && typeof ME.meetingUrlFromInvite === 'function') {
+      const fromMe = ME.meetingUrlFromInvite(ev);
+      if (fromMe) return fromMe;
+    }
+    return String(ev.meetingUrl || ev.hangoutLink || '').trim();
+  }
+
+  function meetLinkChipHtml(ev) {
+    const url = eventMeetingUrl(ev);
+    if (!url) return '';
+    const label = (ME && typeof ME.shortMeetingLabel === 'function')
+      ? ME.shortMeetingLabel(url)
+      : 'Möteslänk';
+    return `<a class="kalender-block-meet" href="${esc(url)}" target="_blank" rel="noopener noreferrer"
+      title="${esc(url)}" onclick="event.stopPropagation()"><i class="fas fa-video" aria-hidden="true"></i> ${esc(label)}</a>`;
   }
 
   /** Säker CSS-färg från Google (hex/rgb) — används bara på source:google. */
@@ -503,7 +646,7 @@
 
   function filtered() {
     return events.filter((ev) => {
-      if (isGoogleEvent(ev)) {
+      if (isOverlayCalendarEvent(ev)) {
         if (activeType !== 'Alla') return false;
         if (!eventVisibleInMode(ev)) return false;
         if (!searchMatch(ev.record)) return false;
@@ -982,11 +1125,14 @@
     if (blockId) body.blockId = blockId;
     if (hasNote) body.note = options.note;
     if (mode === 'remove' || mode === 'complete' || mode === 'done'
-      || mode === 'complete-all' || mode === 'done-all') {
+      || mode === 'complete-all' || mode === 'done-all'
+      || mode === 'uncomplete' || mode === 'reopen' || mode === 'undone'
+      || mode === 'uncomplete-all' || mode === 'reopen-all' || mode === 'undone-all') {
       delete body.start;
       delete body.end;
     }
-    if (mode === 'complete-all' || mode === 'done-all') {
+    if (mode === 'complete-all' || mode === 'done-all'
+      || mode === 'uncomplete-all' || mode === 'reopen-all' || mode === 'undone-all') {
       delete body.blockId;
     }
     if (hasNote && mode === 'update' && (startIso == null || startIso === '') && (endIso == null || endIso === '')) {
@@ -1022,6 +1168,12 @@
       } else if (mode === 'complete-all' || mode === 'done-all') {
         ev.blockDone = true;
         ev.status = 'Klar';
+      } else if (mode === 'uncomplete' || mode === 'reopen' || mode === 'undone') {
+        const saved = nextBlocks.find((b) => b.id === blockId);
+        ev.blockDone = !!(saved && SB.isBlockDone(saved));
+        ev.status = ev.blockDone ? 'Klar' : (String(ev.runRec?.fields?.Status || '').trim() || 'Pågående');
+      } else if (mode === 'uncomplete-all' || mode === 'reopen-all' || mode === 'undone-all') {
+        ev.blockDone = false;
       } else if (hasNote && !startIso && !endIso) {
         const saved = nextBlocks.find((b) => b.id === blockId);
         ev.blockNote = saved && saved.note ? saved.note : '';
@@ -1038,14 +1190,18 @@
   }
 
   function chip(ev) {
-    if (isGoogleEvent(ev)) {
-      const name = String(ev.summary || ev.record?.fields?.Kundnamn || 'Google');
+    if (isOverlayCalendarEvent(ev)) {
+      const name = String(ev.summary || ev.record?.fields?.Kundnamn || (isMeetingEvent(ev) ? 'Möte' : 'Google'));
       const sched = scheduleOf(ev);
+      const kind = isMeetingEvent(ev) ? 'Möte' : 'Google';
       const timeBit = sched ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ` : (ev.allDay ? 'Heldag · ' : '');
-      const title = `${timeBit}${name} · Google`;
-      return `<button type="button" class="kalender-chip kalender-chip--google" data-key="${esc(ev.key)}" title="${esc(title)}">
-        ${googleColorDotHtml(ev)}
+      const meetUrl = eventMeetingUrl(ev);
+      const title = `${timeBit}${name} · ${kind}${meetUrl ? ` · ${meetUrl}` : ''}`;
+      const cls = isMeetingEvent(ev) ? 'kalender-chip--meeting' : 'kalender-chip--google';
+      return `<button type="button" class="kalender-chip ${cls}" data-key="${esc(ev.key)}" title="${esc(title)}">
+        ${isGoogleEvent(ev) ? googleColorDotHtml(ev) : '<i class="fas fa-video kalender-chip-meet-icon" aria-hidden="true"></i>'}
         <span class="kalender-chip-name">${esc(name)}</span>
+        ${meetUrl ? '<i class="fas fa-link kalender-chip-meet-icon" aria-hidden="true" title="Möteslänk"></i>' : ''}
         ${sched ? `<span class="kalender-chip-time">${esc(KV.fmtTimeLabel(sched.startMin))}</span>` : ''}
       </button>`;
     }
@@ -1164,17 +1320,22 @@
   }
 
   function timedBlockHtml(ev) {
-    if (isGoogleEvent(ev)) {
-      const name = String(ev.summary || ev.record?.fields?.Kundnamn || 'Google');
+    if (isOverlayCalendarEvent(ev)) {
+      const name = String(ev.summary || ev.record?.fields?.Kundnamn || (isMeetingEvent(ev) ? 'Möte' : 'Google'));
       const sched = scheduleOf(ev);
       if (!sched) return '';
       const layout = KV.blockLayout(sched.startMin, sched.endMin);
-      return `<div class="kalender-block kalender-block--google" data-key="${esc(ev.key)}" data-timed="1"
+      const kind = isMeetingEvent(ev) ? 'Möte' : 'Google';
+      const meetUrl = eventMeetingUrl(ev);
+      const blockCls = isMeetingEvent(ev) ? 'kalender-block--meeting' : 'kalender-block--google';
+      const title = `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name} · ${kind}${meetUrl ? ` · ${meetUrl}` : ''}`;
+      return `<div class="kalender-block ${blockCls}" data-key="${esc(ev.key)}" data-timed="1"
         style="${KV.blockPositionStyleAttr(layout)}"
-        title="${esc(`${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)} · ${name} · Google`)}">
+        title="${esc(title)}">
         <button type="button" class="kalender-block-main" data-key="${esc(ev.key)}">
-          <span class="kalender-block-name">${googleColorDotHtml(ev)}${esc(name)}</span>
-          <span class="kalender-block-time">Google · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
+          <span class="kalender-block-name">${isGoogleEvent(ev) ? googleColorDotHtml(ev) : ''}${esc(name)}</span>
+          <span class="kalender-block-time">${esc(kind)} · ${esc(KV.fmtTimeLabel(sched.startMin))}–${esc(KV.fmtTimeLabel(sched.endMin))}</span>
+          ${meetLinkChipHtml(ev)}
         </button>
       </div>`;
     }
@@ -1990,10 +2151,23 @@
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || 'Kunde inte skicka inbjudan');
           closeDetail();
-          const meetHint = data.meetCreated || meetingType === 'Distans'
-            ? ' Google Meet skapas på händelsen.'
+          const invite = data.invite || null;
+          const meetUrl = invite
+            ? (eventMeetingUrl(invite) || String(invite.location || '').trim())
             : '';
+          const meetHint = meetUrl && /^https?:\/\//i.test(meetUrl)
+            ? ' Möteslänken syns i kalendern.'
+            : (data.meetCreated || meetingType === 'Distans'
+              ? ' Google Meet skapas på händelsen.'
+              : '');
           showSaveToast(`Inbjudan skickad till ${payload.bookerEmail}.${meetHint}`);
+          if (invite && ME && typeof ME.mapInviteToCalendarEvent === 'function') {
+            const mapped = ME.mapInviteToCalendarEvent(invite);
+            if (mapped) {
+              meetingEvents = meetingEvents.filter((m) => m.inviteId !== mapped.inviteId).concat([mapped]);
+            }
+          }
+          try { await pullMeetingInvites({ quiet: true }); } catch (_) { /* ignore */ }
           if (gcalPullEnabled()) {
             try { await pullGoogleEvents(); } catch (_) { /* ignore */ }
           }
@@ -2077,17 +2251,18 @@
   function allDayCellHtml(iso, dayMap) {
     const t = today();
     const list = (dayMap.get(iso) || []).filter((ev) => !scheduleOf(ev));
-    const googleAllDay = list.filter((ev) => isGoogleEvent(ev));
-    const cfDeadlines = list.filter((ev) => !isGoogleEvent(ev));
+    const overlayAllDay = list.filter((ev) => isOverlayCalendarEvent(ev));
+    const cfDeadlines = list.filter((ev) => !isOverlayCalendarEvent(ev));
     const parts = [];
     if (cfDeadlines.length) {
       const n = cfDeadlines.length;
       parts.push(`<button type="button" class="kalender-deadlines-chip" data-deadlines-date="${esc(iso)}"
         aria-haspopup="dialog" title="${esc(`${n} deadline${n === 1 ? '' : 's'}`)}">${esc(String(n))} deadline${n === 1 ? '' : 's'}</button>`);
     }
-    googleAllDay.forEach((ev) => {
-      const name = String(ev.summary || 'Google');
-      parts.push(`<button type="button" class="kalender-allday-gcal" data-key="${esc(ev.key)}" title="${esc(name)}">${esc(name)}</button>`);
+    overlayAllDay.forEach((ev) => {
+      const name = String(ev.summary || (isMeetingEvent(ev) ? 'Möte' : 'Google'));
+      const cls = isMeetingEvent(ev) ? 'kalender-allday-meeting' : 'kalender-allday-gcal';
+      parts.push(`<button type="button" class="${cls}" data-key="${esc(ev.key)}" title="${esc(name)}">${esc(name)}</button>`);
     });
     return `<div class="kalender-untimed${iso === t ? ' is-today' : ''}" data-date="${esc(iso)}">
       ${parts.length ? parts.join('') : '<span class="kalender-untimed-hint">Utan tid · dra till rutnät</span>'}
@@ -2103,7 +2278,7 @@
 
   function openDeadlinesPopover(dateIso, anchor) {
     closeDeadlinesPopover();
-    const list = (byDay(filtered()).get(dateIso) || []).filter((ev) => !scheduleOf(ev) && !isGoogleEvent(ev));
+    const list = (byDay(filtered()).get(dateIso) || []).filter((ev) => !scheduleOf(ev) && !isOverlayCalendarEvent(ev));
     if (!list.length || !anchor) return;
     const pop = document.createElement('div');
     pop.className = 'kalender-deadlines-popover';
@@ -2371,7 +2546,7 @@
    */
   function sidePanelEvents(list) {
     return (list || []).filter((ev) => {
-      if (isGoogleEvent(ev)) return false;
+      if (isOverlayCalendarEvent(ev)) return false;
       const st = statusOf(ev);
       if (st === 'Klar' || st === 'Avslutad') return false;
       return SB.isSelectableInPool(estimatedHoursOf(ev), totalScheduledHours(ev));
@@ -2730,9 +2905,7 @@
     const cleanedDesc = GA && typeof GA.cleanGcalDescription === 'function'
       ? GA.cleanGcalDescription(ev.description || '')
       : String(ev.description || '').trim();
-    const meetingUrl = (GA && typeof GA.extractMeetingUrl === 'function'
-      ? GA.extractMeetingUrl(ev)
-      : '') || String(ev.meetingUrl || ev.hangoutLink || '').trim();
+    const meetingUrl = eventMeetingUrl(ev);
 
     if (el.detailTitle) el.detailTitle.textContent = name;
     el.detailBody.innerHTML = `
@@ -2741,7 +2914,7 @@
         <div><dt>Titel</dt><dd>${esc(name)}</dd></div>
         <div><dt>Datum</dt><dd>${esc(dateIso || '—')}</dd></div>
         <div><dt>Planerad tid</dt><dd>${esc(blockLabel)}</dd></div>
-        ${ev.location ? `<div><dt>Plats</dt><dd>${esc(ev.location)}</dd></div>` : ''}
+        ${ev.location && !/^https?:\/\//i.test(String(ev.location)) ? `<div><dt>Plats</dt><dd>${esc(ev.location)}</dd></div>` : ''}
         ${meetingUrl ? `<div><dt>Möteslänk</dt><dd><a class="kalender-meet-link" href="${esc(meetingUrl)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-video"></i> ${esc(meetingUrl)}</a></dd></div>` : ''}
         ${cleanedDesc ? `<div><dt>Beskrivning</dt><dd class="kalender-detail-desc">${esc(cleanedDesc).slice(0, 800)}</dd></div>` : ''}
       </dl>
@@ -2801,12 +2974,61 @@
     });
   }
 
+  function renderMeetingDetail(ev, group) {
+    const name = String(ev.summary || ev.title || 'Möte');
+    const sched = scheduleOf(ev);
+    const dateIso = toDate(ev.deadline) || (sched && sched.date) || '';
+    const blockLabel = sched
+      ? `${KV.fmtTimeLabel(sched.startMin)}–${KV.fmtTimeLabel(sched.endMin)}`
+      : '—';
+    const meetingUrl = eventMeetingUrl(ev);
+    const location = String(ev.location || '').trim();
+    const showLocation = location && !/^https?:\/\//i.test(location);
+    const siblings = Array.isArray(group) && group.length > 1 ? group : null;
+    openDetailKey = String(ev.key || '');
+
+    if (el.detailTitle) el.detailTitle.textContent = name;
+    el.detailBody.innerHTML = `
+      <div class="kalender-detail-status kalender-detail-status--meeting"><i class="fas fa-video" aria-hidden="true"></i> Mötesinbjudan</div>
+      <dl class="kalender-detail-dl">
+        <div><dt>Titel</dt><dd>${esc(name)}</dd></div>
+        <div><dt>Datum</dt><dd>${esc(dateIso || '—')}</dd></div>
+        <div><dt>Planerad tid</dt><dd>${esc(blockLabel)}</dd></div>
+        ${ev.meetingType ? `<div><dt>Typ</dt><dd>${esc(ev.meetingType)}</dd></div>` : ''}
+        ${ev.bookerName ? `<div><dt>Inbjuden</dt><dd>${esc(ev.bookerName)}${ev.bookerEmail ? ` · ${esc(ev.bookerEmail)}` : ''}</dd></div>` : ''}
+        ${showLocation ? `<div><dt>Plats</dt><dd>${esc(location)}</dd></div>` : ''}
+        ${meetingUrl ? `<div><dt>Möteslänk</dt><dd><a class="kalender-meet-link" href="${esc(meetingUrl)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-video"></i> ${esc(meetingUrl)}</a></dd></div>` : ''}
+        ${ev.description ? `<div><dt>Anteckning</dt><dd class="kalender-detail-desc">${esc(ev.description).slice(0, 800)}</dd></div>` : ''}
+      </dl>
+      ${meetingUrl ? `<div class="kalender-detail-actions"><a class="btn btn-primary btn-sm" href="${esc(meetingUrl)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-video"></i> Öppna möteslänk</a></div>` : ''}
+      ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>
+        ${siblings.map((s) => {
+          const label = isOverlayCalendarEvent(s)
+            ? (s.summary || (isMeetingEvent(s) ? 'Möte' : 'Google'))
+            : String(s.record?.fields?.Kundnamn || s.key);
+          const sideCls = isMeetingEvent(s)
+            ? ' kalender-side-item--meeting'
+            : (isGoogleEvent(s) ? ' kalender-side-item--google' : '');
+          return `<button type="button" class="kalender-side-item${sideCls}" data-key="${esc(s.key)}"><span class="kalender-side-name">${esc(label)}</span></button>`;
+        }).join('')}
+      </div>` : ''}`;
+    el.detail.hidden = false;
+    document.body.classList.add('kalender-detail-open');
+    el.detailBody.querySelectorAll('[data-key]').forEach((btn) => {
+      btn.addEventListener('click', () => openDetail(btn.getAttribute('data-key')));
+    });
+  }
+
   function openDetail(key, group) {
     const ev = eventByKey(key) || (group || []).find((x) => x.key === key || x.runKey === key);
     if (!ev || !el.detail) return;
     // Behåll #blockId så delvis-klarmarkering syns efter omritning
     openDetailKey = String(ev.blockId ? ev.key : (ev.runKey || ev.key || key || ''));
 
+    if (isMeetingEvent(ev)) {
+      renderMeetingDetail(ev, group);
+      return;
+    }
     if (isGoogleEvent(ev)) {
       renderGoogleDetail(ev, group);
       return;
@@ -2885,6 +3107,9 @@
     const canEditNote = !!focusSched && !!focusBlockId && !!ev.runRec?.id;
     // Ta bort bokning = bara detta tillfälle, även om det är klarmarkerat (så länge körningen är öppen)
     const canRemoveTillfalle = canKlar && !!focusSched && !!focusBlockId && !!ev.runRec?.id;
+    // Ångra klarmarkering även när hela körningen är Klar (öppnar tillfället + körningen igen)
+    const canAngraTillfalle = isKlar && !!focusSched && !!focusBlockId && !!ev.runRec?.id;
+    const canAngraHela = isRunKlar && !!ev.runRec?.id;
     const noteHtml = canEditNote
       ? `<div class="kalender-detail-note">
           <label for="kal-block-note">Anteckning</label>
@@ -2899,7 +3124,7 @@
         ? `<p class="kalender-detail-note-readonly">${esc(focusNote)}</p>`
         : '');
     let tillfalleActions = '';
-    if (canKlarTillfalle || canRemoveTillfalle) {
+    if (canKlarTillfalle || canRemoveTillfalle || canAngraTillfalle) {
       const klarBtns = canKlarTillfalle
         ? `<button type="button" class="btn btn-ghost btn-sm" data-klar-tillfalle>
             <i class="fas fa-check"></i> Klarmarkera tillfälle
@@ -2907,7 +3132,12 @@
           ${canKlarTillfalleTid ? `<button type="button" class="btn btn-primary btn-sm" data-klar-tillfalle-tid ${hasFocusHours ? '' : 'disabled'}>
             <i class="fas fa-check"></i> Klarmarkera tillfälle & tid (${esc(String(focusSched.hours))} t)
           </button>` : ''}`
-        : (isKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>` : '');
+        : (canAngraTillfalle
+          ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>
+            <button type="button" class="btn btn-ghost btn-sm" data-angra-klar-tillfalle>
+              <i class="fas fa-undo"></i> Ångra klarmarkering
+            </button>`
+          : '');
       const removeBtn = canRemoveTillfalle
         ? `<button type="button" class="btn btn-danger btn-sm" data-remove-tillfalle>
             <i class="fas fa-trash-alt"></i> Ta bort detta tillfälle
@@ -2918,7 +3148,12 @@
           ${removeBtn}
         </div>`;
     } else if (isKlar) {
-      tillfalleActions = `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>`;
+      tillfalleActions = `<div class="kalender-detail-actions kalender-detail-actions--scope">
+          <span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> Tillfälle klarmarkerat</span>
+          ${canAngraTillfalle ? `<button type="button" class="btn btn-ghost btn-sm" data-angra-klar-tillfalle>
+            <i class="fas fa-undo"></i> Ångra klarmarkering
+          </button>` : ''}
+        </div>`;
     }
     const tillfalleHtml = focusSched
       ? `<div class="kalender-detail-scope">
@@ -2974,7 +3209,10 @@
           ${canKlarTid ? `<button type="button" class="${klarTidCls}" data-klar-tid ${hasHours ? '' : 'disabled'}>
             <i class="fas fa-check"></i> ${isUppgiftOnly ? 'Klarmarkera & tid' : 'Klarmarkera hela & tid'}${hasHours ? ` (${esc(String(totalH))} t)` : ''}
           </button>` : ''}
-          ${isRunKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> ${isUppgiftOnly ? 'Klarmarkerad' : 'Hela körningen klarmarkerad'}</span>` : ''}
+          ${isRunKlar ? `<span class="kalender-detail-done-hint"><i class="fas fa-check-circle"></i> ${isUppgiftOnly ? 'Klarmarkerad' : 'Hela körningen klarmarkerad'}</span>
+            ${canAngraHela ? `<button type="button" class="btn btn-ghost btn-sm" data-angra-klar-hela>
+              <i class="fas fa-undo"></i> Ångra klarmarkering
+            </button>` : ''}` : ''}
           <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
         </div>
       </div>
@@ -3017,6 +3255,18 @@
     if (klarTillfalleTidBtn) {
       klarTillfalleTidBtn.addEventListener('click', () => {
         klarTillfalle(ev, { blockId: focusBlockId, withTid: true });
+      });
+    }
+    const angraKlarTillfalleBtn = el.detailBody.querySelector('[data-angra-klar-tillfalle]');
+    if (angraKlarTillfalleBtn) {
+      angraKlarTillfalleBtn.addEventListener('click', () => {
+        angraKlarTillfalle(ev, { blockId: focusBlockId });
+      });
+    }
+    const angraKlarHelaBtn = el.detailBody.querySelector('[data-angra-klar-hela]');
+    if (angraKlarHelaBtn) {
+      angraKlarHelaBtn.addEventListener('click', () => {
+        angraKlarHela(ev);
       });
     }
     const saveEstBtn = el.detailBody.querySelector('[data-save-estimate]');
@@ -3223,11 +3473,43 @@
     }
   }
 
+  async function pullMeetingInvites(opts = {}) {
+    const quiet = !!opts.quiet;
+    const seq = ++meetingPullSeq;
+    const user = window.AuthManager && AuthManager.getCurrentUser ? AuthManager.getCurrentUser() : null;
+    const byraId = String(user?.byraId || '').trim();
+    if (!byraId || !ME) {
+      meetingEvents = [];
+      return { skipped: true, events: [] };
+    }
+    const range = KV.visibleRange(view, focus);
+    try {
+      const qs = new URLSearchParams({ byraId });
+      const res = await fetch(`${baseUrl}/api/motesbokning/invites?${qs}`, authOpts());
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (seq !== meetingPullSeq) return data;
+      let invites = Array.isArray(data.invites) ? data.invites : [];
+      if (scope === 'mine' && user?.email) {
+        const meEmail = String(user.email || '').trim().toLowerCase();
+        invites = invites.filter((inv) => String(inv.createdBy || '').trim().toLowerCase() === meEmail);
+      }
+      meetingEvents = ME.buildMeetingEventsFromInvites(invites, range);
+      return { events: meetingEvents, invites: invites.length };
+    } catch (err) {
+      console.warn('Kalender mötesinbjudningar:', err.message);
+      if (!quiet) { /* tyst — kompletterande källa */ }
+      return { error: err.message, events: [] };
+    }
+  }
+
   async function renderWithGooglePull(opts = {}) {
     render();
-    if (!gcalPullEnabled()) return;
-    const data = await pullGoogleEvents({ quiet: opts.quiet !== false });
-    if (data && !data.error) render();
+    const quiet = opts.quiet !== false;
+    const tasks = [pullMeetingInvites({ quiet: true })];
+    if (gcalPullEnabled()) tasks.push(pullGoogleEvents({ quiet }));
+    await Promise.all(tasks.map((p) => p.catch(() => null)));
+    render();
   }
 
   async function loadGcalStatus() {
@@ -3241,11 +3523,13 @@
       console.warn('Kalender Google-status:', err.message);
       gcalStatus = { configured: false, connected: false, syncEnabled: false };
     }
+    const tasks = [pullMeetingInvites({ quiet: true })];
     if (gcalPullEnabled()) {
-      pullGoogleEvents({ quiet: true }).then(() => render());
+      tasks.push(pullGoogleEvents({ quiet: true }));
     } else {
       googleEvents = [];
     }
+    Promise.all(tasks.map((p) => p.catch(() => null))).then(() => render());
   }
 
   async function load() {
@@ -3273,9 +3557,9 @@
       render();
       show(el.loading, false);
       show(el.content, true);
-      if (gcalPullEnabled()) {
-        pullGoogleEvents({ quiet: true }).then(() => render());
-      }
+      const overlayTasks = [pullMeetingInvites({ quiet: true })];
+      if (gcalPullEnabled()) overlayTasks.push(pullGoogleEvents({ quiet: true }));
+      Promise.all(overlayTasks.map((p) => p.catch(() => null))).then(() => render());
     } catch (err) {
       console.error('Kalender:', err);
       if (el.loading) {
