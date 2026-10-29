@@ -22658,14 +22658,15 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
     const hasMode = Object.prototype.hasOwnProperty.call(body, 'mode');
     const hasBlockId = Object.prototype.hasOwnProperty.call(body, 'blockId');
     const modeRaw = String(body.mode || '').trim().toLowerCase();
-    if (!hasStart && !hasEnd && modeRaw !== 'remove') {
+    const modeNeedsNoTimes = modeRaw === 'remove' || modeRaw === 'complete' || modeRaw === 'done';
+    if (!hasStart && !hasEnd && !modeNeedsNoTimes) {
       return res.status(400).json({ error: 'Ange start och/eller end (ISO-datetime), eller null för att rensa.' });
     }
 
     let mode = modeRaw || 'set';
     if (!modeRaw && hasBlockId && body.blockId) mode = 'update';
-    if (mode === 'remove' && !body.blockId) {
-      return res.status(400).json({ error: 'blockId krävs för mode=remove' });
+    if ((mode === 'remove' || mode === 'complete' || mode === 'done') && !body.blockId) {
+      return res.status(400).json({ error: `blockId krävs för mode=${mode}` });
     }
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;

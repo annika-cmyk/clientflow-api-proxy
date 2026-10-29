@@ -75,6 +75,13 @@
     return (blocks || []).slice().sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
   }
 
+  function isBlockDone(raw) {
+    if (!raw || typeof raw !== 'object') return false;
+    if (raw.done === true || raw.done === 1 || raw.done === '1' || raw.done === 'true') return true;
+    const st = String(raw.status || '').trim().toLowerCase();
+    return st === 'klar' || st === 'avslutad' || st === 'done' || st === 'completed';
+  }
+
   function normalizeBlock(raw, fallbackId) {
     if (!raw || typeof raw !== 'object') return null;
     const start = trimIso(raw.start);
@@ -84,7 +91,9 @@
     const b = new Date(end).getTime();
     if (!(b > a)) return null;
     const id = String(raw.id || fallbackId || '').trim() || newBlockId();
-    return { id, start, end };
+    const block = { id, start, end };
+    if (isBlockDone(raw)) block.done = true;
+    return block;
   }
 
   function parseJsonBlocks(raw) {
@@ -133,7 +142,11 @@
     const list = sortBlocks(blocks)
       .map((b) => normalizeBlock(b))
       .filter(Boolean);
-    return JSON.stringify(list.map((b) => ({ id: b.id, start: b.start, end: b.end })));
+    return JSON.stringify(list.map((b) => {
+      const row = { id: b.id, start: b.start, end: b.end };
+      if (b.done) row.done = true;
+      return row;
+    }));
   }
 
   function primaryFromBlocks(blocks) {
@@ -145,8 +158,9 @@
   /**
    * Mutera blocklista.
    * @param {Array} current
-   * @param {{ mode?: string, blockId?: string|null, start?: string|null, end?: string|null }} mutation
-   *   mode: 'set' (ersätt allt med ett block / rensa), 'add', 'update', 'remove'
+   * @param {{ mode?: string, blockId?: string|null, start?: string|null, end?: string|null, done?: boolean }} mutation
+   *   mode: 'set' (ersätt allt med ett block / rensa), 'add', 'update', 'remove',
+   *         'complete' / 'done' (markera tillfälle som klart — behålls i kalendern)
    */
   function applyMutation(current, mutation) {
     const mode = String(mutation?.mode || 'set').trim().toLowerCase();
@@ -155,6 +169,7 @@
       : null;
     const hasStart = Object.prototype.hasOwnProperty.call(mutation || {}, 'start');
     const hasEnd = Object.prototype.hasOwnProperty.call(mutation || {}, 'end');
+    const hasDone = Object.prototype.hasOwnProperty.call(mutation || {}, 'done');
     const startVal = hasStart ? (mutation.start == null || mutation.start === '' ? null : trimIso(mutation.start)) : undefined;
     const endVal = hasEnd ? (mutation.end == null || mutation.end === '' ? null : trimIso(mutation.end)) : undefined;
 
@@ -166,6 +181,14 @@
     }
 
     let blocks = sortBlocks((current || []).map((b) => normalizeBlock(b)).filter(Boolean));
+
+    if (mode === 'complete' || mode === 'done') {
+      if (!blockId) throw new Error('blockId krävs för att klarmarkera tidblock');
+      const idx = blocks.findIndex((b) => b.id === blockId);
+      if (idx < 0) throw new Error('Tidblocket hittades inte');
+      blocks[idx] = { ...blocks[idx], done: true };
+      return sortBlocks(blocks);
+    }
 
     if (mode === 'remove') {
       if (!blockId) throw new Error('blockId krävs för att ta bort tidblock');
@@ -197,7 +220,10 @@
       if (!(new Date(nextEnd).getTime() > new Date(nextStart).getTime())) {
         throw new Error('Slut måste vara efter start');
       }
-      blocks[idx] = { id: blockId, start: nextStart, end: nextEnd };
+      const next = { id: blockId, start: nextStart, end: nextEnd };
+      const nextDone = hasDone ? !!mutation.done : !!blocks[idx].done;
+      if (nextDone) next.done = true;
+      blocks[idx] = next;
       return sortBlocks(blocks);
     }
 
@@ -255,6 +281,7 @@
         return;
       }
       blocks.forEach((b) => {
+        const blockDone = !!b.done;
         out.push({
           ...ev,
           key: `${runKey}#${b.id}`,
@@ -262,7 +289,10 @@
           blockId: b.id,
           scheduledStart: b.start,
           scheduledEnd: b.end,
-          scheduleBlocks: blocks
+          scheduleBlocks: blocks,
+          blockDone,
+          // Tillfälle som klarmarkerats syns kvar som Klar i rutnätet
+          status: blockDone ? 'Klar' : ev.status
         });
       });
     });
@@ -331,6 +361,7 @@
     trimIso,
     newBlockId,
     sortBlocks,
+    isBlockDone,
     normalizeBlock,
     parseBlocksFromFields,
     serializeBlocks,
