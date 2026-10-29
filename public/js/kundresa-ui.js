@@ -1,7 +1,7 @@
 /**
  * Kundresa-UI — popup «Din resa» (analyskorts-design) med INBÄDDAT steg-innehåll.
  * Stegytan (#kundresa-step-host) fylls av CustomerCardManager via reparent av befintliga kort.
- * Layout speglar Förslag 1 · Företag & personer (checklist, kortsektioner, kvar-footer).
+ * Layout: Förslag 1-struktur (checklist data, sektioner, kvar-footer) med Förslag 2 · Lugnare-chrome.
  */
 (function (global) {
   function esc(s) {
@@ -183,6 +183,9 @@
               const blob = done
                 ? '<i class="fas fa-check" aria-hidden="true"></i>'
                 : esc(String(displayNum));
+              const calmTitle = `${displayNum}. ${step.title || ''}`;
+              const calmStatus = step.label
+                || (done ? 'Klart' : (Number(step.id) === Number(activeStepId) ? 'Pågår' : ''));
               return `
               <button type="button" class="tjanst-tab ${tabStateClass(step, activeStepId)}"
                 role="tab"
@@ -195,8 +198,8 @@
                 title="${esc(step.gated ? 'Blockerad tills VH är bekräftad' : step.title)}">
                 <span class="tjanst-tab-dot kundresa-tab-blob" data-resa-blob="${esc(String(step.id))}" aria-hidden="true">${blob}</span>
                 <span class="tjanst-tab-label kundresa-tab-label">
-                  <span class="kundresa-tab-title">${esc(step.title)}</span>
-                  <span class="kundresa-tab-status">${esc(step.label || '')}</span>
+                  <span class="kundresa-tab-title">${esc(calmTitle)}</span>
+                  <span class="kundresa-tab-status">${esc(calmStatus)}</span>
                 </span>
               </button>`;
             }).join('')}
@@ -213,6 +216,7 @@
             ${companyLabel ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
             <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
           </header>` : ''}
+          <!-- Lugnare: meta/company/desc döljs via CSS; checklista finns i DOM men döljs. -->
 
           <div class="kundresa-popup-scroll" data-kundresa-scroll>
             ${showChecklist ? renderStep1Checklist(step1Sub) : ''}
@@ -231,8 +235,8 @@
                 <div class="kundresa-vh-box-lead">
                   <div class="kundresa-sec-icon" aria-hidden="true"><i class="fas fa-shield-alt"></i></div>
                   <div class="kundresa-vh-box-titles">
-                    <h4>Verifiera verklig huvudman</h4>
-                    <p class="kundresa-hint">Aktiebolag · jämför personerna med rollen VH ovan mot Bolagsverkets register</p>
+                    <h4>Kontroller</h4>
+                    <p class="kundresa-hint">Stämmer verklig huvudman mot Bolagsverket?</p>
                   </div>
                 </div>
                 ${vhBadge}
@@ -248,7 +252,7 @@
                   ${renderRegisterList(register)}
                 </div>
                 <div class="kundresa-vh-form">
-                  <p class="kundresa-vh-label">Stämmer listan mot Bolagsverket?</p>
+                  <p class="kundresa-vh-label">Stämmer verklig huvudman mot Bolagsverket?</p>
                   <div class="kundresa-vh-segment-row">
                     <div class="kundresa-vh-segments" role="group" aria-label="VH-bekräftelse">
                       <button type="button" class="kundresa-vh-seg${byraVal === 'Ja' ? ' is-active' : ''}"
@@ -287,10 +291,8 @@
               data-kundresa-step-id="${esc(String(activeStep.id))}">
               <i class="fas fa-arrow-left"></i> Föregående
             </button>
-            ${remainingLabel ? `<span class="kundresa-step-remaining" role="status">
-              <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
-              ${esc(remainingLabel)}
-            </span>` : `<span class="kundresa-step-remaining is-ok" role="status">${esc(progress.complete ? 'Alla steg klara' : '')}</span>`}
+            ${remainingLabel ? `<span class="kundresa-step-remaining" role="status">${esc(remainingLabel)}</span>`
+              : `<span class="kundresa-step-remaining is-ok" role="status">${esc(progress.complete ? 'Alla steg klara' : '')}</span>`}
             <button type="button" class="btn btn-primary btn-sm" data-kundresa-next
               ${!steps.some((st) => Number(st.number) === Number(activeStep.number) + 1) ? 'disabled' : ''}
               data-kundresa-step-id="${esc(String(activeStep.id))}">

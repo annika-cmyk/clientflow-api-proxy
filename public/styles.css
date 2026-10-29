@@ -24907,3 +24907,557 @@ body.kalender-detail-open { overflow: hidden; }
     justify-content: flex-start;
   }
 }
+/* === Förslag 2 · Lugnare: lugnare chrome i kunduppläggningspopupen === */
+.kundresa-modal-content {
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+.kundresa-modal-content .modal-header {
+  padding: 12px 24px;
+  border-bottom: 1px solid #E6E9EC;
+}
+.kundresa-modal .tjanst-modal-head {
+  align-items: center;
+}
+.kundresa-modal .kundresa-modal-titleblock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+.kundresa-modal .tjanst-modal-kicker {
+  order: 2;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #5B6670;
+}
+.kundresa-modal-titleblock h3 {
+  order: 1;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: #18212B;
+}
+.kundresa-modal-progress {
+  order: 3;
+  flex-basis: 100%;
+  margin: 0;
+  display: none; /* Lugnare: ingen progressrad i headern */
+}
+.kundresa-modal-company,
+.kundresa-modal-progress-bar,
+.kundresa-modal-progress-text {
+  display: none;
+}
+
+/* Rail: grå, smalare, vänster accent istället för blob/pill */
+.kundresa-popup-tabs {
+  width: 200px;
+  flex: 0 0 200px;
+  padding: 20px;
+  border-right: none;
+  background: #F7F8F9;
+}
+.kundresa-popup-tabs .tjanst-tabs-kicker {
+  display: none;
+}
+.kundresa-popup-tabs .tjanst-tabs-steps {
+  gap: 14px;
+}
+.kundresa-popup-tabs .tjanst-tab {
+  gap: 0;
+  padding: 0 0 0 10px;
+  margin-left: -13px;
+  border-radius: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: #3E4A55;
+  align-items: flex-start;
+}
+.kundresa-popup-tabs .tjanst-tab:hover {
+  background: transparent;
+  color: #18212B;
+}
+.kundresa-popup-tabs .tjanst-tab.is-active {
+  background: transparent;
+  border-left-color: var(--accent, #1D4E57);
+  color: #18212B;
+  font-weight: 600;
+}
+.kundresa-popup-tabs .kundresa-tab-blob {
+  display: none;
+}
+.kundresa-popup-tabs .kundresa-tab-title {
+  font-size: 14px;
+  font-weight: inherit;
+  color: inherit;
+}
+.kundresa-popup-tabs .tjanst-tab.is-active .kundresa-tab-title {
+  font-weight: 600;
+}
+.kundresa-popup-tabs .kundresa-tab-status,
+.kundresa-popup-tabs .tjanst-tab.is-active .kundresa-tab-status,
+.kundresa-popup-tabs .tjanst-tab.is-done .kundresa-tab-status,
+.kundresa-popup-tabs .tjanst-tab.is-attention .kundresa-tab-status,
+.kundresa-popup-tabs .tjanst-tab.is-done:not(.is-active) .kundresa-tab-status {
+  color: #5B6670;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Main: vit yta, lugnare padding */
+.kundresa-popup-body--embed {
+  padding: 18px 36px 0;
+  gap: 16px;
+  background: #fff;
+}
+.kundresa-popup-scroll {
+  gap: 16px;
+  padding-bottom: 0.5rem;
+}
+
+/* Steghead: bara titel */
+.kundresa-popup-stepinfo--compact {
+  gap: 0;
+}
+.kundresa-popup-stepmeta,
+.kundresa-popup-company,
+.kundresa-popup-stepdesc {
+  display: none;
+}
+.kundresa-popup-steptitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #18212B;
+  letter-spacing: 0;
+}
+
+/* Checklista döljs — kvar-footer bär statusen (Lugnare) */
+.kundresa-step1-checklist {
+  display: none;
+}
+
+/* Platta sektioner med hårfina skiljelinjer istället för vita kort */
+#kundresa-step-host {
+  gap: 0;
+  color: #18212B;
+  font-size: 14px;
+  line-height: 1.45;
+}
+#kundresa-step-host > .kundresa-embedded-card.collapsible-card,
+#kundresa-step-host > .kundresa-vh-box,
+#kundresa-step-host > .roller-screening-toolbar,
+#kundresa-step-host > .kundresa-embed-section {
+  border: none;
+  border-bottom: 1px solid #E6E9EC;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  margin: 0;
+  padding: 16px 0;
+  overflow: visible;
+}
+#kundresa-step-host > .kundresa-embedded-card.collapsible-card:first-child,
+#kundresa-step-host > .kundresa-vh-box:first-child,
+#kundresa-step-host > .roller-screening-toolbar:first-child,
+#kundresa-step-host > .kundresa-embed-section:first-child {
+  padding-top: 0;
+}
+#kundresa-step-host > .kundresa-embedded-card.collapsible-card:last-child,
+#kundresa-step-host > .kundresa-vh-box:last-child,
+#kundresa-step-host > .roller-screening-toolbar:last-child,
+#kundresa-step-host > .kundresa-embed-section:last-child {
+  border-bottom: none;
+  padding-bottom: 8px;
+}
+
+#kundresa-step-host .collapsible-header {
+  padding: 0 0 8px;
+  align-items: baseline;
+}
+#kundresa-step-host .collapsible-title i,
+#kundresa-step-host .kundresa-sec-icon {
+  display: none;
+}
+#kundresa-step-host .collapsible-title,
+#kundresa-step-host .roller-screening-title,
+#kundresa-step-host .kundresa-vh-box-head h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-sec-sub,
+#kundresa-step-host .kundresa-hint,
+#kundresa-step-host .roller-screening-sub,
+#kundresa-step-host .roller-ledamoter-placeholder-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #5B6670;
+}
+#kundresa-step-host .kundresa-vh-badge {
+  display: none;
+}
+#kundresa-step-host .kundresa-vh-box-titles .kundresa-hint {
+  display: none;
+}
+#kundresa-step-host .kundresa-vh-block .kundresa-vh-label {
+  display: none; /* register shown as muted sub under question via list */
+}
+#kundresa-step-host .kundresa-vh-form {
+  width: 100%;
+}
+#kundresa-step-host .kundresa-vh-layout > .kundresa-vh-block {
+  order: 2;
+}
+#kundresa-step-host .kundresa-vh-layout > .kundresa-vh-form {
+  order: 1;
+}
+
+/* Header-actions → textlänkar */
+#kundresa-step-host .collapsible-actions .btn,
+#kundresa-step-host #bolagsverket-refresh-btn,
+#kundresa-step-host .roller-add-actions .btn {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: #1D4E57;
+  font-size: 13px;
+  font-weight: 500;
+  gap: 0.25rem;
+}
+#kundresa-step-host .collapsible-actions .btn:hover,
+#kundresa-step-host #bolagsverket-refresh-btn:hover,
+#kundresa-step-host .roller-add-actions .btn:hover {
+  color: #133940;
+  background: transparent;
+  text-decoration: underline;
+}
+#kundresa-step-host .collapsible-actions .btn i,
+#kundresa-step-host #bolagsverket-refresh-btn i,
+#kundresa-step-host .roller-add-actions .btn i {
+  display: none;
+}
+#kundresa-step-host .roller-add-actions {
+  gap: 16px;
+  margin-top: 0;
+}
+#kundresa-step-host .roller-add-dashed {
+  display: none;
+}
+
+/* Företagsfält: lugnare label/värde */
+#kundresa-step-host .lead-fields {
+  grid-template-columns: 90px minmax(0, 1fr) 90px minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 4px;
+}
+#kundresa-step-host .lead-field label,
+#kundresa-step-host .lead-section > label,
+#kundresa-step-host .kunduppgifter-form-row > label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #5B6670;
+  margin-bottom: 0;
+}
+#kundresa-step-host .lead-field span,
+#kundresa-step-host .lead-field .adress-utsatt-text,
+#kundresa-step-host .kunduppgifter-value,
+#kundresa-step-host .sni-code-label {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #18212B;
+}
+#kundresa-step-host .lead-status,
+#kundresa-step-host .sni-code-badge,
+#kundresa-step-host .adress-utsatt-bar .adress-utsatt-badge,
+#kundresa-step-host .roller-detail-chip,
+#kundresa-step-host .roller-person-pep-datum,
+#kundresa-step-host .roller-person-pep-flag {
+  font-size: 12px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+}
+#kundresa-step-host .adress-utsatt-bar {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  gap: 8px;
+}
+#kundresa-step-host .lead-section {
+  margin-top: 10px;
+}
+
+/* Personer: enkla radkort istället för tabell */
+#kundresa-step-host .roller-person-table-head {
+  display: none;
+}
+#kundresa-step-host .roller-person-list--table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#kundresa-step-host .roller-person-item--row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  border: 1px solid #E6E9EC;
+  border-radius: 8px;
+  grid-template-columns: none;
+  background: #fff;
+}
+#kundresa-step-host .roller-person-item--row:last-child {
+  border-bottom: 1px solid #E6E9EC;
+}
+#kundresa-step-host .roller-col-person {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+#kundresa-step-host .roller-avatar-initials {
+  display: none;
+}
+#kundresa-step-host .roller-person-name-stack {
+  gap: 0.1rem;
+}
+#kundresa-step-host .roller-person-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #18212B;
+}
+#kundresa-step-host .roller-person-submeta {
+  font-size: 13px;
+  color: #5B6670;
+}
+#kundresa-step-host .roller-col-roles {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-left: 0.35rem;
+}
+#kundresa-step-host .roller-col-roles::before {
+  content: '·';
+  color: #3E4A55;
+  margin-right: 0.35rem;
+}
+#kundresa-step-host .roller-role-chip {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3E4A55;
+}
+#kundresa-step-host .roller-role-chip.is-vh {
+  background: transparent;
+  color: #3E4A55;
+  font-weight: 500;
+}
+#kundresa-step-host .roller-role-chip + .roller-role-chip::before {
+  content: ', ';
+  color: #3E4A55;
+}
+#kundresa-step-host .roller-person-kontakt,
+#kundresa-step-host .roller-col-kontroller {
+  display: none; /* kontakt/kontroller sammanfattas i submeta / footer */
+}
+#kundresa-step-host .roller-person-actions .btn-icon-note {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #1D4E57;
+  font-size: 13px;
+  font-weight: 500;
+}
+#kundresa-step-host .roller-person-actions .btn-icon-note:not([title*="Redigera"]):not(.btn-edit):not([aria-label*="Redigera"]) {
+  display: none;
+}
+#kundresa-step-host .roller-person-actions .btn-icon-note i {
+  display: none;
+}
+#kundresa-step-host .roller-person-actions .btn-icon-note[title*="Redigera"]::after,
+#kundresa-step-host .roller-person-actions .btn-icon-note[aria-label*="Redigera"]::after,
+#kundresa-step-host .roller-person-actions .btn-icon-note.btn-edit::after {
+  content: 'Redigera';
+}
+#kundresa-step-host .roller-ledamoter-placeholder {
+  margin: 8px 0 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #5B6670;
+}
+
+/* Kontroller (VH + screening): platta rader */
+#kundresa-step-host .kundresa-vh-box-lead {
+  gap: 0;
+}
+#kundresa-step-host .kundresa-vh-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+#kundresa-step-host .kundresa-vh-block {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  min-height: 0;
+}
+#kundresa-step-host .kundresa-vh-label {
+  margin: 0 0 0.15rem;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-vh-register,
+#kundresa-step-host .kundresa-vh-register li,
+#kundresa-step-host .kundresa-vh-empty {
+  font-size: 12px;
+  color: #5B6670;
+}
+#kundresa-step-host .kundresa-vh-form {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 0;
+}
+#kundresa-step-host .kundresa-vh-form > .kundresa-vh-label {
+  flex: 1 1 220px;
+}
+#kundresa-step-host .kundresa-vh-segment-row {
+  margin-left: auto;
+}
+#kundresa-step-host .kundresa-vh-segments {
+  border: 1px solid #CDD4DA;
+  border-radius: 8px;
+}
+#kundresa-step-host .kundresa-vh-seg {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  border-right: 1px solid #CDD4DA;
+  color: #18212B;
+}
+#kundresa-step-host .kundresa-vh-seg.is-active {
+  background: var(--accent, #1D4E57);
+  color: #fff;
+  font-weight: 600;
+}
+#kundresa-step-host .kundresa-vh-saved-hint,
+#kundresa-step-host .kundresa-vh-kyc-note,
+#kundresa-step-host .kundresa-vh-status-banner {
+  display: none;
+}
+#kundresa-step-host .kundresa-vh-save-btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #CDD4DA;
+  background: #fff;
+  border-radius: 8px;
+  color: #18212B;
+  font-weight: 500;
+}
+#kundresa-step-host .roller-screening-toolbar {
+  padding-top: 16px;
+}
+#kundresa-step-host .roller-screening-toolbar-head {
+  margin-bottom: 0;
+  align-items: center;
+  justify-content: space-between;
+}
+#kundresa-step-host .roller-screening-actions .btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #CDD4DA;
+  background: #fff;
+  border-radius: 8px;
+  color: #18212B;
+  font-weight: 500;
+  font-size: 14px;
+}
+#kundresa-step-host .roller-screening-actions .btn i {
+  display: none;
+}
+
+/* Footer */
+.kundresa-step-nav {
+  padding: 12px 36px;
+  border-top: 1px solid #E6E9EC;
+  margin-left: -36px;
+  margin-right: -36px;
+  background: #fff;
+}
+.kundresa-step-nav .btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+.kundresa-step-nav .btn-primary {
+  font-weight: 600;
+  padding: 0 16px;
+}
+.kundresa-step-remaining {
+  color: #5B6670;
+  font-size: 13px;
+  font-weight: 500;
+  max-width: 48ch;
+}
+.kundresa-step-remaining i {
+  display: none;
+}
+.kundresa-step-remaining.is-ok {
+  color: #5B6670;
+}
+
+@media (max-width: 980px) {
+  .kundresa-step1-checklist {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .kundresa-popup-tabs {
+    width: 100%;
+    flex: 0 0 auto;
+    background: #F7F8F9;
+  }
+  .kundresa-popup-body--embed {
+    padding: 16px 20px 0;
+  }
+  .kundresa-step-nav {
+    margin-left: -20px;
+    margin-right: -20px;
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  #kundresa-step-host .lead-fields {
+    grid-template-columns: 90px minmax(0, 1fr);
+  }
+  #kundresa-step-host .roller-person-item--row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
