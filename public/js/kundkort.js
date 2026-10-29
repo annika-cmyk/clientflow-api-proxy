@@ -467,7 +467,17 @@ class CustomerCardManager {
                     : 'Inget steg klart ännu'));
         }
         if (progressLabel) {
-            progressLabel.textContent = summary.progressLabel || '';
+            const fields = this.customerData?.fields || {};
+            const name = fields.Namn || fields.namn || '';
+            const orgnr = fields.Orgnr || fields.orgnr || '';
+            const company = [name, orgnr].filter(Boolean).join(' · ');
+            const doneTxt = summary.progressLabel
+                ? `${summary.completed != null ? summary.completed : meta.done} av ${summary.total || meta.total} steg klara`
+                : '';
+            progressLabel.innerHTML = company
+                ? `<span class="kundresa-modal-company">${this._esc(company)}</span>`
+                    + (doneTxt ? `<span class="kundresa-modal-progress-bar" role="img" aria-label="${this._esc(doneTxt)}"><span class="kundresa-modal-progress-fill" style="width:${meta.pct || 0}%"></span></span><span class="kundresa-modal-progress-text">${this._esc(doneTxt)}</span>` : '')
+                : this._esc(doneTxt || summary.progressLabel || '');
         }
         btn.title = meta.complete
             ? 'Kunduppläggning — alla steg klara'
@@ -5210,8 +5220,13 @@ class CustomerCardManager {
         const addr = String(adress || '').trim();
         if (!addr) return '<span class="text-muted">—</span>';
         const meta = this._adressUtsattMeta(fields, adress);
-        return `<span class="adress-utsatt-line adress-utsatt-line--${meta.tone}">`
+        const badgeClass = meta.tone === 'ok' || meta.tone === 'approx'
+            ? 'is-ok'
+            : (meta.tone === 'hit' || meta.tone === 'geo' ? 'is-warn' : 'is-pending');
+        return `<span class="adress-utsatt-line adress-utsatt-bar adress-utsatt-line--${meta.tone}">`
+            + `<i class="fas fa-map-marker-alt adress-utsatt-pin" aria-hidden="true"></i>`
             + `<span class="adress-utsatt-text">${this._esc(addr)}</span>`
+            + `<span class="adress-utsatt-badge ${badgeClass}" title="${this._esc(meta.tooltip)}">${this._esc(meta.statusText)}</span>`
             + `<span class="adress-utsatt-icon" title="${this._esc(meta.tooltip)}" tabindex="0" role="img" aria-label="${this._esc(meta.tooltip)}">`
             + `<i class="fas ${meta.icon}" aria-hidden="true"></i></span>`
             + `<span class="adress-utsatt-status">${this._esc(meta.statusText)}</span>`
@@ -5693,29 +5708,33 @@ class CustomerCardManager {
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body">
-                    <div class="roller-screening-toolbar" style="margin-bottom:0.75rem;padding:0.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
-                        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.04em;margin-bottom:0.5rem;">
-                            PEP & sanktionsscreening (Dilisense)
+                    <div class="roller-screening-toolbar">
+                        <div class="roller-screening-toolbar-head">
+                            <div class="kundresa-sec-icon" aria-hidden="true"><i class="fas fa-search"></i></div>
+                            <div class="roller-screening-titles">
+                                <div class="roller-screening-title">PEP- &amp; sanktionsscreening</div>
+                                <div class="roller-screening-sub">Dilisense · företaget och poster med ägarandel screenas som företag, övriga som personer</div>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="screen-all-pep-btn" onclick="customerCardManager.screenAllPepAndEntity(event)">
+                                <i class="fas fa-search"></i> Screena alla
+                            </button>
                         </div>
-                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-                            <button type="button" class="btn btn-secondary btn-sm" id="entity-screen-btn" onclick="customerCardManager.entityScreeningFromBolagsverket(event)">
+                        <div class="roller-screening-actions">
+                            <button type="button" class="btn btn-ghost btn-sm" id="entity-screen-btn" onclick="customerCardManager.entityScreeningFromBolagsverket(event)">
                                 <i class="fas fa-building"></i> Screena företag
                             </button>
-                            <button type="button" class="btn btn-primary btn-sm" id="screen-all-pep-btn" onclick="customerCardManager.screenAllPepAndEntity(event)">
-                                <i class="fas fa-search-dollar"></i> Screena företag + alla personer
-                            </button>
                             <span id="entity-screening-datum-wrap">${this._getEntityScreeningDatumBadge()}</span>
-                        </div>
-                        <div style="font-size:0.78rem;color:#64748b;margin-top:0.5rem;">
-                            Kundföretaget och poster med rollen Företag med ägarandelar screenas som företag. Övriga roller screenas som personer.
                         </div>
                     </div>
                     ${this._renderLedamoterPlaceholders(kontaktPersoner, fields)}
                     <div id="roles-list" class="roles-list">${rollerHTML}</div>
                     <div class="roller-add-actions">
-                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till</button>
-                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePersonAs('Ombud')"><i class="fas fa-user-plus"></i> Lägg till ombud</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till person</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePersonAs('Ombud')"><i class="fas fa-plus"></i> Lägg till ombud</button>
                     </div>
+                    <button type="button" class="roller-add-dashed" onclick="customerCardManager.addRollePerson()">
+                        <i class="fas fa-plus"></i> Lägg till ledamot, suppleant, ombud eller annan befattningshavare
+                    </button>
                 </div>
             </div>
 
@@ -6929,7 +6948,7 @@ class CustomerCardManager {
         return `
             <div class="roller-ledamoter-placeholder" id="roller-ledamoter-placeholder">
                 <p class="roller-ledamoter-placeholder-title">
-                    Ledamöter hämtas automatiskt från Bolagsverket längre fram. Lägg till dem manuellt tills vidare.
+                    Ledamöter hämtas automatiskt från Bolagsverket längre fram – lägg till manuellt tills vidare.
                 </p>
             </div>`;
     }
@@ -6938,20 +6957,99 @@ class CustomerCardManager {
         if (!personer || personer.length === 0) {
             return `<span class="lead-empty">Inga kontaktpersoner registrerade. Klicka på <strong>Lägg till</strong> för att lägga till ombud eller andra befattningshavare.</span>`;
         }
-        return `<div class="roller-person-list">
-            ${personer.map((p, idx) => {
-                const roller = this._getRollerList(p);
-                const rollText = roller.length ? roller.join(', ') : '';
-                const isForetag = this._isRollerFöretag(p);
-                const pepDatum = p.pepSoktDatum ? new Date(p.pepSoktDatum).toLocaleDateString('sv-SE') : '';
-                const pepMarked = !!p.pepMarkerad;
-                const idMissing = isForetag ? 'Org.nr saknas' : 'Personnr saknas';
-                const nameIcon = isForetag ? 'fa-building' : 'fa-user';
-                const screenTitle = isForetag ? 'Sanktionsscreening (företag)' : 'PEP & Sanktionsscreening';
-                const telefon = p.telefon || p.telefonnr || '';
-                const isVh = roller.some((r) => /verklig\s+huvudman/i.test(String(r || '')));
-                const needsContact = isVh && !isForetag;
+        const inKundresa = !!(this._kundresaModalOpen || document.getElementById('kundresa-step-host')?.contains(document.getElementById('roles-list')));
+        const rows = personer.map((p, idx) => {
+            const roller = this._getRollerList(p);
+            const rollText = roller.length ? roller.join(', ') : '';
+            const isForetag = this._isRollerFöretag(p);
+            const pepDatum = p.pepSoktDatum ? new Date(p.pepSoktDatum).toLocaleDateString('sv-SE') : '';
+            const pepMarked = !!p.pepMarkerad;
+            const idMissing = isForetag ? 'Org.nr saknas' : 'Personnr saknas';
+            const nameIcon = isForetag ? 'fa-building' : 'fa-user';
+            const screenTitle = isForetag ? 'Sanktionsscreening (företag)' : 'PEP & Sanktionsscreening';
+            const telefon = p.telefon || p.telefonnr || '';
+            const isVh = roller.some((r) => /verklig\s+huvudman/i.test(String(r || '')));
+            const needsContact = isVh && !isForetag;
+            const initials = String(p.namn || '?')
+                .split(/\s+/).filter(Boolean).slice(0, 2)
+                .map((w) => w.charAt(0).toUpperCase()).join('') || '?';
+
+            const roleChips = roller.length
+                ? roller.map((r) => {
+                    const vh = /verklig\s+huvudman/i.test(String(r || ''));
+                    return `<span class="roller-role-chip${vh ? ' is-vh' : ''}">${this._esc(r)}</span>`;
+                }).join('')
+                : '';
+
+            const kontaktHtml = `
+                <div class="roller-person-kontakt">
+                    ${p.epost
+                        ? `<span class="roller-kontakt-line"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>`
+                        : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas${needsContact ? ' (krävs för VH)' : ''}</span>`}
+                    ${telefon
+                        ? `<span class="roller-kontakt-line"><i class="fas fa-phone"></i> ${this._esc(telefon)}</span>`
+                        : `<button type="button" class="roller-add-phone-btn" data-idx="${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.editRollePerson(${idx});">
+                            <i class="fas fa-plus"></i> Lägg till telefon${needsContact ? ' (krävs för VH)' : ''}
+                          </button>`}
+                </div>`;
+
+            const kontrollerHtml = (() => {
+                if (isForetag) {
+                    return pepDatum
+                        ? `<span class="roller-check-line is-ok"><span class="roller-check-dot"></span>Sanktion: ${this._esc(pepDatum)}</span>`
+                        : `<span class="roller-check-line is-warn"><span class="roller-check-dot"></span>Ej screenad</span>`;
+                }
+                const Id = window.IdentitetKontroll;
+                const parts = [];
+                if (pepMarked) {
+                    parts.push('<span class="roller-check-line is-warn"><span class="roller-check-dot"></span>PEP/sanktion: träff</span>');
+                } else if (pepDatum) {
+                    parts.push(`<span class="roller-check-line is-ok"><span class="roller-check-dot"></span>PEP/sanktion: ingen träff · ${this._esc(pepDatum)}</span>`);
+                } else {
+                    parts.push('<span class="roller-check-line is-warn"><span class="roller-check-dot"></span>PEP/sanktion: ej screenad</span>');
+                }
+                const hvLabel = Id && Id.formatHuvudmanBolagsverketLabel
+                    ? Id.formatHuvudmanBolagsverketLabel(p)
+                    : '';
+                const isVhPerson = Id && Id.hasHuvudmanRoll ? Id.hasHuvudmanRoll(p) : isVh;
+                if (hvLabel) {
+                    parts.push(`<span class="roller-check-line is-ok"><span class="roller-check-dot"></span>${this._esc(hvLabel)}</span>`);
+                } else if (isVhPerson) {
+                    parts.push('<span class="roller-check-line is-warn"><span class="roller-check-dot"></span>VH mot Bolagsverket saknas</span>');
+                }
+                const idLabel = Id && Id.formatLabel ? Id.formatLabel(p) : '';
+                if (idLabel) {
+                    parts.push(`<span class="roller-check-line is-ok"><span class="roller-check-dot"></span>${this._esc(idLabel)}</span>`);
+                } else {
+                    parts.push('<span class="roller-check-line is-warn"><span class="roller-check-dot"></span>Identitet ej kontrollerad</span>');
+                }
+                return parts.join('');
+            })();
+
+            if (inKundresa) {
                 return `
+                <div class="roller-person-item roller-person-item--row" data-idx="${idx}">
+                    <div class="roller-col-person">
+                        <span class="roller-avatar-initials" aria-hidden="true">${this._esc(initials)}</span>
+                        <span class="roller-person-name-stack">
+                            <span class="roller-person-name">${this._esc(p.namn || 'Namnlös')}</span>
+                            <span class="roller-person-submeta">${p.personnr ? this._esc(p.personnr) : this._esc(idMissing)}${pepMarked ? ' · PEP' : ''}</span>
+                        </span>
+                    </div>
+                    <div class="roller-col-roles">${roleChips || '<span class="text-muted">—</span>'}</div>
+                    <div class="roller-col-kontakt">${kontaktHtml}</div>
+                    <div class="roller-col-kontroller">${kontrollerHtml}</div>
+                    <div class="roller-person-actions">
+                        <a href="javascript:void(0)" role="button" class="btn-icon-note btn-pep-screen" title="${screenTitle}" data-idx="${idx}" id="pep-btn-${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.pepScreening(${idx});return false;">
+                            <i class="fas fa-search-dollar"></i>
+                        </a>
+                        <button type="button" class="btn-icon-note roller-edit-btn" title="Redigera" aria-label="Redigera ${this._esc(p.namn || '')}" data-idx="${idx}"><i class="fas fa-edit"></i></button>
+                        <button type="button" class="btn-icon-note btn-icon-delete roller-delete-btn" title="Ta bort" aria-label="Ta bort ${this._esc(p.namn || '')}" data-idx="${idx}"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>`;
+            }
+
+            return `
                 <div class="roller-person-item" data-idx="${idx}">
                     <div class="roller-person-info">
                         <div class="roller-person-name-row">
@@ -6975,13 +7073,13 @@ class CustomerCardManager {
                             } else {
                                 parts.push('<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-user-check"></i> Identitet ej kontrollerad</span>');
                             }
-                            const isVh = Id && Id.hasHuvudmanRoll ? Id.hasHuvudmanRoll(p) : false;
+                            const isVh2 = Id && Id.hasHuvudmanRoll ? Id.hasHuvudmanRoll(p) : false;
                             const hvLabel = Id && Id.formatHuvudmanBolagsverketLabel
                                 ? Id.formatHuvudmanBolagsverketLabel(p)
                                 : '';
                             if (hvLabel) {
                                 parts.push(`<span class="roller-detail-chip roller-detail-huvudman-bv" title="${this._esc(hvLabel)}"><i class="fas fa-building"></i> ${this._esc(hvLabel)}</span>`);
-                            } else if (isVh) {
+                            } else if (isVh2) {
                                 parts.push('<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-building"></i> Huvudman ej kontrollerad mot Bolagsverket</span>');
                             }
                             return parts.join('');
@@ -6995,8 +7093,17 @@ class CustomerCardManager {
                         <button type="button" class="btn-icon-note btn-icon-delete roller-delete-btn" title="Ta bort" data-idx="${idx}"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>`;
-            }).join('')}
-        </div>`;
+        }).join('');
+
+        if (inKundresa) {
+            return `<div class="roller-person-list roller-person-list--table">
+                <div class="roller-person-table-head" aria-hidden="true">
+                    <span>Person</span><span>Roller</span><span>Kontakt</span><span>Kontroller</span><span></span>
+                </div>
+                ${rows}
+            </div>`;
+        }
+        return `<div class="roller-person-list">${rows}</div>`;
     }
 
     _userSelectOptions(byraUsers, selectedName, placeholder) {
@@ -11145,9 +11252,12 @@ class CustomerCardManager {
             vhRegister: summary.vhRegister || summary.vhAlignment?.register || [],
             vhAlignment: summary.vhAlignment || null
         };
+        const fields = this.customerData?.fields || {};
         KundresaUi.render(host, {
             ...enriched,
-            activeStepId: this._activeKundresaStepId || enriched.nextStepId
+            activeStepId: this._activeKundresaStepId || enriched.nextStepId,
+            customerName: fields.Namn || fields.namn || this.customerData?.namn || '',
+            customerOrgnr: fields.Orgnr || fields.orgnr || ''
         }, {
             onStep: (target) => this._gotoKundresaStep(target),
             onVhSave: (payload, btn) => this._onKundresaVhSave(payload, btn),
@@ -11406,6 +11516,22 @@ class CustomerCardManager {
                         movedExtras.push({ kind: 'title', titleEl, prevText: titleEl.textContent });
                         titleEl.textContent = 'Personer';
                     }
+                    const count = Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner.length : 0;
+                    let sub = roller.querySelector('.kundresa-sec-sub');
+                    if (!sub) {
+                        const titleWrap = roller.querySelector('.collapsible-title');
+                        if (titleWrap) {
+                            sub = document.createElement('span');
+                            sub.className = 'kundresa-sec-sub';
+                            titleWrap.appendChild(sub);
+                            movedExtras.push({ kind: 'node', node: sub, parent: titleWrap, nextSibling: null });
+                        }
+                    }
+                    if (sub) {
+                        sub.textContent = count
+                            ? `· ${count}`
+                            : 'Ledamöter hämtas från Bolagsverket längre fram – lägg till manuellt tills vidare';
+                    }
                 }
 
                 if (screening && screening.parentNode) {
@@ -11419,8 +11545,14 @@ class CustomerCardManager {
                     screening.remove();
                 }
 
-                if (bv) host.appendChild(bv);
-                if (roller) host.appendChild(roller);
+                if (bv) {
+                    bv.setAttribute('data-kundresa-sec', 'bv');
+                    host.appendChild(bv);
+                }
+                if (roller) {
+                    roller.setAttribute('data-kundresa-sec', 'personer');
+                    host.appendChild(roller);
+                }
                 if (vhPanel && !vhPanel.hidden) {
                     movedExtras.push({
                         kind: 'node',
@@ -11429,9 +11561,17 @@ class CustomerCardManager {
                         nextSibling: vhPanel.nextSibling
                     });
                     vhPanel.classList.add('kundresa-embed-section');
+                    vhPanel.setAttribute('data-kundresa-sec', 'vh');
                     host.appendChild(vhPanel);
                 }
-                if (screening) host.appendChild(screening);
+                if (screening) {
+                    screening.setAttribute('data-kundresa-sec', 'screening');
+                    host.appendChild(screening);
+                }
+
+                // Tabell-layout för personer i popupen
+                const rolesList = document.getElementById('roles-list');
+                if (rolesList) rolesList.classList.add('roles-list--kundresa');
             }
 
             if (gen !== this._kundresaMountGeneration) {
