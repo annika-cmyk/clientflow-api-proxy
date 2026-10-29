@@ -22660,7 +22660,8 @@ app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, re
     const hasBlockId = Object.prototype.hasOwnProperty.call(body, 'blockId');
     const hasNote = Object.prototype.hasOwnProperty.call(body, 'note');
     const modeRaw = String(body.mode || '').trim().toLowerCase();
-    const modeNeedsNoTimes = modeRaw === 'remove' || modeRaw === 'complete' || modeRaw === 'done';
+    const modeNeedsNoTimes = modeRaw === 'remove' || modeRaw === 'complete' || modeRaw === 'done'
+      || modeRaw === 'complete-all' || modeRaw === 'done-all';
     const noteOnlyUpdate = hasNote && hasBlockId && body.blockId && (modeRaw === 'update' || (!modeRaw && !hasStart && !hasEnd));
     if (!hasStart && !hasEnd && !modeNeedsNoTimes && !noteOnlyUpdate) {
       return res.status(400).json({ error: 'Ange start och/eller end (ISO-datetime), eller null för att rensa.' });

@@ -82,6 +82,50 @@
     return st === 'klar' || st === 'avslutad' || st === 'done' || st === 'completed';
   }
 
+  function isRunDoneStatus(status) {
+    const st = String(status || '').trim();
+    return st === 'Klar' || st === 'Avslutad';
+  }
+
+  /** True when every tidblock is klarmarkerat (tom lista = inget kvar → betraktas som klart). */
+  function allBlocksDone(blocks) {
+    const list = (blocks || []).map((b) => normalizeBlock(b)).filter(Boolean);
+    if (!list.length) return true;
+    return list.every((b) => isBlockDone(b));
+  }
+
+  /**
+   * Status för en kalenderinstans (ett tillfälle).
+   * Klarmarkering av ett block får inte måla syskon-block gröna via körningens Status.
+   * Legacy: körning Klar utan några done-flaggor → alla block syns som Klar.
+   */
+  function instanceStatus(runStatus, block, allBlocks) {
+    if (block && isBlockDone(block)) return 'Klar';
+    const runDone = isRunDoneStatus(runStatus);
+    if (!runDone) {
+      const st = String(runStatus || '').trim();
+      return st || 'Planerad';
+    }
+    const list = (allBlocks || []).map((b) => normalizeBlock(b)).filter(Boolean);
+    const anyTracked = list.some((b) => isBlockDone(b));
+    // Legacy hel-körning-klar innan per-block done fanns
+    if (!anyTracked) return 'Klar';
+    // Körning markerad Klar men detta tillfälle saknar done → visa som öppen (ska inte hända efter fix)
+    return 'Pågående';
+  }
+
+  /** Markera ett eller alla tillfällen som klara (behålls i kalendern). */
+  function markBlocksDone(blocks, onlyBlockId) {
+    const list = sortBlocks((blocks || []).map((b) => normalizeBlock(b)).filter(Boolean));
+    const wantId = onlyBlockId != null && onlyBlockId !== ''
+      ? String(onlyBlockId).trim()
+      : null;
+    return list.map((b) => {
+      if (wantId && b.id !== wantId) return { ...b };
+      return { ...b, done: true };
+    });
+  }
+
   const NOTE_MAX_LEN = 2000;
 
   /** Kort anteckning per tidblock (t.ex. vad som ska göras just då). */
@@ -173,7 +217,8 @@
    * @param {Array} current
    * @param {{ mode?: string, blockId?: string|null, start?: string|null, end?: string|null, done?: boolean, note?: string|null }} mutation
    *   mode: 'set' (ersätt allt med ett block / rensa), 'add', 'update', 'remove',
-   *         'complete' / 'done' (markera tillfälle som klart — behålls i kalendern)
+   *         'complete' / 'done' (markera tillfälle som klart — behålls i kalendern),
+   *         'complete-all' (markera alla tillfällen som klara)
    */
   function applyMutation(current, mutation) {
     const mode = String(mutation?.mode || 'set').trim().toLowerCase();
@@ -195,6 +240,10 @@
     }
 
     let blocks = sortBlocks((current || []).map((b) => normalizeBlock(b)).filter(Boolean));
+
+    if (mode === 'complete-all' || mode === 'done-all') {
+      return markBlocksDone(blocks, null);
+    }
 
     if (mode === 'complete' || mode === 'done') {
       if (!blockId) throw new Error('blockId krävs för att klarmarkera tidblock');
@@ -327,8 +376,8 @@
           scheduleBlocks: blocks,
           blockDone,
           blockNote: b.note || '',
-          // Tillfälle som klarmarkerats syns kvar som Klar i rutnätet
-          status: blockDone ? 'Klar' : ev.status
+          // Per tillfälle: syskon ärver inte Klar bara för att körningen har Status Klar
+          status: instanceStatus(ev.status, b, blocks)
         });
       });
     });
@@ -398,6 +447,10 @@
     newBlockId,
     sortBlocks,
     isBlockDone,
+    isRunDoneStatus,
+    allBlocksDone,
+    instanceStatus,
+    markBlocksDone,
     NOTE_MAX_LEN,
     normalizeNote,
     normalizeBlock,
