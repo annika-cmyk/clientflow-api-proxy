@@ -163,6 +163,7 @@ const kycUppfoljning = require('./lib/kyc-uppfoljning');
 const kycDokumentSync = require('./lib/kyc-dokument-sync');
 const kycFormularMerge = require('./lib/kyc-formular-merge');
 const kycTjansterSync = require('./lib/kyc-tjanster-sync');
+const KycPdf = require('./lib/kyc-pdf');
 const KycInvite = require('./lib/kyc-invite');
 const uppdragsavtalDokumentSync = require('./lib/uppdragsavtal-dokument-sync');
 const aktuellRiskbedomning = require('./lib/aktuell-riskbedomning');
@@ -8453,77 +8454,11 @@ function kycHuvudmanPdfHtml(kyc, esc) {
   }).join('<div style="border-top:0.5px solid #e2e8f0;margin:6px 0;"></div>');
 }
 
-function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
-  const ACCENT_KYC = '#3b4a8a';
-  const esc = pdfEscape;
-  const nl2br = (s) => pdfNl2br(s);
-  return `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8">
-<style>
-  @page { margin: 18mm 20mm 22mm; }
-  body { font-family: Arial, sans-serif; font-size: 8pt; color: #1a1a2e; line-height: 1.6; margin: 0; padding: 12px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 3px solid ${ACCENT_KYC}; padding-bottom: 10px; }
-  .header-left h1 { margin: 0; font-size: 18pt; font-weight: 900; color: #1a1a2e; }
-  .header-left p { margin: 4px 0 0; font-size: 7.5pt; color: #888; }
-  .section { margin-top: 14px; }
-  .section h2 { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: ${ACCENT_KYC}; border-bottom: 1.5px solid ${ACCENT_KYC}; padding-bottom: 3px; margin-bottom: 7px; }
-  .field { margin-bottom: 4px; }
-  .field-label { font-weight: 700; }
-  .row { display: flex; gap: 24px; margin-bottom: 4px; }
-  .row .col { flex: 1; }
-  .attestation { margin-top: 20px; padding: 12px 14px; border: 1.5px solid #dce3f0; border-radius: 6px; background: #f4f6fb; }
-</style></head><body>
-  <div class="header">
-    <div class="header-left">
-      <h1>KYC — Kundkännedomsformulär (bilaga)</h1>
-      <p>${esc(byraNamn)} | ${datum}</p>
-    </div>
-    <div class="header-right">${logoHtml || ''}</div>
-  </div>
-  <div class="section"><h2>1. Grunduppgifter om företaget</h2>
-    <div class="row">
-      <div class="col"><span class="field-label">Företagets namn:</span> ${esc(kyc.foretagsnamn)}</div>
-      <div class="col"><span class="field-label">Organisationsnummer:</span> ${esc(kyc.orgnr)}</div>
-    </div>
-  </div>
-  <div class="section"><h2>2. Företrädare</h2>
-    <div class="row">
-      <div class="col"><span class="field-label">Namn:</span> ${esc(kyc.foretradareNamn)}</div>
-      <div class="col"><span class="field-label">Personnummer:</span> ${esc(kyc.foretradarePnr)}</div>
-    </div>
-  </div>
-  ${isEnskildFirmaBolagsform(kyc.bolagsform) ? '' : `<div class="section"><h2>3. Verklig huvudman</h2>
-    ${kycHuvudmanPdfHtml(kyc, esc)}
-    ${kyc.huvudmanAnnatSatt ? `<div class="field"><span class="field-label">Kontroll genom avtal:</span><br>${nl2br(kyc.huvudmanAnnatSatt)}</div>` : ''}
-  </div>`}
-  <div class="section"><h2>4. PEP</h2>
-    <div class="field"><span class="field-label">PEP-status:</span> ${pdfJanej(kyc.pep)}</div>
-    ${kyc.pep === 'Ja' && kyc.pepDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> ${esc(kyc.pepDetaljer)}</div>` : ''}
-    <div class="field"><span class="field-label">Familjemedlem/medarbetare till PEP:</span> ${pdfJanej(kyc.pepFamilj)}</div>
-  </div>
-  <div class="section"><h2>5. Affärsförbindelsens syfte och art</h2>
-    <div class="field"><span class="field-label">Verksamhet:</span><br>${nl2br(kyc.verksamhet || '—')}</div>
-    <div class="field"><span class="field-label">Kostnader:</span><br>${nl2br(kyc.kostnader || '—')}</div>
-    <div class="field"><span class="field-label">Intäkterna:</span><br>${nl2br(kyc.intakterna || '—')}</div>
-    <div class="field"><span class="field-label">Byråns tjänster (kundens valda):</span> ${esc(kyc.tjanster || '—')}</div>
-    <div class="field"><span class="field-label">Pengarnas ursprung:</span> ${esc(kyc.kapitalUrsprung || '—')}</div>
-    <div class="row">
-      <div class="col"><span class="field-label">Antal anställda:</span> ${esc(kyc.anstallda || '—')}</div>
-      <div class="col"><span class="field-label">Uppskattad årsomsättning:</span> ${esc(kyc.omsattning || '—')}</div>
-    </div>
-  </div>
-  <div class="section"><h2>6. Internationell handel</h2>
-    <div class="field"><span class="field-label">Handel utanför Sverige:</span> ${pdfJanej(kyc.internationellHandel)}</div>
-    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> ${esc(EuHogriskLander.formatWithBadges(kyc.internationellaLander) || kyc.internationellaLander)}</div>` : ''}
-  </div>
-  <div class="section"><h2>7. Kontanthantering</h2>
-    <div class="field"><span class="field-label">Kontanthantering:</span> ${pdfJanej(kyc.kontanter)}</div>
-    ${kyc.kontanter === 'Ja' && kyc.kontanterAndel ? `<div class="field"><span class="field-label">Andel kontanter:</span> ${esc(kyc.kontanterAndel)}</div>` : ''}
-  </div>
-  <div class="section"><h2>8. Kryptovaluta</h2>
-    <div class="field"><span class="field-label">Transaktioner i kryptovaluta:</span> ${pdfJanej(kyc.kryptovaluta)}</div>
-  </div>
-  <div class="attestation"><strong>Kundens intygande</strong><p>Jag intygar att lämnade uppgifter är korrekta och fullständiga.</p></div>
-</body></html>`;
+function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum, extra = {}) {
+  return KycPdf.buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum, {
+    ...extra,
+    asBilaga: extra.asBilaga !== false
+  });
 }
 
 function buildKundRiskbedomningPdfHtml(data) {
@@ -9048,7 +8983,11 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     pdfParts.push(await htmlToPdfBuffer(riskHtml));
 
     if (kycForPdf.foretagsnamn) {
-      const kycHtml = buildKycFormularPdfHtml(kycForPdf, byraNamn, logoHtml, datumStr);
+      const kycHtml = buildKycFormularPdfHtml(kycForPdf, byraNamn, logoHtml, datumStr, {
+        fields: f,
+        byraEpost: pdfUser?.email || '',
+        asBilaga: true
+      });
       pdfParts.push(await htmlToPdfBuffer(kycHtml));
     }
 
@@ -19539,6 +19478,7 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
           if (signed) {
             kyc.status = 'Signerat';
             if (/^\d{4}-\d{2}-\d{2}$/.test(signedDatum)) kyc.signeringsdatum = signedDatum;
+            Object.assign(kyc, KycPdf.attachSignedSnapshot(kyc, f, kyc.signeringsdatum || signedDatum));
             const kycReceipt = recallDocsignReceipt(inleedId, kyc.receipt);
             if (kycReceipt && docsignInvite.shouldSendReceipt(kycReceipt)) {
               const sent = await maybeSendDocsignReceipt({
@@ -19846,164 +19786,18 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
         kyc.tjanster = liveTjansterNamn.join(', ');
       }
     } catch (_) { /* behåll sparat värde om synk misslyckas */ }
-    const logoRaw = pdfUser?.logo;
-    const logoUrl = Array.isArray(logoRaw) && logoRaw.length > 0
-      ? logoRaw[0].url
-      : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
-
-    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    const nl2br = (s) => esc(pdfHtmlToPlainText(s)).replace(/\n/g, '<br>');
-
-    const janej = (v) => v === 'Ja' ? '<span style="color:#dc2626;font-weight:600;">Ja</span>' : (v === 'Nej' ? '<span style="color:#16a34a;font-weight:600;">Nej</span>' : esc(v || '–'));
-
-    let logoHtml = '';
-    if (logoUrl) {
-      try {
-        const logoRes = await axios.get(logoUrl, { responseType: 'arraybuffer', timeout: 10000 });
-        const b64 = Buffer.from(logoRes.data).toString('base64');
-        const mime = logoRes.headers['content-type'] || 'image/png';
-        logoHtml = `<img src="data:${mime};base64,${b64}" style="max-height:60px;max-width:200px;object-fit:contain;" alt="Logo">`;
-      } catch (_) {}
-    }
-
     const byraNamn = pdfUser?.byra || '';
     const datum = new Date().toLocaleDateString('sv-SE');
+    const html = KycPdf.buildKycIntygandePdfHtml({
+      kyc,
+      fields: f,
+      byraNamn,
+      byraEpost: pdfUser?.email || '',
+      documentId: kyc.inleedDokumentId || '',
+      asBilaga: false
+    });
 
-    const ACCENT_KYC = '#3b4c8a';
-    const html = `<!DOCTYPE html>
-<html lang="sv"><head><meta charset="UTF-8">
-<style>
-  @page { margin: 18mm 20mm 22mm; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, 'Helvetica Neue', sans-serif; font-size: 8pt; color: #1a1a2e; line-height: 1.6; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 3px solid ${ACCENT_KYC}; padding-bottom: 10px; }
-  .header-left h1 { margin: 0; font-size: 18pt; font-weight: 900; letter-spacing: 0.03em; color: #1a1a2e; line-height: 1; }
-  .header-left p { margin: 4px 0 0; font-size: 7.5pt; color: #888; }
-  .section { margin-top: 14px; }
-  .section h2 { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: ${ACCENT_KYC}; border-bottom: 1.5px solid ${ACCENT_KYC}; padding-bottom: 3px; margin-bottom: 7px; }
-  .field { margin-bottom: 4px; }
-  .field-label { font-weight: 700; color: #1a1a2e; font-size: 8pt; }
-  .field-value { margin-left: 4px; font-size: 8pt; }
-  .row { display: flex; gap: 24px; margin-bottom: 4px; }
-  .row .col { flex: 1; }
-  .attestation { margin-top: 20px; padding: 12px 14px; border: 1.5px solid #dce3f0; border-radius: 6px; background: #f4f6fb; }
-  .attestation h2 { font-size: 8pt; border: none; padding: 0; margin: 0 0 6px; }
-  .attestation p { font-size: 8pt; line-height: 1.55; margin: 0; color: #334155; }
-  .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 6.5pt; color: #94a3b8; padding: 6px 20mm; border-top: 1px solid #e2e8f0; }
-</style></head><body>
-  <div class="header">
-    <div class="header-left">
-      <h1>KYC \u2014 Kundkännedomsformulär</h1>
-      <p>${esc(byraNamn)} | ${datum}</p>
-    </div>
-    <div class="header-right">${logoHtml}</div>
-  </div>
-
-  <div class="section">
-    <h2>1. Grunduppgifter om företaget</h2>
-    <div class="row">
-      <div class="col"><span class="field-label">Företagets namn:</span> <span class="field-value">${esc(kyc.foretagsnamn)}</span></div>
-      <div class="col"><span class="field-label">Organisationsnummer:</span> <span class="field-value">${esc(kyc.orgnr)}</span></div>
-    </div>
-    <div class="row">
-      <div class="col"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(kyc.skatterattslig_hemvist_foretag || '\u2014')}</span></div>
-    </div>
-    ${(kyc.skatterattslig_hemvist_foretag && kyc.skatterattslig_hemvist_foretag.trim().toLowerCase() !== 'sverige' && kyc.tin_foretag) ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(kyc.tin_foretag)}</span></div>` : ''}
-  </div>
-
-  <div class="section">
-    <h2>2. Företrädare</h2>
-    ${(() => {
-      const list = (Array.isArray(kyc.foretradare) && kyc.foretradare.length)
-        ? kyc.foretradare
-        : ((kyc.foretradareNamn || kyc.foretradarePnr) ? [{ namn: kyc.foretradareNamn, personnr: kyc.foretradarePnr, skatterattslig_hemvist: kyc.skatterattslig_hemvist_foretradare, tin: kyc.tin_foretradare }] : []);
-      if (!list.length) return '<div class="field"><span class="field-value">\u2014</span></div>';
-      return list.map(p => {
-        const hemvist = (p.skatterattslig_hemvist || '').toString();
-        const tinHtml = (hemvist && hemvist.trim().toLowerCase() !== 'sverige' && p.tin)
-          ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(p.tin)}</span></div>` : '';
-        return `
-    <div class="row">
-      <div class="col"><span class="field-label">Namn:</span> <span class="field-value">${esc(p.namn || '\u2014')}</span></div>
-      <div class="col"><span class="field-label">Personnummer:</span> <span class="field-value">${esc(p.personnr || '\u2014')}</span></div>
-    </div>
-    <div class="field"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(hemvist || '\u2014')}</span></div>
-    ${tinHtml}`;
-      }).join('<div style="border-top:0.5px solid #e2e8f0;margin:6px 0;"></div>');
-    })()}
-  </div>
-
-  ${isEnskildFirmaBolagsform(kyc.bolagsform || f['Bolagsform']) ? '' : `<div class="section">
-    <h2>3. Verklig huvudman</h2>
-    ${kycHuvudmanPdfHtml(kyc, esc)}
-    ${kyc.huvudmanAnnatSatt ? `<div class="field" style="margin-top:6px;"><span class="field-label">Kontroll genom avtal el. dyl.:</span><br><span class="field-value">${nl2br(kyc.huvudmanAnnatSatt)}</span></div>` : ''}
-    ${(kyc.vh_agarandel !== null && kyc.vh_agarandel !== undefined && kyc.vh_agarandel !== '') ? `<div class="field"><span class="field-label">Total ägarandel:</span> <span class="field-value">${esc(kyc.vh_agarandel)} %</span></div>` : ''}
-    <div class="row">
-      <div class="col"><span class="field-label">Börsnoterat bolag:</span> ${janej(kyc.vh_noterat_bolag ? 'Ja' : 'Nej')}</div>
-      <div class="col"><span class="field-label">Utländska ägare:</span> ${janej(kyc.vh_utlandska_agare ? 'Ja' : 'Nej')}</div>
-    </div>
-  </div>`}
-
-  <div class="section">
-    <h2>4. Politiskt exponerad person (PEP)</h2>
-    <div class="field"><span class="field-label">PEP-status:</span> ${janej(kyc.pep)}</div>
-    ${kyc.pep === 'Ja' && kyc.pepDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> <span class="field-value">${esc(kyc.pepDetaljer)}</span></div>` : ''}
-    <div class="field"><span class="field-label">Familjemedlem/medarbetare till PEP:</span> ${janej(kyc.pepFamilj)}</div>
-    ${kyc.pepFamilj === 'Ja' && kyc.pepFamiljDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> <span class="field-value">${esc(kyc.pepFamiljDetaljer)}</span></div>` : ''}
-  </div>
-
-  <div class="section">
-    <h2>5. Affärsförbindelsens syfte och art</h2>
-    <div class="field"><span class="field-label">Verksamhet:</span><br><span class="field-value">${nl2br(f['Verksamhet'] || kyc.verksamhet || '\u2014')}</span></div>
-    <div class="field"><span class="field-label">Kostnader:</span><br><span class="field-value">${nl2br(f['Kostnader'] || kyc.kostnader || '\u2014')}</span></div>
-    <div class="field"><span class="field-label">Intäkterna:</span><br><span class="field-value">${nl2br(f['Intäkterna'] || kyc.intakterna || '\u2014')}</span></div>
-    ${kyc.syfte_affarsrelation ? `<div class="field"><span class="field-label">Syfte med affärsrelationen:</span><br><span class="field-value">${nl2br(kyc.syfte_affarsrelation)}</span></div>` : ''}
-    <div class="field"><span class="field-label">Byråns tjänster:</span> <span class="field-value">${esc(kyc.tjanster || '\u2014')}</span></div>
-    <div class="field"><span class="field-label">Pengarnas ursprung:</span> <span class="field-value">${esc(kyc.kapitalUrsprung || '\u2014')}</span></div>
-    <div class="row">
-      <div class="col"><span class="field-label">Antal anställda:</span> <span class="field-value">${esc(kyc.anstallda || '\u2014')}</span></div>
-      <div class="col"><span class="field-label">Uppskattad årsomsättning:</span> <span class="field-value">${esc(kyc.omsattning || '\u2014')}</span></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>6. Internationell handel</h2>
-    <div class="field"><span class="field-label">Handel utanför Sverige:</span> ${janej(kyc.internationellHandel)}</div>
-    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> <span class="field-value">${esc(EuHogriskLander.formatWithBadges(kyc.internationellaLander) || kyc.internationellaLander)}</span></div>` : ''}
-  </div>
-
-  <div class="section">
-    <h2>7. Kontanthantering</h2>
-    <div class="field"><span class="field-label">Kontanthantering:</span> ${janej(kyc.kontanter)}</div>
-    ${kyc.kontanter === 'Ja' && kyc.kontanterAndel ? `<div class="field"><span class="field-label">Andel kontanter:</span> <span class="field-value">${esc(kyc.kontanterAndel)}</span></div>` : ''}
-  </div>
-
-  <div class="section">
-    <h2>8. Kryptovaluta</h2>
-    <div class="field"><span class="field-label">Transaktioner i kryptovaluta:</span> ${janej(kyc.kryptovaluta)}</div>
-  </div>
-
-  <div class="attestation">
-    <h2>Kundens intygande</h2>
-    <p>Jag intygar att lämnade uppgifter är korrekta och fullständiga. Jag förbinder mig att meddela redovisningsbyrån vid väsentliga förändringar i verksamheten, ägarstrukturen eller gällande vem som är verklig huvudman.</p>
-  </div>
-
-  <div class="footer">${esc(byraNamn)} | KYC-formulär genererat ${datum}</div>
-</body></html>`;
-
-    // Generera PDF med Puppeteer
-    const pup = loadPuppeteer();
-    if (!pup) {
-      return res.status(500).json({ error: 'Puppeteer ej tillgängligt – kan inte generera PDF.' });
-    }
-    const launchOpts = chromium
-      ? { args: chromium.args, defaultViewport: chromium.defaultViewport, executablePath: await chromium.executablePath(), headless: chromium.headless }
-      : { headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox'] };
-    const browser = await pup.launch(launchOpts);
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '15mm', bottom: '20mm', left: '15mm', right: '15mm' } });
-    await browser.close();
+    const pdfBuffer = await htmlToPdfBuffer(html);
 
     const safeNamn = (kyc.foretagsnamn || 'Kund').replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '');
     const filename = `${safeNamn}-KYC-formular-${datum}.pdf`;
@@ -20067,142 +19861,28 @@ async function sendKycInviteEmail({
 /**
  * Generera KYC-PDF utan HTTP-auth (för intern Inleed-sändning efter kundsvar).
  */
-async function generateKycFormularPdfBufferInternal({ fields = {}, kyc = {}, byraNamn = '', logoUrl = null } = {}) {
+async function generateKycFormularPdfBufferInternal({ fields = {}, kyc = {}, byraNamn = '', logoUrl = null, byraEpost = '', byraTelefon = '' } = {}) {
   if (!kyc || !kyc.foretagsnamn) {
     const err = new Error('Inget sparat KYC-formulär hittades. Spara först.');
     err.status = 400;
     throw err;
   }
-  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  const nl2br = (s) => esc(pdfHtmlToPlainText(s)).replace(/\n/g, '<br>');
-  const janej = (v) => v === 'Ja' ? '<span style="color:#dc2626;font-weight:600;">Ja</span>' : (v === 'Nej' ? '<span style="color:#16a34a;font-weight:600;">Nej</span>' : esc(v || '–'));
-  let logoHtml = '';
-  if (logoUrl) {
-    try {
-      const logoRes = await axios.get(logoUrl, { responseType: 'arraybuffer', timeout: 10000 });
-      const b64 = Buffer.from(logoRes.data).toString('base64');
-      const mime = logoRes.headers['content-type'] || 'image/png';
-      logoHtml = `<img src="data:${mime};base64,${b64}" style="max-height:60px;max-width:200px;object-fit:contain;" alt="Logo">`;
-    } catch (_) {}
-  }
   const datum = new Date().toLocaleDateString('sv-SE');
-  const ACCENT_KYC = '#3b4c8a';
-  const f = fields || {};
-  const html = `<!DOCTYPE html>
-<html lang="sv"><head><meta charset="UTF-8">
-<style>
-  @page { margin: 18mm 20mm 22mm; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, 'Helvetica Neue', sans-serif; font-size: 8pt; color: #1a1a2e; line-height: 1.6; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 3px solid ${ACCENT_KYC}; padding-bottom: 10px; }
-  .header-left h1 { margin: 0; font-size: 18pt; font-weight: 900; letter-spacing: 0.03em; color: #1a1a2e; line-height: 1; }
-  .header-left p { margin: 4px 0 0; font-size: 7.5pt; color: #888; }
-  .section { margin-top: 14px; }
-  .section h2 { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: ${ACCENT_KYC}; border-bottom: 1.5px solid ${ACCENT_KYC}; padding-bottom: 3px; margin-bottom: 7px; }
-  .field { margin-bottom: 4px; }
-  .field-label { font-weight: 700; color: #1a1a2e; font-size: 8pt; }
-  .field-value { margin-left: 4px; font-size: 8pt; }
-  .row { display: flex; gap: 24px; margin-bottom: 4px; }
-  .row .col { flex: 1; }
-  .attestation { margin-top: 20px; padding: 12px 14px; border: 1.5px solid #dce3f0; border-radius: 6px; background: #f4f6fb; }
-  .attestation h2 { font-size: 8pt; border: none; padding: 0; margin: 0 0 6px; }
-  .attestation p { font-size: 8pt; line-height: 1.55; margin: 0; color: #334155; }
-  .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 6.5pt; color: #94a3b8; padding: 6px 20mm; border-top: 1px solid #e2e8f0; }
-</style></head><body>
-  <div class="header">
-    <div class="header-left">
-      <h1>KYC \u2014 Kundkännedomsformulär</h1>
-      <p>${esc(byraNamn)} | ${datum}</p>
-    </div>
-    <div class="header-right">${logoHtml}</div>
-  </div>
-  <div class="section">
-    <h2>1. Grunduppgifter om företaget</h2>
-    <div class="row">
-      <div class="col"><span class="field-label">Företagets namn:</span> <span class="field-value">${esc(kyc.foretagsnamn)}</span></div>
-      <div class="col"><span class="field-label">Organisationsnummer:</span> <span class="field-value">${esc(kyc.orgnr)}</span></div>
-    </div>
-    <div class="row">
-      <div class="col"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(kyc.skatterattslig_hemvist_foretag || '\u2014')}</span></div>
-    </div>
-    ${(kyc.skatterattslig_hemvist_foretag && kyc.skatterattslig_hemvist_foretag.trim().toLowerCase() !== 'sverige' && kyc.tin_foretag) ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(kyc.tin_foretag)}</span></div>` : ''}
-  </div>
-  <div class="section">
-    <h2>2. Företrädare</h2>
-    ${(() => {
-      const list = (Array.isArray(kyc.foretradare) && kyc.foretradare.length)
-        ? kyc.foretradare
-        : ((kyc.foretradareNamn || kyc.foretradarePnr) ? [{ namn: kyc.foretradareNamn, personnr: kyc.foretradarePnr, skatterattslig_hemvist: kyc.skatterattslig_hemvist_foretradare, tin: kyc.tin_foretradare }] : []);
-      if (!list.length) return '<div class="field"><span class="field-value">\u2014</span></div>';
-      return list.map(p => {
-        const hemvist = (p.skatterattslig_hemvist || p.hemvist || '').toString();
-        const tinHtml = (hemvist && hemvist.trim().toLowerCase() !== 'sverige' && p.tin)
-          ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(p.tin)}</span></div>` : '';
-        return `
-    <div class="row">
-      <div class="col"><span class="field-label">Namn:</span> <span class="field-value">${esc(p.namn || '\u2014')}</span></div>
-      <div class="col"><span class="field-label">Personnummer:</span> <span class="field-value">${esc(p.personnr || '\u2014')}</span></div>
-    </div>
-    <div class="field"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(hemvist || '\u2014')}</span></div>
-    ${tinHtml}`;
-      }).join('<div style="border-top:0.5px solid #e2e8f0;margin:6px 0;"></div>');
-    })()}
-  </div>
-  ${isEnskildFirmaBolagsform(kyc.bolagsform || f['Bolagsform']) ? '' : `<div class="section">
-    <h2>3. Verklig huvudman</h2>
-    ${kycHuvudmanPdfHtml(kyc, esc)}
-    ${kyc.huvudmanAnnatSatt ? `<div class="field" style="margin-top:6px;"><span class="field-label">Kontroll genom avtal el. dyl.:</span><br><span class="field-value">${nl2br(kyc.huvudmanAnnatSatt)}</span></div>` : ''}
-    ${(kyc.vh_agarandel !== null && kyc.vh_agarandel !== undefined && kyc.vh_agarandel !== '') ? `<div class="field"><span class="field-label">Total ägarandel:</span> <span class="field-value">${esc(kyc.vh_agarandel)} %</span></div>` : ''}
-    <div class="row">
-      <div class="col"><span class="field-label">Börsnoterat bolag:</span> ${janej(kyc.vh_noterat_bolag ? 'Ja' : 'Nej')}</div>
-      <div class="col"><span class="field-label">Utländska ägare:</span> ${janej(kyc.vh_utlandska_agare ? 'Ja' : 'Nej')}</div>
-    </div>
-  </div>`}
-  <div class="section">
-    <h2>4. Politiskt exponerad person (PEP)</h2>
-    <div class="field"><span class="field-label">PEP-status:</span> ${janej(kyc.pep)}</div>
-    ${kyc.pep === 'Ja' && kyc.pepDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> <span class="field-value">${esc(kyc.pepDetaljer)}</span></div>` : ''}
-    <div class="field"><span class="field-label">Familjemedlem/medarbetare till PEP:</span> ${janej(kyc.pepFamilj)}</div>
-    ${kyc.pepFamilj === 'Ja' && kyc.pepFamiljDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> <span class="field-value">${esc(kyc.pepFamiljDetaljer)}</span></div>` : ''}
-  </div>
-  <div class="section">
-    <h2>5. Affärsförbindelsens syfte och art</h2>
-    <div class="field"><span class="field-label">Verksamhet:</span><br><span class="field-value">${nl2br(f['Verksamhet'] || kyc.verksamhet || '\u2014')}</span></div>
-    <div class="field"><span class="field-label">Kostnader:</span><br><span class="field-value">${nl2br(f['Kostnader'] || kyc.kostnader || '\u2014')}</span></div>
-    <div class="field"><span class="field-label">Intäkterna:</span><br><span class="field-value">${nl2br(f['Intäkterna'] || kyc.intakterna || '\u2014')}</span></div>
-    ${kyc.syfte_affarsrelation ? `<div class="field"><span class="field-label">Syfte med affärsrelationen:</span><br><span class="field-value">${nl2br(kyc.syfte_affarsrelation)}</span></div>` : ''}
-    <div class="field"><span class="field-label">Byråns tjänster:</span> <span class="field-value">${esc(kyc.tjanster || '\u2014')}</span></div>
-    <div class="field"><span class="field-label">Pengarnas ursprung:</span> <span class="field-value">${esc(kyc.kapitalUrsprung || '\u2014')}</span></div>
-    <div class="row">
-      <div class="col"><span class="field-label">Antal anställda:</span> <span class="field-value">${esc(kyc.anstallda || '\u2014')}</span></div>
-      <div class="col"><span class="field-label">Uppskattad årsomsättning:</span> <span class="field-value">${esc(kyc.omsattning || '\u2014')}</span></div>
-    </div>
-  </div>
-  <div class="section">
-    <h2>6. Internationell handel</h2>
-    <div class="field"><span class="field-label">Handel utanför Sverige:</span> ${janej(kyc.internationellHandel)}</div>
-    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> <span class="field-value">${esc(EuHogriskLander.formatWithBadges(kyc.internationellaLander) || kyc.internationellaLander)}</span></div>` : ''}
-  </div>
-  <div class="section">
-    <h2>7. Kontanthantering</h2>
-    <div class="field"><span class="field-label">Kontanthantering:</span> ${janej(kyc.kontanter)}</div>
-    ${kyc.kontanter === 'Ja' && kyc.kontanterAndel ? `<div class="field"><span class="field-label">Andel kontanter:</span> <span class="field-value">${esc(kyc.kontanterAndel)}</span></div>` : ''}
-  </div>
-  <div class="section">
-    <h2>8. Kryptovaluta</h2>
-    <div class="field"><span class="field-label">Transaktioner i kryptovaluta:</span> ${janej(kyc.kryptovaluta)}</div>
-  </div>
-  <div class="attestation">
-    <h2>Kundens intygande</h2>
-    <p>Jag intygar att lämnade uppgifter är korrekta och fullständiga. Jag förbinder mig att meddela redovisningsbyrån vid väsentliga förändringar i verksamheten, ägarstrukturen eller gällande vem som är verklig huvudman.</p>
-  </div>
-  <div class="footer">${esc(byraNamn)} | KYC-formulär genererat ${datum}</div>
-</body></html>`;
+  const html = KycPdf.buildKycIntygandePdfHtml({
+    kyc,
+    fields: fields || {},
+    byraNamn: byraNamn || '',
+    byraEpost: byraEpost || '',
+    byraTelefon: byraTelefon || '',
+    documentId: kyc.inleedDokumentId || '',
+    asBilaga: false
+  });
   const pdfBuffer = await htmlToPdfBuffer(html);
   const safeNamn = (kyc.foretagsnamn || 'Kund').replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '');
   const filename = `${safeNamn}-KYC-formular-${datum}.pdf`;
   return { pdfBuffer: Buffer.from(pdfBuffer), filename, datum };
 }
+
 
 /**
  * Skicka KYC-PDF till Inleed för BankID och uppdatera KYC-JSON.
@@ -20384,7 +20064,8 @@ async function maybeAutoSendKycToInleedAfterAnswer({
     fields,
     kyc,
     byraNamn: sender.byraNamn || '',
-    logoUrl
+    logoUrl,
+    byraEpost: sender.email || ''
   });
   const result = await sendKycFormularToInleedCore({
     customerId,
@@ -20952,9 +20633,8 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
       console.warn('⚠️ KYC signerat: kunde inte spara till Dokumentation');
     }
 
-    // Uppdatera KYC-status till Signerat
-    kycData.status = 'Signerat';
-    kycData.signeringsdatum = datum;
+    // Uppdatera KYC-status till Signerat + snapshot för nästa uppdaterings-PDF
+    Object.assign(kycData, KycPdf.attachSignedSnapshot(kycData, custFields, datum), { status: 'Signerat' });
     const kycReceipt = recallDocsignReceipt(inleedId, kycData.receipt);
     if (kycReceipt && docsignInvite.shouldSendReceipt(kycReceipt)) {
       const sent = await maybeSendDocsignReceipt({
