@@ -382,6 +382,7 @@ class CustomerCardManager {
             if (response.ok) {
                 const data = await response.json();
                 this.userData = data.user;
+                this.currentUser = data.user;
                 
                 // Extract byrå IDs from user data
                 this.userByraIds = [];
@@ -497,10 +498,20 @@ class CustomerCardManager {
     setupRiskAvtalModal() {
         const modal = document.getElementById('risk-avtal-modal');
         const closeBtn = document.getElementById('risk-avtal-modal-close');
-        if (closeBtn) {
+        const openBtn = document.getElementById('risk-avtal-open-btn');
+        if (closeBtn && closeBtn.dataset.bound !== '1') {
+            closeBtn.dataset.bound = '1';
             closeBtn.addEventListener('click', () => this.closeRiskAvtalModal());
         }
-        if (modal) {
+        if (openBtn && openBtn.dataset.bound !== '1') {
+            openBtn.dataset.bound = '1';
+            openBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.openRiskAvtalModal({ stepId: this._riskAvtalActiveStep || 1 });
+            });
+        }
+        if (modal && modal.dataset.bound !== '1') {
+            modal.dataset.bound = '1';
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) this.closeRiskAvtalModal();
             });
@@ -514,47 +525,650 @@ class CustomerCardManager {
         }
     }
 
-    openRiskAvtalModal({ bridgeToTab = true } = {}) {
+    _riskAvtalKycWarning() {
+        const f = this.customerData?.fields || {};
+        const kyc = this._savedKycFormular || {};
+        if (window.KundResaTimeline && typeof KundResaTimeline.kycStatusPhase === 'function') {
+            const phase = KundResaTimeline.kycStatusPhase(f, kyc);
+            return phase !== 'besvarat' && phase !== 'signerat';
+        }
+        const status = String(kyc.status || f['KYC status'] || '');
+        return !(/besvarat|signerat/i.test(status));
+    }
+
+    _riskAvtalSummary(stepId) {
+        const fields = this.customerData?.fields || {};
+        const user = this.currentUser || window.userData || {};
+        const reviewerId = String(fields['Riskbeslut granskare'] || '');
+        const isReviewer = reviewerId && (reviewerId === String(user.id || user.userId || ''));
+        const opts = {
+            fields,
+            customerName: fields.Namn || fields.namn || '',
+            customerOrgnr: fields.Orgnr || fields.orgnr || '',
+            kycWarning: this._riskAvtalKycWarning(),
+            isReviewer,
+            avtalStatusLabel: (this._uppdragsavtal?.fields?.Avtalsstatus
+                || this._uppdragsavtalFields?.Avtalsstatus || 'Utkast'),
+            activeStepId: stepId != null ? Number(stepId) : (this._riskAvtalActiveStep || null)
+        };
+        if (window.RiskAvtalModal && typeof RiskAvtalModal.buildSummary === 'function') {
+            return RiskAvtalModal.buildSummary(opts);
+        }
+        return opts;
+    }
+
+    _updateRiskAvtalTrigger() {
+        const btn = document.getElementById('risk-avtal-open-btn');
+        if (!btn) return;
+        const summary = this._kundresa;
+        const upDone = summary
+            && (summary.complete === true || summary.allDone === true
+                || (Array.isArray(summary.steps) && summary.steps.length
+                    && summary.steps.every((s) => s.done === true || s.status === 'done' || s.status === 'klar')));
+        const timeline = this._kundResaTimeline;
+        const show = !!(upDone || timeline?.canClickRisk || timeline?.canOpenRisk);
+        btn.hidden = !show;
+        if (show) {
+            const st = window.RiskBeslut
+                ? RiskBeslut.computeStepStatuses({ fields: this.customerData?.fields || {} })
+                : null;
+            const label = st?.decision?.status && st.decision.status !== 'Utkast'
+                ? `Riskbedömning · ${st.decision.status}`
+                : 'Riskbedömning';
+            const labelEl = btn.querySelector('.kundresa-trigger-label');
+            if (labelEl) labelEl.textContent = label;
+            btn.title = 'Öppna Riskbedömning & beslut';
+        }
+    }
+
+    async _ensureByraRiskSettings() {
+        if (this._byraRiskSettings) return this._byraRiskSettings;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/byra/info`, { method: 'GET', ...getAuthOptsKundkort() });
+            const data = await res.json().catch(() => ({}));
+            this._byraRiskSettings = {
+                requireOtherApprover: data.fields?.requireOtherApprover || 'Aldrig'
+            };
+        } catch (_) {
+            this._byraRiskSettings = { requireOtherApprover: 'Aldrig' };
+        }
+        return this._byraRiskSettings;
+    }
+
+    openRiskAvtalModal({ bridgeToTab = false, stepId = null } = {}) {
         const modal = document.getElementById('risk-avtal-modal');
         const shell = document.getElementById('risk-avtal-shell');
         if (!modal || !shell || !window.RiskAvtalModal) {
             this._bridgeToRiskTab();
             return;
         }
+        // Säkerställ att riskflikens kort finns för reparent (steg 1–2)
+        this.setKundkortMode('onboarding', { skipTabSwitch: true });
+        if (!document.getElementById('ovrigkyc-content')?.querySelector('.kyc-layout')) {
+            this.switchToTab('ovrigkyc');
+            this.loadTabContent('ovrigkyc');
+        }
+        Promise.resolve(this._ensureByraRiskSettings()).catch(() => {});
+        Promise.resolve(this._ensureByraUsers()).catch(() => {});
         this._riskAvtalModalOpen = true;
         modal.hidden = false;
         modal.setAttribute('aria-hidden', 'false');
+        modal.classList.add('is-open');
         document.body.classList.add('kundresa-modal-open');
+
+        const preferred = stepId != null
+            ? Number(stepId)
+            : (this._riskAvtalActiveStep || null);
+        const summary = this._riskAvtalSummary(preferred);
+        this._riskAvtalActiveStep = summary.activeStepId || 1;
+
+        const titleEl = document.getElementById('risk-avtal-modal-title');
+        const progressEl = document.getElementById('risk-avtal-modal-progress');
         const fields = this.customerData?.fields || {};
-        shell.innerHTML = RiskAvtalModal.renderShell({
-            activeStep: 1,
-            customerName: fields.Namn || fields.namn || '',
-            bridgeToTab: !!bridgeToTab
+        const name = fields.Namn || fields.namn || '';
+        if (titleEl) {
+            titleEl.textContent = name
+                ? `Riskbedömning & beslut – ${name}`
+                : 'Riskbedömning & beslut';
+        }
+        if (progressEl) {
+            progressEl.textContent = summary.remainingFooter
+                || 'Kunden lämnar uppgifter → byrån bedömer risken → beslut → avtal.';
+        }
+
+        RiskAvtalModal.render(shell, summary, {
+            onStep: (info) => this._gotoRiskAvtalStep(info),
+            onClose: () => this.closeRiskAvtalModal(),
+            onReady: (ctx) => this._mountRiskAvtalStep(ctx)
         });
-        RiskAvtalModal.bind(shell, {
-            onOpenTab: () => {
-                this.closeRiskAvtalModal();
-                this._bridgeToRiskTab();
-            },
-            onContinue: () => {
-                this.closeRiskAvtalModal();
-                this._bridgeToRiskTab();
+
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('risk') !== '1') {
+                urlParams.set('risk', '1');
+                const qs = urlParams.toString();
+                window.history.replaceState({}, '', `${window.location.pathname}?${qs}${window.location.hash || ''}`);
             }
-        });
+        } catch (_) { /* ignore */ }
+
         const closeBtn = document.getElementById('risk-avtal-modal-close');
         if (closeBtn) closeBtn.focus();
+        if (bridgeToTab) {
+            /* bridge flag retained for callers; content is in-modal now */
+        }
+    }
+
+    _gotoRiskAvtalStep(info) {
+        const stepId = info?.stepId != null ? Number(info.stepId) : 1;
+        if (info?.locked) return;
+        this._riskAvtalActiveStep = stepId;
+        this._unmountRiskAvtalStep();
+        const shell = document.getElementById('risk-avtal-shell');
+        if (!shell || !window.RiskAvtalModal) return;
+        const summary = this._riskAvtalSummary(stepId);
+        RiskAvtalModal.updateActiveStep(shell, summary, {
+            onStep: (i) => this._gotoRiskAvtalStep(i),
+            onClose: () => this.closeRiskAvtalModal(),
+            onReady: (ctx) => this._mountRiskAvtalStep(ctx)
+        });
+        const progressEl = document.getElementById('risk-avtal-modal-progress');
+        if (progressEl) {
+            progressEl.textContent = summary.remainingFooter
+                || 'Kunden lämnar uppgifter → byrån bedömer risken → beslut → avtal.';
+        }
+    }
+
+    _unmountRiskAvtalStep() {
+        const mounted = Array.isArray(this._riskAvtalMountedNodes) ? this._riskAvtalMountedNodes : [];
+        mounted.forEach((m) => {
+            try {
+                if (!m?.node) return;
+                m.node.classList.remove('kundresa-embedded-card', 'risk-avtal-embedded-card');
+                if (m.node.style) {
+                    m.node.style.display = m.node.dataset.riskAvtalPrevDisplay || '';
+                    m.node.style.visibility = m.node.dataset.riskAvtalPrevVisibility || '';
+                    m.node.style.opacity = m.node.dataset.riskAvtalPrevOpacity || '';
+                    delete m.node.dataset.riskAvtalPrevDisplay;
+                    delete m.node.dataset.riskAvtalPrevVisibility;
+                    delete m.node.dataset.riskAvtalPrevOpacity;
+                }
+                if (m.placeholder && m.placeholder.parentNode) {
+                    m.placeholder.parentNode.insertBefore(m.node, m.placeholder);
+                    m.placeholder.remove();
+                }
+            } catch (e) {
+                console.warn('_unmountRiskAvtalStep:', e);
+            }
+        });
+        this._riskAvtalMountedNodes = [];
+        const host = document.getElementById('risk-avtal-step-host');
+        if (host) host.innerHTML = '';
+    }
+
+    async _mountRiskAvtalStep(ctx) {
+        const host = ctx?.host || document.getElementById('risk-avtal-step-host');
+        const step = ctx?.activeStep || {};
+        const stepId = Number(step.id || ctx?.activeStepId || 1);
+        if (!host) return;
+        this._unmountRiskAvtalStep();
+        host.innerHTML = '<div class="kundresa-step-loading lead-empty"><i class="fas fa-spinner fa-spin"></i> Laddar steg…</div>';
+
+        // Ensure ovrigkyc surface exists for reparent
+        if ((stepId === 1 || stepId === 2) && !document.querySelector('#ovrigkyc-content .kyc-layout')) {
+            try {
+                this.switchToTab('ovrigkyc');
+                await Promise.resolve(this.loadTabContent('ovrigkyc'));
+                await new Promise((r) => setTimeout(r, 50));
+            } catch (e) {
+                console.warn('load ovrigkyc for risk modal:', e);
+            }
+        }
+
+        if (stepId === 1) {
+            await this._mountRiskAvtalStep1(host);
+            return;
+        }
+        if (stepId === 2) {
+            await this._mountRiskAvtalStep2(host);
+            return;
+        }
+        if (stepId === 3) {
+            this._mountRiskAvtalStep3(host);
+            return;
+        }
+        if (stepId === 4) {
+            this._mountRiskAvtalStep4(host);
+            return;
+        }
+        host.innerHTML = '<p class="lead-empty">Okänt steg.</p>';
+    }
+
+    _riskAvtalMountCard(host, sel, mounted) {
+        const node = document.querySelector(sel);
+        if (!node || !node.parentNode) return null;
+        if (mounted.some((m) => m.node === node)) return node;
+        const placeholder = document.createElement('span');
+        placeholder.hidden = true;
+        placeholder.setAttribute('data-risk-avtal-anchor', sel.replace(/^#/, ''));
+        placeholder.className = 'risk-avtal-card-placeholder';
+        node.parentNode.insertBefore(placeholder, node);
+        node.classList.add('kundresa-embedded-card', 'risk-avtal-embedded-card');
+        node.classList.remove('is-collapsed');
+        if (node.style) {
+            node.dataset.riskAvtalPrevDisplay = node.style.display || '';
+            node.dataset.riskAvtalPrevVisibility = node.style.visibility || '';
+            node.dataset.riskAvtalPrevOpacity = node.style.opacity || '';
+            node.style.display = 'block';
+            node.style.visibility = 'visible';
+            node.style.opacity = '1';
+        }
+        host.appendChild(node);
+        mounted.push({ node, placeholder, sel });
+        return node;
+    }
+
+    async _mountRiskAvtalStep1(host) {
+        const mounted = [];
+        host.innerHTML = '';
+        if (this._riskAvtalKycWarning()) {
+            const warn = document.createElement('div');
+            warn.className = 'kundresa-gate-banner risk-avtal-kyc-warn';
+            warn.setAttribute('role', 'status');
+            warn.innerHTML = '<strong>KYC ej signerat.</strong> Bedömningen blir preliminär tills kunden svarat/signerat.';
+            host.appendChild(warn);
+        }
+        const catalogBanner = this._riskAvtalCatalogBannerHtml();
+        if (catalogBanner) {
+            const wrap = document.createElement('div');
+            wrap.innerHTML = catalogBanner;
+            while (wrap.firstChild) host.appendChild(wrap.firstChild);
+        }
+        const reviewBanner = typeof this._riskfaktorGranskningBannerHtml === 'function'
+            ? this._riskfaktorGranskningBannerHtml()
+            : '';
+        if (reviewBanner) {
+            const wrap = document.createElement('div');
+            wrap.innerHTML = reviewBanner;
+            while (wrap.firstChild) host.appendChild(wrap.firstChild);
+        }
+
+        const selectors = [
+            '#tjanster-kort',
+            '#ovrigkyc-content .ovriga-risk-kategori-card',
+            '#ovrigkyc-content [id^="riskfaktor-card-"]',
+            '#ovrigkyc-content .kyc-section.collapsible-card'
+        ];
+        // Prefer concrete known cards
+        const preferred = [
+            '#tjanster-kort'
+        ];
+        // Collect ovriga risk kategori cards + risksankande + kommentar
+        document.querySelectorAll('#ovrigkyc-content .kyc-section.collapsible-card, #ovrigkyc-content .ovriga-risk-kategori-card').forEach((el) => {
+            if (!el.id) {
+                el.id = `risk-avtal-tmp-${Math.random().toString(36).slice(2, 8)}`;
+            }
+            // Skip AI bedömning / byrånhar / uppdrag — those are step 2
+            const title = (el.querySelector('.collapsible-title, .kyc-section-title')?.textContent || '').toLowerCase();
+            if (/kundens riskbedömning|byrån har|uppdrag\s*&\s*avtal|dokumentera/i.test(title)) return;
+            if (el.id === 'uppdrag-avtal-kort') return;
+            if (el.closest('#riskbedomning-ai-kort, #byran-har-kort')) return;
+            preferred.push(`#${CSS.escape(el.id)}`);
+        });
+        // Also pull residual riskfaktor hosts
+        ['ovrigkyc-risker-kund', 'ovrigkyc-risker-geografiska', 'ovrigkyc-risker-geografiska_motparter'].forEach((id) => {
+            if (document.getElementById(id)) preferred.push(`#${id}`);
+        });
+
+        preferred.forEach((sel) => {
+            try { this._riskAvtalMountCard(host, sel, mounted); } catch (_) { /* ignore */ }
+        });
+
+        // Fallback stub if nothing found
+        if (!mounted.length) {
+            host.innerHTML += `<div class="risk-avtal-step-stub">
+                <p class="lead-empty">Riskfaktorer laddas från riskfliken. <button type="button" class="btn-link" data-risk-avtal-open-tab>Öppna riskflik</button></p>
+            </div>`;
+            host.querySelector('[data-risk-avtal-open-tab]')?.addEventListener('click', () => {
+                this.closeRiskAvtalModal();
+                this._bridgeToRiskTab();
+            });
+        } else {
+            this._bindRiskAvtalCatalogActions(host);
+        }
+        this._riskAvtalMountedNodes = mounted;
+        const scroll = document.querySelector('[data-risk-avtal-scroll]');
+        if (scroll) scroll.scrollTop = 0;
+    }
+
+    _riskAvtalCatalogBannerHtml() {
+        const f = this.customerData?.fields || {};
+        if (String(f['Riskprofil status'] || '') !== 'behöver_omprofilering') return '';
+        return `<div class="risk-avtal-catalog-banner" role="status">
+            <div>
+                <strong>Kataloguppdatering.</strong>
+                Byråns riskfaktorkatalog har ändrats sedan senaste bedömningen.
+            </div>
+            <div class="risk-avtal-catalog-actions">
+                <button type="button" class="btn btn-primary btn-sm" data-risk-catalog-confirm>Bekräfta</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-risk-catalog-byt>Byt</button>
+            </div>
+        </div>`;
+    }
+
+    _bindRiskAvtalCatalogActions(host) {
+        const confirmBtn = host.querySelector('[data-risk-catalog-confirm]');
+        const bytBtn = host.querySelector('[data-risk-catalog-byt]');
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', () => this._confirmRiskCatalogStamp());
+        }
+        if (bytBtn) {
+            bytBtn.addEventListener('click', () => {
+                this.showNotification('Granska faktorerna nedan och spara en ny bedömning.', 'info');
+            });
+        }
+    }
+
+    async _confirmRiskCatalogStamp() {
+        if (!this.customerId) return;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/risk-katalog-bekrafta`, {
+                method: 'POST',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({})
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+            if (this.customerData?.fields) {
+                Object.assign(this.customerData.fields, data.fields || {
+                    'Riskprofil status': 'aktuell'
+                });
+            }
+            this.showNotification('Kataloguppdatering bekräftad.', 'success');
+            this._gotoRiskAvtalStep({ stepId: this._riskAvtalActiveStep || 1 });
+        } catch (e) {
+            console.error('_confirmRiskCatalogStamp:', e);
+            // Soft-fail: rensa status lokalt så UI går vidare (fält syncas vid nästa residual-spar)
+            if (this.customerData?.fields) {
+                this.customerData.fields['Riskprofil status'] = 'aktuell';
+            }
+            this.showNotification('Katalog bekräftad lokalt. Sparas vid nästa bedömning.', 'info');
+            this._gotoRiskAvtalStep({ stepId: this._riskAvtalActiveStep || 1 });
+        }
+    }
+
+    async _mountRiskAvtalStep2(host) {
+        const mounted = [];
+        host.innerHTML = '';
+        // Find AI riskbedömning card + Byrån har
+        const candidates = [];
+        document.querySelectorAll('#ovrigkyc-content .kyc-section, #ovrigkyc-content .collapsible-card').forEach((el) => {
+            const title = (el.querySelector('.collapsible-title, .kyc-section-title, h3, h4')?.textContent || '').toLowerCase();
+            if (/kundens riskbedömning|residual|bedömd risk|motivering|byrån har/i.test(title)
+                || el.id === 'byran-har-kort'
+                || el.id === 'riskbedomning-ai-kort'
+                || el.classList.contains('riskbedomning-ai-card')
+                || el.classList.contains('byran-har-card')) {
+                if (!el.id) el.id = `risk-avtal-tmp-${Math.random().toString(36).slice(2, 8)}`;
+                candidates.push(`#${CSS.escape(el.id)}`);
+            }
+        });
+        // Also try known ids from render helpers
+        ['riskbedomning-ai-kort', 'byran-har-kort', 'kund-riskbedomning-kort'].forEach((id) => {
+            if (document.getElementById(id)) candidates.push(`#${id}`);
+        });
+        [...new Set(candidates)].forEach((sel) => {
+            try { this._riskAvtalMountCard(host, sel, mounted); } catch (_) { /* ignore */ }
+        });
+        if (!mounted.length) {
+            host.innerHTML = `<div class="risk-avtal-step-stub">
+                <p class="lead-empty">Bedömningskort saknas ännu. <button type="button" class="btn-link" data-risk-avtal-open-tab>Öppna riskflik</button></p>
+            </div>`;
+            host.querySelector('[data-risk-avtal-open-tab]')?.addEventListener('click', () => {
+                this.closeRiskAvtalModal();
+                this._bridgeToRiskTab();
+            });
+        }
+        this._riskAvtalMountedNodes = mounted;
+        const scroll = document.querySelector('[data-risk-avtal-scroll]');
+        if (scroll) scroll.scrollTop = 0;
+    }
+
+    _mountRiskAvtalStep3(host) {
+        this._riskAvtalMountedNodes = [];
+        const fields = this.customerData?.fields || {};
+        const decision = window.RiskBeslut
+            ? RiskBeslut.readDecision(fields)
+            : { status: 'Utkast', log: [] };
+        const residual = String(fields.Riskniva || fields['sammanlagd risk'] || '').trim();
+        const user = this.currentUser || window.userData || {};
+        const canApprove = window.RiskBeslut
+            ? RiskBeslut.canApproveRisk({
+                role: user.role || user.Role,
+                canApproveRisk: user.canApproveRisk ?? user['Får godkänna riskbedömning']
+            })
+            : /ledare/i.test(String(user.role || ''));
+        const byraSettings = this._byraRiskSettings || {};
+        const allowSelf = window.RiskBeslut
+            ? RiskBeslut.allowSelfReview(byraSettings, residual)
+            : true;
+        const users = Array.isArray(this._byraUsers) ? this._byraUsers : [];
+        const selfId = String(user.id || user.userId || '');
+        const reviewerOpts = users
+            .filter((u) => {
+                if (!u?.id) return false;
+                if (String(u.id) === selfId) return canApprove && allowSelf;
+                return true;
+            })
+            .map((u) => {
+                const id = String(u.id);
+                const name = String(u.name || u.email || id);
+                const isSelf = id === selfId;
+                const selected = String(fields['Riskbeslut granskare'] || '') === id ? ' selected' : '';
+                return `<option value="${this._esc(id)}" data-name="${this._esc(name)}"${selected}>${this._esc(isSelf ? 'Mig själv' : name)}</option>`;
+            }).join('');
+        const selfOpt = (canApprove && allowSelf && selfId && !users.some((u) => String(u.id) === selfId))
+            ? `<option value="${this._esc(selfId)}" data-name="Mig själv">Mig själv</option>`
+            : '';
+        const log = Array.isArray(decision.log) ? decision.log : [];
+        const waiting = decision.status === 'Väntar på granskning';
+        const needsFix = decision.status === 'Behöver komplettering';
+        const approved = decision.status === 'Godkänd';
+        const rejected = decision.status === 'Avslagen';
+        const isReviewer = String(fields['Riskbeslut granskare'] || '') === selfId;
+        const showDecide = (waiting && (isReviewer || canApprove)) || needsFix;
+
+        host.innerHTML = `
+            <div class="risk-avtal-beslut" data-risk-beslut>
+                <div class="risk-avtal-beslut-status">
+                    <span class="godkannande-badge">Status: ${this._esc(decision.status || 'Utkast')}</span>
+                    ${residual ? `<span class="risk-avtal-beslut-niva">Bedömd residual: <strong>${this._esc(residual)}</strong></span>` : ''}
+                </div>
+                ${approved || rejected ? `
+                    <p class="kundresa-hint">Beslutet är fattat. ${approved ? 'Uppdragsavtalet är upplåst.' : 'Avtalet förblir låst.'}</p>
+                ` : `
+                <div class="risk-avtal-beslut-send" ${waiting && !showDecide ? 'hidden' : ''}>
+                    <h4>Skicka för granskning</h4>
+                    <label class="kundresa-vh-field">
+                        <span>Granskare</span>
+                        <select id="risk-beslut-granskare" class="form-control">
+                            <option value="">— Välj —</option>
+                            ${selfOpt}${reviewerOpts || '<option value="" disabled>Inga kollegor</option>'}
+                        </select>
+                    </label>
+                    <label class="kundresa-vh-field">
+                        <span>Meddelande (valfritt)</span>
+                        <input type="text" id="risk-beslut-meddelande" class="form-control" maxlength="400" placeholder="Kort notis till granskaren">
+                    </label>
+                    <button type="button" class="btn btn-primary btn-sm" id="risk-beslut-skicka">
+                        <i class="fas fa-paper-plane"></i> Skicka för granskning
+                    </button>
+                    ${!(canApprove && allowSelf) ? '<p class="kundresa-hint">«Mig själv» visas bara om du har behörighet och byråns regel tillåter det för vald residualnivå.</p>' : ''}
+                </div>
+                ${showDecide || (canApprove && allowSelf) ? `
+                <div class="risk-avtal-beslut-actions">
+                    <h4>Beslut</h4>
+                    <label class="kundresa-vh-field">
+                        <span>Kommentar <span class="uppdrag-muted">(krävs vid Skicka tillbaka och Avslå)</span></span>
+                        <textarea id="risk-beslut-kommentar" class="form-control" rows="3" maxlength="2000"></textarea>
+                    </label>
+                    <div class="risk-avtal-beslut-btns">
+                        <button type="button" class="btn btn-primary btn-sm" data-risk-beslut-action="approve" ${canApprove ? '' : 'disabled'}>
+                            <i class="fas fa-check"></i> Godkänn
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-risk-beslut-action="return" ${canApprove ? '' : 'disabled'}>
+                            <i class="fas fa-undo"></i> Skicka tillbaka
+                        </button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-risk-beslut-action="reject" ${canApprove ? '' : 'disabled'}>
+                            <i class="fas fa-times"></i> Avslå
+                        </button>
+                    </div>
+                </div>` : ''}
+                `}
+                ${log.length ? `<div class="risk-avtal-beslut-log">
+                    <h4>Beslutslogg</h4>
+                    <ol>${log.map((e) => `<li>
+                        <strong>${this._esc(e.event || e.händelse || '')}</strong>
+                        <span>${this._esc((e.at || '').toString().slice(0, 16).replace('T', ' '))}</span>
+                        <span>${this._esc(e.userName || e.person || '')}</span>
+                        ${e.comment ? `<span class="uppdrag-muted">${this._esc(e.comment)}</span>` : ''}
+                    </li>`).join('')}</ol>
+                </div>` : ''}
+            </div>
+        `;
+        host.querySelector('#risk-beslut-skicka')?.addEventListener('click', () => this._riskBeslutSkicka());
+        host.querySelectorAll('[data-risk-beslut-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-risk-beslut-action');
+                this._riskBeslutDecide(action);
+            });
+        });
+        Promise.resolve(this._ensureByraUsers()).catch(() => {});
+        const scroll = document.querySelector('[data-risk-avtal-scroll]');
+        if (scroll) scroll.scrollTop = 0;
+    }
+
+    async _riskBeslutSkicka() {
+        const sel = document.getElementById('risk-beslut-granskare');
+        const msgEl = document.getElementById('risk-beslut-meddelande');
+        const reviewerId = sel?.value || '';
+        const reviewerName = sel?.selectedOptions?.[0]?.getAttribute('data-name')
+            || sel?.selectedOptions?.[0]?.textContent || '';
+        const message = String(msgEl?.value || '').trim();
+        if (!reviewerId) {
+            this.showNotification('Välj en granskare.', 'warning');
+            return;
+        }
+        try {
+            const data = await this._postRiskBeslut({
+                action: 'send',
+                reviewerId,
+                reviewerName,
+                message
+            });
+            if (data.fields && this.customerData?.fields) {
+                Object.assign(this.customerData.fields, data.fields);
+            }
+            this.showNotification(`Skickat till ${reviewerName}.`, 'success');
+            this._refreshKundResaTimeline();
+            this._gotoRiskAvtalStep({ stepId: 3 });
+        } catch (e) {
+            this.showNotification(`Kunde inte skicka: ${e.message}`, 'error');
+        }
+    }
+
+    async _riskBeslutDecide(action) {
+        const comment = String(document.getElementById('risk-beslut-kommentar')?.value || '').trim();
+        if ((action === 'return' || action === 'reject') && !comment) {
+            this.showNotification('Kommentar krävs.', 'warning');
+            return;
+        }
+        try {
+            const data = await this._postRiskBeslut({ action, comment });
+            if (data.fields && this.customerData?.fields) {
+                Object.assign(this.customerData.fields, data.fields);
+            }
+            const labels = { approve: 'Godkänd', return: 'Skickad tillbaka', reject: 'Avslagen' };
+            this.showNotification(labels[action] || 'Sparat.', 'success');
+            this._refreshKundResaTimeline();
+            this._updateRiskAvtalTrigger();
+            // Uppdatera skrivskyddad Uppdraget kan antas
+            const cb = document.getElementById('uppdrag-kan-antas-cb');
+            if (cb && action === 'approve') {
+                cb.checked = true;
+                cb.disabled = true;
+            }
+            this._gotoRiskAvtalStep({ stepId: action === 'approve' ? 4 : 3 });
+        } catch (e) {
+            this.showNotification(`Kunde inte spara beslut: ${e.message}`, 'error');
+        }
+    }
+
+    async _postRiskBeslut(body) {
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/risk-beslut`, {
+            method: 'POST',
+            ...getAuthOptsKundkort(),
+            body: JSON.stringify(body || {})
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+        return data;
+    }
+
+    _mountRiskAvtalStep4(host) {
+        this._riskAvtalMountedNodes = [];
+        const fields = this.customerData?.fields || {};
+        const approved = window.RiskBeslut
+            ? RiskBeslut.isApproved(fields)
+            : false;
+        if (!approved) {
+            host.innerHTML = `<div class="risk-avtal-step-stub">
+                <p class="lead-empty"><i class="fas fa-lock"></i> Uppdragsavtalet är låst tills riskbedömningen är godkänd.</p>
+                <button type="button" class="btn btn-secondary btn-sm" data-risk-avtal-goto-3>Till granskning &amp; beslut</button>
+            </div>`;
+            host.querySelector('[data-risk-avtal-goto-3]')?.addEventListener('click', () => {
+                this._gotoRiskAvtalStep({ stepId: 3 });
+            });
+            return;
+        }
+        host.innerHTML = `<div class="risk-avtal-step-stub">
+            <p>Riskbedömningen är godkänd. Öppna uppdragsavtalet för parter, tjänster och BankID-signering.</p>
+            <button type="button" class="btn btn-primary btn-sm" data-risk-avtal-open-avtal>
+                <i class="fas fa-file-contract"></i> Öppna uppdragsavtal
+            </button>
+        </div>`;
+        host.querySelector('[data-risk-avtal-open-avtal]')?.addEventListener('click', () => {
+            this.closeRiskAvtalModal();
+            this.setKundkortMode('oversikt', { skipTabSwitch: true });
+            this.switchToTab('uppdragsavtal');
+            this.loadTabContent('uppdragsavtal');
+        });
+        const scroll = document.querySelector('[data-risk-avtal-scroll]');
+        if (scroll) scroll.scrollTop = 0;
     }
 
     closeRiskAvtalModal() {
+        this._unmountRiskAvtalStep();
         const modal = document.getElementById('risk-avtal-modal');
         if (modal) {
             modal.hidden = true;
             modal.setAttribute('aria-hidden', 'true');
+            modal.classList.remove('is-open');
         }
         this._riskAvtalModalOpen = false;
         if (!this._kundresaModalOpen) {
             document.body.classList.remove('kundresa-modal-open');
         }
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('risk') === '1') {
+                urlParams.delete('risk');
+                const qs = urlParams.toString();
+                window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`);
+            }
+        } catch (_) { /* ignore */ }
     }
 
     _bridgeToRiskTab() {
@@ -564,7 +1178,7 @@ class CustomerCardManager {
         const el = document.getElementById('ovrigkyc-content');
         if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         this.showNotification(
-            'Riskbedömning & avtal — intern bedömning (kunden ser aldrig detta). Kedja: Kundens uppgifter → byråns bedömning → beslut → avtal.',
+            'Riskbedömning & beslut — intern bedömning (kunden ser aldrig detta). Kedja: Kundens uppgifter → byråns bedömning → beslut → avtal.',
             'info'
         );
     }
@@ -580,10 +1194,10 @@ class CustomerCardManager {
         });
         this._kundResaTimeline = timeline;
         host.innerHTML = KundResaTimeline.render(timeline);
-        const bridge = host.querySelector('[data-kund-resa-risk-bridge]');
-        if (bridge) {
-            bridge.addEventListener('click', () => this.openRiskAvtalModal({ bridgeToTab: true }));
-        }
+        host.querySelectorAll('[data-kund-resa-risk-bridge]').forEach((bridge) => {
+            bridge.addEventListener('click', () => this.openRiskAvtalModal({ stepId: 1 }));
+        });
+        this._updateRiskAvtalTrigger();
     }
 
     setupKundresaModal() {
@@ -702,6 +1316,7 @@ class CustomerCardManager {
         btn.title = meta.complete
             ? 'Kunduppläggning — alla steg klara'
             : `Kunduppläggning — ${meta.done} av ${meta.total} steg`;
+        this._updateRiskAvtalTrigger();
     }
 
     _navGroupForTab(tab) {
@@ -906,6 +1521,7 @@ class CustomerCardManager {
                 this.displayCustomerInfo();
                 const urlParams = new URLSearchParams(window.location.search);
                 const shouldOpenSetup = urlParams.get('setup') === '1' || urlParams.get('kundresa') === '1';
+                const shouldOpenRisk = urlParams.get('risk') === '1';
                 const noteId = urlParams.get('note');
                 const hash = (window.location.hash || '').replace('#', '');
                 const shouldOpenAnteckningar = noteId || hash === 'anteckningar';
@@ -917,6 +1533,15 @@ class CustomerCardManager {
                 this.loadKundresa()
                     .catch((e) => console.warn('kundresa:', e))
                     .finally(() => {
+                        this._updateRiskAvtalTrigger();
+                        if (shouldOpenRisk) {
+                            try {
+                                // behåll ?risk=1 tills modal stängs
+                            } catch (_) { /* ignore */ }
+                            this.setKundkortMode('onboarding', { skipTabSwitch: true });
+                            this.openRiskAvtalModal({ stepId: 1 });
+                            return;
+                        }
                         if (!shouldOpenSetup) return;
                         // Endast för nya leads: öppna kunduppläggningsflödet (analyskorts-design)
                         // Körs i finally så flödet inte bryts om status-API:t failar.
@@ -8661,26 +9286,28 @@ class CustomerCardManager {
 
                         <div class="uppdrag-antas-section">
                             <div class="uppdrag-antas-row">
-                                <label class="uppdrag-antas-label">
+                                <label class="uppdrag-antas-label" title="Sätts automatiskt när riskbedömningen godkänns">
                                     <input type="checkbox" id="uppdrag-kan-antas-cb"
                                         ${uppdragCheck ? 'checked' : ''}
-                                        onchange="customerCardManager.saveUppdragKanAntas(this.checked)">
+                                        disabled
+                                        aria-readonly="true">
                                     <span class="uppdrag-antas-check-box"></span>
                                     <span class="uppdrag-antas-text">Uppdraget kan antas</span>
                                 </label>
                                 ${uppdragCheck && avtalsDatum ? `<span class="uppdrag-antas-datum"><i class="fas fa-calendar-check"></i> ${avtalsDatum}</span>` : ''}
                             </div>
+                            <p class="kyc-hint" style="margin:0.35rem 0 0;font-size:0.82rem;color:#64748b;">Skrivskyddad — speglar riskbeslut (sätts vid Godkänn).</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Dokumentera riskbedömning – knapp längst ner -->
                 <div class="kyc-section" style="margin-top:1.5rem;">
-                    <button type="button" class="btn btn-primary" id="btn-dokumentera-riskbedomning" onclick="customerCardManager.dokumenteraRiskbedomning()">
+                    <button type="button" class="btn btn-secondary" id="btn-dokumentera-riskbedomning" onclick="customerCardManager.dokumenteraRiskbedomning()">
                         <i class="fas fa-file-pdf"></i> Dokumentera riskbedömning
                     </button>
                     ${this._senasteRiskbedomningDatumLabel(f)}
-                    <p class="kyc-hint" style="margin-top:0.5rem;font-size:0.85rem;color:#64748b;">Skapar PDF med riskbedömning och bedömningspunkter, en lista över kundens valda tjänster (utan byråns tjänstanalyser), samt KYC som bilaga sist. Sparas på fliken Dokumentation.</p>
+                    <p class="kyc-hint" style="margin-top:0.5rem;font-size:0.85rem;color:#64748b;">Genererar endast PDF (manuellt underlag) — godkänner inte. Formellt godkännande sker under Riskbedömning &amp; beslut, steg 3.</p>
                 </div>
 
             </div>
@@ -13996,7 +14623,7 @@ class CustomerCardManager {
                         <div class="godkannande-stats">${this._riskprofilSummaryHtml()}</div>
                         <div class="godkannande-actions">
                             <button type="button" class="btn btn-secondary btn-sm" data-godk-goto="risk">
-                                <i class="fas fa-arrow-right"></i> Öppna riskbedömning
+                                <i class="fas fa-arrow-right"></i> Öppna riskbedömning &amp; beslut
                             </button>
                         </div>
                     </article>
@@ -14021,26 +14648,12 @@ class CustomerCardManager {
                 </div>
 
                 <article class="godkannande-card godkannande-card--wide">
-                    <h4><i class="fas fa-user-check"></i> Skicka riskprofil för granskning</h4>
-                    <p class="kundresa-hint">Skapar en intern anteckning till vald kollega. Ni kan också öppna riskbedömningen direkt efteråt.</p>
-                    <div class="godkannande-share-form">
-                        <label class="kundresa-vh-field">
-                            <span>Kollega på byrån</span>
-                            <select id="godkannande-kollega" class="form-control">
-                                <option value="">— Välj kollega —</option>
-                                ${userOpts || '<option value="" disabled>Inga användare hittades</option>'}
-                            </select>
-                        </label>
-                        <label class="kundresa-vh-field">
-                            <span>Meddelande (valfritt)</span>
-                            <input type="text" id="godkannande-meddelande" class="form-control" maxlength="400"
-                                placeholder="t.ex. Kan du bedöma residualrisken innan vi godkänner?">
-                        </label>
-                        <div class="godkannande-actions">
-                            <button type="button" class="btn btn-primary btn-sm" id="godkannande-skicka-btn">
-                                <i class="fas fa-paper-plane"></i> Skicka begäran
-                            </button>
-                        </div>
+                    <h4><i class="fas fa-user-check"></i> Granskning &amp; beslut</h4>
+                    <p class="kundresa-hint">Formellt godkännande och granskningsbegäran sker i popupen Riskbedömning &amp; beslut, steg 3.</p>
+                    <div class="godkannande-actions">
+                        <button type="button" class="btn btn-primary btn-sm" id="godkannande-oppen-beslut-btn">
+                            <i class="fas fa-clipboard-check"></i> Öppna granskning &amp; beslut
+                        </button>
                     </div>
                     ${pending.length ? `<ul class="godkannande-pending">
                         ${pending.map((p) => `<li>
@@ -14070,7 +14683,7 @@ class CustomerCardManager {
             btn.addEventListener('click', () => {
                 const dest = btn.getAttribute('data-godk-goto');
                 if (dest === 'risk') {
-                    this._gotoKundresaStep({ tab: 'ovrigkyc', focus: 'risk', key: 'riskprofil', stepId: 5 });
+                    this.openRiskAvtalModal({ stepId: 1 });
                 } else if (dest === 'kyc') {
                     this.setKundkortMode('onboarding', { skipTabSwitch: true });
                     this.switchToTab('kycformular');
@@ -14084,9 +14697,9 @@ class CustomerCardManager {
             });
         });
 
-        const sendBtn = document.getElementById('godkannande-skicka-btn');
-        if (sendBtn) {
-            sendBtn.addEventListener('click', () => this._skickaRiskgranskning(sendBtn));
+        const openBeslut = document.getElementById('godkannande-oppen-beslut-btn');
+        if (openBeslut) {
+            openBeslut.addEventListener('click', () => this.openRiskAvtalModal({ stepId: 3 }));
         }
 
         const done = !!step.done;
@@ -15273,7 +15886,9 @@ class CustomerCardManager {
             }
         }
         if (!src.label) return '';
-        const cls = src.kind === 'kyc' ? 'kyc' : (src.kind === 'auto' ? 'auto' : 'manual');
+        const cls = src.kind === 'kyc' ? 'kyc'
+          : (src.kind === 'setup' ? 'setup'
+            : (src.kind === 'auto' ? 'auto' : 'manual'));
         return `<span class="risk-kalla-badge risk-kalla-badge--${cls}" title="${this._esc(src.label)}">${this._esc(src.label)}</span>`;
     }
 
@@ -21557,13 +22172,13 @@ class CustomerCardManager {
                 throw new Error(err.error || err.message || `HTTP ${res.status}`);
             }
             const data = await res.json();
-            if (data.senasteRiskbedomningDatum && this.customerData?.fields) {
+            // Dokumentera genererar endast PDF — sätter inte längre godkännande.
+            if (data.senasteRiskbedomningDatum && this.customerData?.fields && data.markedApproved) {
                 this.customerData.fields['Riskbedömning utförd datum'] = data.senasteRiskbedomningDatum;
-                this.customerData.fields['Kundens riskbedömning godkänd'] = data.senasteRiskbedomningDatum;
             }
             this._refreshSenasteRiskbedomningDatum();
             this._refreshKundResaTimeline();
-            this.showNotification(data.message || 'Riskbedömning dokumenterad.', 'success');
+            this.showNotification(data.message || 'PDF genererad (utan godkännande).', 'success');
             if (data.reloadedDocuments) this.loadDocuments();
             // Erbjud nedladdning om PDF genererades men inte sparades till Dokumentation (t.ex. vid localhost)
             if (data.fileUrl && !data.reloadedDocuments && data.filnamn) {

@@ -177,6 +177,7 @@ const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
 const ByraResa = require('./lib/byra-resa');
 const RiskFactorCatalog = require('./lib/risk-factor-catalog');
+const RiskBeslut = require('./lib/risk-beslut');
 const NavStatus = require('./lib/nav-status');
 const Kundformular = require('./lib/kundformular');
 const Kundresa = require('./lib/kundresa');
@@ -441,7 +442,16 @@ async function getAirtableUser(email) {
         logo: fields['Logga'] || '',
         isCfa: cfa.readIsCfa(fields),
         cfaConfirmedAt: cfa.readConfirmedAt(fields),
-        workHoursPerDay: readWorkHoursPerDay(fields)
+        workHoursPerDay: readWorkHoursPerDay(fields),
+        canApproveRisk: (() => {
+          const raw = fields[RiskBeslut.FIELD_CAN_APPROVE];
+          if (raw === true || raw === false) return raw;
+          if (raw == null || raw === '') return RiskBeslut.defaultCanApproveForRole(fields['Role'] || '');
+          return RiskBeslut.canApproveRisk({
+            role: fields['Role'] || '',
+            canApproveRisk: raw
+          });
+        })()
       };
       
       console.log(`🔍 User fields keys: ${Object.keys(fields).join(', ')}`);
@@ -586,16 +596,23 @@ async function actorForRequest(req, userData) {
 
 function mapApplicationUserRecord(r) {
   const f = r?.fields || {};
+  const role = access.normalizeRole(f.Role || '') || f.Role || '';
+  const rawApprove = f[RiskBeslut.FIELD_CAN_APPROVE];
+  let canApproveRisk;
+  if (rawApprove === true || rawApprove === false) canApproveRisk = rawApprove;
+  else if (rawApprove == null || rawApprove === '') canApproveRisk = RiskBeslut.defaultCanApproveForRole(role);
+  else canApproveRisk = RiskBeslut.canApproveRisk({ role, canApproveRisk: rawApprove });
   return {
     id: r.id,
     email: f.Email || '',
     name: f['Full Name'] || f.Namn || '',
-    role: access.normalizeRole(f.Role || '') || f.Role || '',
+    role,
     byra: f['Byrå'] || f.fldcZZOiC9y5BKFWf || '',
     byraId: f['Byrå ID i text 2'] || f['Byra ID i text 2'] || '',
     isCfa: cfa.readIsCfa(f),
     cfaConfirmedAt: cfa.readConfirmedAt(f),
-    workHoursPerDay: readWorkHoursPerDay(f)
+    workHoursPerDay: readWorkHoursPerDay(f),
+    canApproveRisk
   };
 }
 
@@ -608,10 +625,33 @@ const USER_WORK_HOURS_SCHEMA = [
     options: { precision: 2 }
   }
 ];
+const USER_CAN_APPROVE_RISK_SCHEMA = [
+  {
+    name: RiskBeslut.FIELD_CAN_APPROVE,
+    type: 'checkbox',
+    options: { color: 'greenBright', icon: 'check' },
+    description: 'Får godkänna kundens riskbedömning (default: Ledare på, Anställd av). ClientFlowAdmin får aldrig.'
+  }
+];
+const BYRA_REQUIRE_OTHER_SCHEMA = [
+  {
+    name: RiskBeslut.FIELD_REQUIRE_OTHER,
+    type: 'singleSelect',
+    description: 'Kräv att en annan person godkänner riskbedömningen.',
+    options: {
+      choices: [
+        { name: RiskBeslut.REQUIRE_OTHER.NEVER },
+        { name: RiskBeslut.REQUIRE_OTHER.HIGH },
+        { name: RiskBeslut.REQUIRE_OTHER.ALWAYS }
+      ]
+    }
+  }
+];
 
 async function ensureCfaUserFields(airtableToken, baseId) {
   await ensureAirtableTableFields(airtableToken, baseId, USERS_TABLE, cfa.SCHEMA_FIELDS);
-  return ensureAirtableTableFields(airtableToken, baseId, USERS_TABLE, USER_WORK_HOURS_SCHEMA);
+  await ensureAirtableTableFields(airtableToken, baseId, USERS_TABLE, USER_WORK_HOURS_SCHEMA);
+  return ensureAirtableTableFields(airtableToken, baseId, USERS_TABLE, USER_CAN_APPROVE_RISK_SCHEMA);
 }
 
 function readWorkHoursPerDay(fields) {
@@ -2738,6 +2778,32 @@ const KUNDDATA_OPTIONAL_FIELDS = [
     name: Kundformular.FIELD,
     type: 'multilineText',
     description: 'JSON: kundformulär som kunden ska besvara (byråprefill + kundsvar + status/datum).'
+  },
+  {
+    name: 'Riskbeslut status',
+    type: 'singleSelect',
+    description: 'Utkast | Väntar på granskning | Behöver komplettering | Godkänd | Avslagen | Behöver omprövas',
+    options: {
+      choices: [
+        { name: 'Utkast' },
+        { name: 'Väntar på granskning' },
+        { name: 'Behöver komplettering' },
+        { name: 'Godkänd' },
+        { name: 'Avslagen' },
+        { name: 'Behöver omprövas' }
+      ]
+    }
+  },
+  { name: 'Riskbeslut granskare', type: 'singleLineText', description: 'Airtable user record id för vald granskare.' },
+  { name: 'Riskbeslut förberedd av', type: 'singleLineText', description: 'Airtable user record id som förberedde bedömningen.' },
+  { name: 'Riskbeslut logg', type: 'multilineText', description: 'Append-only JSON-logg över riskbeslutshändelser.' },
+  { name: 'Riskbeslut version', type: 'number', description: 'Versionsnummer för riskbeslut (ökar vid nytt godkännande).', options: { precision: 0 } },
+  { name: 'Riskbeslut PDF', type: 'singleLineText', description: 'Länk till senaste Riskbeslut-PDF.' },
+  {
+    name: 'Nästa uppföljning',
+    type: 'date',
+    description: 'Nästa uppföljning av kundens riskbedömning.',
+    options: { dateFormat: { name: 'iso' } }
   }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
@@ -7590,6 +7656,38 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     if (riskAssessmentTouched) {
       payload['Riskbedömning utförd datum'] = new Date().toISOString().split('T')[0];
     }
+    // Omprövning: tjänster eller bedömningsrelevanta fält ändras efter Godkänd
+    const prevStatus = RiskBeslut.normalizeStatus((customerRecord.fields || {})[RiskBeslut.FIELD_STATUS]);
+    const wasApproved = prevStatus === RiskBeslut.STATUS.APPROVED
+      || (!String((customerRecord.fields || {})[RiskBeslut.FIELD_STATUS] || '').trim()
+        && RiskBeslut.legacyApproved(customerRecord.fields || {}));
+    const reassessmentTriggers = [
+      'Kundens utvalda tjänster',
+      'risker kopplat till tjänster',
+      'Riskhöjande faktorer övrigt',
+      'Risksänkande faktorer',
+      'Kunden verkar i en högriskbransch',
+      'Riskniva',
+      'sammanlagd risk',
+      'Byrans riskbedomning',
+      'Byrån har',
+      Kundformular.FIELD
+    ];
+    const triggersReassessment = reassessmentTriggers.some((key) => Object.prototype.hasOwnProperty.call(payload, key));
+    if (wasApproved && triggersReassessment && !Object.prototype.hasOwnProperty.call(payload, RiskBeslut.FIELD_STATUS)) {
+      payload[RiskBeslut.FIELD_STATUS] = RiskBeslut.STATUS.REASSESS;
+      payload[RiskBeslut.FIELD_LOG] = RiskBeslut.appendLog(
+        (customerRecord.fields || {})[RiskBeslut.FIELD_LOG],
+        {
+          at: new Date().toISOString(),
+          event: 'Behöver omprövas',
+          userName: userData?.name || userData?.email || '',
+          userId: userData?.id || '',
+          comment: 'Ändring efter godkännande (tjänster/bedömningsrelevanta uppgifter)'
+        }
+      );
+      payload['Uppdraget kan antas'] = false;
+    }
     const skipped = [];
     let createdMissingBehorighet = false;
     let createdMissingOptional = false;
@@ -9011,12 +9109,12 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
           const existing = f[fieldName] || [];
           const arr = Array.isArray(existing) ? [...existing] : [];
           arr.push({ url: fileUrl, filename });
+          // Dokumentera genererar endast PDF — sätter inte längre godkännande.
           await axios.patch(
             `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
             {
               fields: {
                 [fieldName]: arr,
-                'Kundens riskbedömning godkänd': datumIso,
                 'Riskbedömning utförd datum': datumIso
               }
             },
@@ -9048,7 +9146,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
 
     const isLocalhost = !baseUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(fileUrl || '');
     const message = reloadedDocuments
-      ? 'PDF sparad på fliken Dokumentation.'
+      ? 'PDF sparad på fliken Dokumentation (utan godkännande).'
       : isLocalhost
         ? 'PDF genererad. Vid lokal drift kan Airtable inte hämta filer från localhost. För att spara till Dokumentation: kör appen på Render (med PUBLIC_BASE_URL) eller använd ngrok.'
         : 'PDF genererad. Lägg till fältet "Attachments" eller "Riskbedömning dokument" (Bilaga) i KUNDDATA för att spara automatiskt.';
@@ -9059,14 +9157,304 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       reloadedDocuments,
       fileUrl,
       message,
+      markedApproved: false,
       senasteRiskbedomningDatum: senasteRiskbedomningDatum.resolveSenasteRiskbedomningDatum({
         ...f,
-        'Kundens riskbedömning godkänd': reloadedDocuments ? datumIso : f['Kundens riskbedömning godkänd'],
         'Riskbedömning utförd datum': reloadedDocuments ? datumIso : f['Riskbedömning utförd datum']
       })
     });
   } catch (error) {
     console.error('\u274c Riskbedömning PDF:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/kunddata/:id/risk-beslut — skicka / godkänn / skicka tillbaka / avslå
+app.post('/api/kunddata/:id/risk-beslut', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const { id: customerId } = req.params;
+    const body = req.body || {};
+    const action = String(body.action || '').trim().toLowerCase();
+    if (!['send', 'approve', 'return', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'Ogiltig action (send|approve|return|reject)' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const cust = custRes.data;
+    const f = cust.fields || {};
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    const custByraId = f['Byrå ID'] || f.Byrå || '';
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
+      return res.status(403).json({ error: 'Ingen behörighet för denna kund' });
+    }
+
+    try { await ensureKunddataOptionalFields(airtableAccessToken, airtableBaseId); } catch (_) {}
+
+    const nowIso = new Date().toISOString();
+    const today = nowIso.slice(0, 10);
+    const actorName = userData.name || userData.email || '';
+    const actorId = userData.id || '';
+    const comment = String(body.comment || body.message || '').trim();
+    const existingLog = f[RiskBeslut.FIELD_LOG];
+    const fieldsPatch = {};
+
+    if (action === 'send') {
+      const reviewerId = String(body.reviewerId || '').trim();
+      const reviewerName = String(body.reviewerName || '').trim();
+      if (!reviewerId) return res.status(400).json({ error: 'Granskare saknas' });
+      fieldsPatch[RiskBeslut.FIELD_STATUS] = RiskBeslut.STATUS.WAITING;
+      fieldsPatch[RiskBeslut.FIELD_REVIEWER] = reviewerId;
+      fieldsPatch[RiskBeslut.FIELD_PREPARED_BY] = actorId;
+      fieldsPatch[RiskBeslut.FIELD_LOG] = RiskBeslut.appendLog(existingLog, {
+        at: nowIso,
+        event: 'Skickad för granskning',
+        userId: actorId,
+        userName: actorName,
+        comment: comment || `Till: ${reviewerName || reviewerId}`
+      });
+
+      // Persistent notis till granskaren via /api/notes
+      try {
+        const noteText = [
+          `Begäran om granskning av riskbedömning.`,
+          `Kund: ${f.Namn || f['Företagsnamn'] || customerId}`,
+          comment ? `Meddelande: ${comment}` : '',
+          `Länk: kundkort.html?id=${customerId}&risk=1`
+        ].filter(Boolean).join('\n');
+        await axios.post(
+          `http://127.0.0.1:${process.env.PORT || 3001}/api/notes`,
+          {
+            typAvAnteckning: ['Arbetsanteckningar'],
+            notes: noteText,
+            datum: today,
+            byraId: byraId || String(custByraId || ''),
+            orgnr: String(f.Orgnr || f['Organisationsnummer'] || ''),
+            foretagsnamn: f.Namn || f['Företagsnamn'] || '',
+            person: reviewerName || '',
+            name: reviewerName || '',
+            ansvarig: reviewerName || ''
+          },
+          {
+            headers: {
+              Authorization: req.headers.authorization || '',
+              Cookie: req.headers.cookie || '',
+              'Content-Type': 'application/json'
+            },
+            timeout: 15000,
+            validateStatus: () => true
+          }
+        ).catch(async () => {
+          // Fallback: skriv direkt till Anteckningar-tabellen
+          const NOTES_TABLE = 'tblXswCwopx7l02Mu';
+          await axios.post(
+            `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}`,
+            {
+              fields: {
+                'Typ av anteckning': ['Arbetsanteckningar'],
+                Datum: today,
+                Notes: noteText,
+                'Byrå ID': byraId || String(custByraId || ''),
+                Orgnr: String(f.Orgnr || f['Organisationsnummer'] || ''),
+                Företagsnamn: f.Namn || f['Företagsnamn'] || '',
+                Person: reviewerName || '',
+                Name: reviewerName || actorName
+              }
+            },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          );
+        });
+      } catch (noteErr) {
+        console.warn('risk-beslut notis:', noteErr.message);
+      }
+    } else {
+      // approve / return / reject — server-side behörighet
+      const canApprove = RiskBeslut.canApproveRisk({
+        role: userData.role,
+        canApproveRisk: userData.canApproveRisk
+      });
+      if (!canApprove) {
+        return res.status(403).json({ error: 'Du har inte behörighet att godkänna riskbedömning' });
+      }
+      // Self-review rule
+      if (action === 'approve') {
+        const residual = String(f.Riskniva || f['sammanlagd risk'] || '');
+        let requireOther = RiskBeslut.REQUIRE_OTHER.NEVER;
+        try {
+          const byraRec = await getByraerRecordForUser(req);
+          if (!byraRec.error) {
+            requireOther = String(
+              (byraRec.record?.fields || {})[RiskBeslut.FIELD_REQUIRE_OTHER] || RiskBeslut.REQUIRE_OTHER.NEVER
+            );
+          }
+        } catch (_) { /* ignore */ }
+        const preparedBy = String(f[RiskBeslut.FIELD_PREPARED_BY] || '');
+        const isSelf = preparedBy && preparedBy === actorId;
+        if (isSelf && !RiskBeslut.allowSelfReview({ requireOtherApprover: requireOther }, residual)) {
+          return res.status(403).json({
+            error: 'Byråinställningen kräver att en annan person godkänner för denna residualnivå'
+          });
+        }
+      }
+      if ((action === 'return' || action === 'reject') && !comment) {
+        return res.status(400).json({ error: 'Kommentar krävs' });
+      }
+
+      if (action === 'approve') {
+        const prevVersion = Number(f[RiskBeslut.FIELD_VERSION]) > 0 ? Number(f[RiskBeslut.FIELD_VERSION]) : 0;
+        fieldsPatch[RiskBeslut.FIELD_STATUS] = RiskBeslut.STATUS.APPROVED;
+        fieldsPatch[RiskBeslut.FIELD_VERSION] = prevVersion + 1;
+        fieldsPatch['Kundens riskbedömning godkänd'] = today;
+        fieldsPatch['Uppdraget kan antas'] = true;
+        if (!f['Avtalet gäller ifrån']) fieldsPatch['Avtalet gäller ifrån'] = today;
+        fieldsPatch[RiskBeslut.FIELD_LOG] = RiskBeslut.appendLog(existingLog, {
+          at: nowIso,
+          event: 'Godkänd',
+          userId: actorId,
+          userName: actorName,
+          comment
+        });
+      } else if (action === 'return') {
+        fieldsPatch[RiskBeslut.FIELD_STATUS] = RiskBeslut.STATUS.NEEDS_FIX;
+        fieldsPatch[RiskBeslut.FIELD_LOG] = RiskBeslut.appendLog(existingLog, {
+          at: nowIso,
+          event: 'Skickad tillbaka',
+          userId: actorId,
+          userName: actorName,
+          comment
+        });
+      } else if (action === 'reject') {
+        fieldsPatch[RiskBeslut.FIELD_STATUS] = RiskBeslut.STATUS.REJECTED;
+        fieldsPatch['Uppdraget kan antas'] = false;
+        fieldsPatch[RiskBeslut.FIELD_LOG] = RiskBeslut.appendLog(existingLog, {
+          at: nowIso,
+          event: 'Avslagen',
+          userId: actorId,
+          userName: actorName,
+          comment
+        });
+      }
+
+      // Riskbeslut-PDF vid Godkänn/Avslå (ögonblicksbild)
+      if (action === 'approve' || action === 'reject') {
+        try {
+          const RiskBeslutPdf = require('./lib/risk-beslut-pdf');
+          const pdfHtml = RiskBeslutPdf.buildHtml({
+            fields: { ...f, ...fieldsPatch },
+            decision: {
+              status: fieldsPatch[RiskBeslut.FIELD_STATUS],
+              log: RiskBeslut.parseLog(fieldsPatch[RiskBeslut.FIELD_LOG]),
+              version: fieldsPatch[RiskBeslut.FIELD_VERSION] || f[RiskBeslut.FIELD_VERSION] || 1,
+              actorName,
+              comment,
+              at: today
+            },
+            byraNamn: userData.byra || ''
+          });
+          const pdfBuffer = await htmlToPdfBuffer(pdfHtml);
+          const kundnamn = f.Namn || f['Företagsnamn'] || 'kund';
+          const safeNamn = String(kundnamn).replace(/[^a-zA-Z0-9åäöÅÄÖ -]/gi, '').trim().replace(/\s+/g, '-');
+          const filename = `Riskbeslut_${safeNamn}_${today}.pdf`;
+          const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+          const host = req.get('x-forwarded-host') || req.get('host');
+          const baseUrl = host ? `${protocol}://${host}` : null;
+          const fileUrl = await saveFileLocally(pdfBuffer, filename, 'application/pdf', baseUrl);
+          if (fileUrl) {
+            fieldsPatch[RiskBeslut.FIELD_PDF] = fileUrl;
+            const docFields = ['Attachments', 'Riskbedömning dokument', 'Riskbedomning dokument', 'Dokumentation'];
+            for (const fieldName of docFields) {
+              try {
+                const existing = f[fieldName] || [];
+                const arr = Array.isArray(existing) ? [...existing] : [];
+                arr.push({ url: fileUrl, filename });
+                fieldsPatch[fieldName] = arr;
+                break;
+              } catch (_) { /* try next */ }
+            }
+            // KYC-bilaga: försök merga med befintlig KYC-PDF-byggare om tillgänglig
+            try {
+              if (typeof buildKycFormularPdfHtml === 'function' && typeof mergePdfBuffers === 'function') {
+                const kycHtml = buildKycFormularPdfHtml(
+                  { foretagsnamn: kundnamn, orgnr: f.Orgnr || '' },
+                  userData.byra || '',
+                  '',
+                  today,
+                  { fields: f, asBilaga: true, internt: true }
+                );
+                const merged = await mergePdfBuffers([
+                  pdfBuffer,
+                  await htmlToPdfBuffer(kycHtml)
+                ]);
+                const mergedUrl = await saveFileLocally(merged, filename, 'application/pdf', baseUrl);
+                if (mergedUrl) fieldsPatch[RiskBeslut.FIELD_PDF] = mergedUrl;
+              }
+            } catch (kycPdfErr) {
+              console.warn('Riskbeslut KYC-bilaga:', kycPdfErr.message);
+            }
+          }
+        } catch (pdfErr) {
+          console.warn('Riskbeslut PDF:', pdfErr.message);
+        }
+      }
+    }
+
+    const patchRes = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { fields: fieldsPatch, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({
+      success: true,
+      action,
+      fields: patchRes.data?.fields || { ...f, ...fieldsPatch },
+      message: action === 'approve'
+        ? 'Riskbedömning godkänd'
+        : (action === 'reject' ? 'Riskbedömning avslagen' : (action === 'return' ? 'Skickad tillbaka' : 'Skickad för granskning'))
+    });
+  } catch (error) {
+    console.error('❌ POST /api/kunddata/:id/risk-beslut:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// POST /api/kunddata/:id/risk-katalog-bekrafta — bekräfta kataloguppdatering
+app.post('/api/kunddata/:id/risk-katalog-bekrafta', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const { id: customerId } = req.params;
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    let catalogVersion = RiskFactorCatalog.DEFAULT_VERSION || 1;
+    try {
+      catalogVersion = await readRiskFactorCatalogVersionForRequest(req);
+    } catch (_) { /* ignore */ }
+    const fields = {
+      ...RiskFactorCatalog.kundStampFields(catalogVersion),
+      [RiskFactorCatalog.KUND_FIELDS.PROFILE_STATUS]: 'aktuell'
+    };
+    const patchRes = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { fields, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ success: true, fields: patchRes.data?.fields || fields });
+  } catch (error) {
+    console.error('risk-katalog-bekrafta:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -14713,6 +15101,7 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
         defaultUppsagningstid: fields['Default uppsägningstid'] ?? fields['Default uppsagningstid'] ?? '',
         defaultFakturaperiod: fields['Default faktureringsperiod'] ?? fields['Default faktureringsperiod'] ?? fields['Default fakturaperiod'] ?? '',
         defaultBetalningsvillkor: fields['Default betalningsvillkor'] ?? fields['Default betalningsvillkor (dagar)'] ?? '',
+        requireOtherApprover: fields[RiskBeslut.FIELD_REQUIRE_OTHER] || RiskBeslut.REQUIRE_OTHER.NEVER,
         tjanstepriserJson: typeof prislistaJson === 'string' ? prislistaJson : JSON.stringify(prislistaJson),
         fritexttjansterJson: typeof fritextJson === 'string' ? fritextJson : JSON.stringify(fritextJson),
         uppdragsbrevInformationstext: fields['Uppdragsbrev informationstext'] ?? '',
@@ -14930,6 +15319,15 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (body.defaultUppsagningstid !== undefined) fields['Default uppsägningstid'] = toNumberOrNull(body.defaultUppsagningstid);
     if (body.defaultFakturaperiod !== undefined) fields['Default faktureringsperiod'] = toTextOrNull(body.defaultFakturaperiod);
     if (body.defaultBetalningsvillkor !== undefined) fields['Default betalningsvillkor'] = toNumberOrNull(body.defaultBetalningsvillkor);
+    if (body.requireOtherApprover !== undefined || body[RiskBeslut.FIELD_REQUIRE_OTHER] !== undefined) {
+      try {
+        await ensureAirtableTableFields(process.env.AIRTABLE_ACCESS_TOKEN, process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50', 'Byråer', BYRA_REQUIRE_OTHER_SCHEMA);
+      } catch (_) { /* ignore */ }
+      const raw = body.requireOtherApprover !== undefined ? body.requireOtherApprover : body[RiskBeslut.FIELD_REQUIRE_OTHER];
+      const allowed = Object.values(RiskBeslut.REQUIRE_OTHER);
+      const val = String(raw || RiskBeslut.REQUIRE_OTHER.NEVER).trim();
+      fields[RiskBeslut.FIELD_REQUIRE_OTHER] = allowed.includes(val) ? val : RiskBeslut.REQUIRE_OTHER.NEVER;
+    }
     if (body.tjanstepriserJson !== undefined) fields['Tjänstepriser (JSON)'] = body.tjanstepriserJson;
     if (body.fritexttjansterJson !== undefined) fields['Fritexttjänster (JSON)'] = body.fritexttjansterJson;
     if (body.uppdragsbrevInformationstext !== undefined) fields['Uppdragsbrev informationstext'] = body.uppdragsbrevInformationstext;
@@ -15527,6 +15925,12 @@ app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
       }
     }
     Object.assign(fields, cfa.cfaFieldsFromBody(body, { assignNow: true }));
+    if (body.canApproveRisk !== undefined || body[RiskBeslut.FIELD_CAN_APPROVE] !== undefined) {
+      const raw = body.canApproveRisk !== undefined ? body.canApproveRisk : body[RiskBeslut.FIELD_CAN_APPROVE];
+      fields[RiskBeslut.FIELD_CAN_APPROVE] = !!(raw === true || raw === 'Ja' || raw === 1 || raw === '1');
+    } else {
+      fields[RiskBeslut.FIELD_CAN_APPROVE] = RiskBeslut.defaultCanApproveForRole(role);
+    }
     const linkField = 'Byråer';
     try {
       const existing = await axios.get(
@@ -15603,6 +16007,10 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
           error: 'Byrån måste ha minst en CFA. Utse en annan innan du tar bort rollen.'
         });
       }
+    }
+    if (body.canApproveRisk !== undefined || body[RiskBeslut.FIELD_CAN_APPROVE] !== undefined) {
+      const raw = body.canApproveRisk !== undefined ? body.canApproveRisk : body[RiskBeslut.FIELD_CAN_APPROVE];
+      fields[RiskBeslut.FIELD_CAN_APPROVE] = !!(raw === true || raw === 'Ja' || raw === 1 || raw === '1');
     }
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: 'Inga fält att uppdatera' });

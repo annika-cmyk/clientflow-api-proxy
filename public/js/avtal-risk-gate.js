@@ -1,11 +1,14 @@
 /**
- * Browser twin — block uppdragsavtal until risk approved.
+ * Browser twin — block uppdragsavtal until risk approved (Riskbeslut status === Godkänd).
  */
 (function (global) {
   function trimStr(v) { return v == null ? '' : String(v).trim(); }
 
   function riskIsApproved(fields) {
     var f = fields || {};
+    if (global.RiskBeslut && typeof global.RiskBeslut.isApproved === 'function') {
+      return global.RiskBeslut.isApproved(f);
+    }
     if (trimStr(f['Kundens riskbedömning godkänd'])) return true;
     if (trimStr(f['Riskbedömning utförd datum']) && trimStr(f.Riskniva || f['sammanlagd risk'])) return true;
     return false;
@@ -30,7 +33,7 @@
     return {
       allowed: false,
       code: 'not_approved',
-      reason: 'Bedömd risk finns men är inte godkänd ännu. Dokumentera/godkänn riskbedömningen under Riskbedömning innan avtalet skickas.'
+      reason: 'Bedömd risk finns men är inte godkänd ännu. Godkänn riskbedömningen under Riskbedömning & beslut innan avtalet skickas.'
     };
   }
 

@@ -35,6 +35,9 @@
   }
 
   function riskApproved(fields) {
+    if (global.RiskBeslut && typeof global.RiskBeslut.isApproved === 'function') {
+      return global.RiskBeslut.isApproved(fields || {});
+    }
     var f = fields || {};
     if (trimStr(f['Kundens riskbedömning godkänd'])) return true;
     if (trimStr(f['Riskbedömning utförd datum']) && trimStr(f.Riskniva || f['sammanlagd risk'])) return true;
@@ -101,11 +104,15 @@
       riskStarted: riskStarted,
       riskOk: riskOk,
       riskBridgeLabel: kycAnswered
-        ? (riskOk ? 'Öppna riskbedömning & avtal' : 'Fortsätt till riskbedömning')
+        ? (riskOk ? 'Öppna riskbedömning & beslut' : 'Fortsätt till riskbedömning')
         : '',
+      canClickRisk: upDone || kycAnswered || kycWaiting,
+      riskStepStatuses: (global.RiskBeslut && typeof global.RiskBeslut.computeStepStatuses === 'function')
+        ? global.RiskBeslut.computeStepStatuses({ fields: fields })
+        : null,
       chainSentence: 'Kunden lämnar uppgifter → byrån bedömer risken → beslut → avtal.',
       nextAfterSend:
-        'När kunden svarat (Besvarat/Signerat) fortsätter ni med Riskbedömning & avtal — separat från uppläggningen. Kunden ser aldrig riskbedömningen.'
+        'När kunden svarat (Besvarat/Signerat) fortsätter ni med Riskbedömning & beslut — separat från uppläggningen. Kunden ser aldrig riskbedömningen.'
     };
   }
 
@@ -118,12 +125,17 @@
   function render(timeline) {
     var t = timeline || buildTimeline({});
     var stagesHtml = (t.stages || []).map(function (s, i) {
-      return (i ? '<span class="kund-resa-tl-sep" aria-hidden="true"></span>' : '')
-        + '<li class="kund-resa-tl-step is-' + esc(s.state) + '" data-stage="' + esc(s.id) + '">'
-        + '<span class="kund-resa-tl-dot" aria-hidden="true">'
+      var clickable = s.id === 'risk' && t.canClickRisk;
+      var inner = '<span class="kund-resa-tl-dot" aria-hidden="true">'
         + (s.state === 'done' ? '✓' : (s.state === 'current' ? '●' : '○'))
         + '</span>'
-        + '<span class="kund-resa-tl-label">' + esc(s.label) + '</span>'
+        + '<span class="kund-resa-tl-label">' + esc(s.label) + '</span>';
+      return (i ? '<span class="kund-resa-tl-sep" aria-hidden="true"></span>' : '')
+        + '<li class="kund-resa-tl-step is-' + esc(s.state)
+        + (clickable ? ' is-clickable' : '') + '" data-stage="' + esc(s.id) + '">'
+        + (clickable
+          ? '<button type="button" class="kund-resa-tl-step-btn" data-kund-resa-risk-bridge>' + inner + '</button>'
+          : inner)
         + '</li>';
     }).join('');
     var bridge = t.canOpenRisk
