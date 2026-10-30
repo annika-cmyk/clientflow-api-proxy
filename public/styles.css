@@ -27100,101 +27100,84 @@ body.kalender-detail-open { overflow: hidden; }
   cursor: not-allowed;
 }
 
-.risk-avtal-modal .risk-avtal-shell {
-  display: grid;
-  grid-template-columns: 11rem 1fr;
-  gap: 1rem;
-  min-height: 18rem;
-  padding: 0.5rem 0.75rem 1rem;
+/* Riskbedömning & beslut — återanvänder kundresa-popup-layout */
+#risk-avtal-modal > .kundresa-modal-content {
+  height: min(90dvh, 920px);
+  max-height: min(90dvh, 920px);
 }
-.risk-avtal-nav {
+.risk-avtal-trigger {
+  margin-left: 0.35rem;
+}
+.risk-avtal-kyc-warn {
+  margin-bottom: 0.75rem;
+}
+.risk-avtal-catalog-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 0.85rem;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  color: #9a3412;
+}
+.risk-avtal-catalog-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+.risk-avtal-beslut {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 1rem;
+  padding: 0.25rem 0 1rem;
 }
-.risk-avtal-nav-item {
+.risk-avtal-beslut-status {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   align-items: center;
-  gap: 0.5rem;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  padding: 0.45rem 0.55rem;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #64748b;
-  font-size: 0.85rem;
-  font-weight: 600;
 }
-.risk-avtal-nav-item.is-current {
-  background: #e2e8f0;
-  color: #0f172a;
-}
-.risk-avtal-nav-item.is-done { color: #047857; }
-.risk-avtal-nav-num {
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #f1f5f9;
-  font-size: 0.75rem;
-}
-.risk-avtal-nav-item.is-current .risk-avtal-nav-num { background: #94a3b8; color: #fff; }
-.risk-avtal-kicker {
-  margin: 0 0 0.25rem;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
-}
-.risk-avtal-customer {
-  margin: 0 0 0.35rem;
-  font-weight: 700;
-  color: #0f172a;
-}
-.risk-avtal-chain {
-  margin: 0 0 0.75rem;
-  font-size: 0.88rem;
-  color: #475569;
-}
-.risk-avtal-bridge-note {
-  margin: 0 0 0.85rem;
-  padding: 0.65rem 0.75rem;
-  background: #f8fafc;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  color: #334155;
-}
-.risk-avtal-panel-title {
-  margin: 0 0 0.35rem;
-  font-size: 1.05rem;
-}
-.risk-avtal-panel-desc {
-  margin: 0 0 0.75rem;
-  color: #475569;
-  font-size: 0.9rem;
-  line-height: 1.4;
-}
-.risk-avtal-stub {
-  margin: 0;
-  color: #64748b;
-  font-size: 0.88rem;
-}
-.risk-avtal-footer {
+.risk-avtal-beslut-btns {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 1.25rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid #e2e8f0;
+  margin-top: 0.5rem;
 }
-@media (max-width: 720px) {
-  .risk-avtal-modal .risk-avtal-shell {
-    grid-template-columns: 1fr;
-  }
-  .risk-avtal-nav { flex-direction: row; flex-wrap: wrap; }
+.risk-avtal-beslut-log ol {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+.risk-avtal-beslut-log li {
+  margin-bottom: 0.35rem;
+  display: grid;
+  gap: 0.15rem;
+}
+.risk-kalla-badge--setup {
+  background: #ecfdf5;
+  color: #047857;
+}
+.kund-resa-tl-step.is-clickable .kund-resa-tl-step-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.kund-resa-tl-step.is-clickable .kund-resa-tl-step-btn:hover .kund-resa-tl-label {
+  text-decoration: underline;
+}
+.risk-avtal-step-stub {
+  padding: 1rem 0.25rem;
+}
+.risk-avtal-embedded-card {
+  margin-bottom: 0.85rem;
 }
 
 /* === Steg 1 · Att göra först (checklista) — zip-mock auktoritativ === */

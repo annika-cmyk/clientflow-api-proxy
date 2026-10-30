@@ -551,6 +551,15 @@
                                             <label>Default betalningsvillkor (dagar)</label>
                                             <input type="number" id="byra-default-betalningsvillkor" class="form-input" min="0" placeholder="10">
                                         </div>
+                                        <div class="form-group">
+                                            <label for="byra-krav-annan-godkannare">Kräv att en annan person godkänner</label>
+                                            <select id="byra-krav-annan-godkannare" class="form-select">
+                                                <option value="Aldrig">Aldrig</option>
+                                                <option value="Vid Hög och Oacceptabel">Vid Hög och Oacceptabel</option>
+                                                <option value="Alltid">Alltid</option>
+                                            </select>
+                                            <p class="form-hint">Styr om «Mig själv» får godkänna riskbedömning. Solobyråer behåller Aldrig.</p>
+                                        </div>
                                     </div>
                                     <div class="form-group" style="grid-column: 1 / -1; margin-top: 0.5rem;">
                                         <label>Informationstext i uppdragsavtalet</label>
@@ -875,6 +884,13 @@
                         Centralt funktionsansvarig (CFA)
                     </label>
                     <p class="form-hint">CFA signerar allmän riskbedömning och rutiner med BankID. Utnämning räknas som bekräftelse.</p>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="anvandare-can-approve-risk">
+                        Får godkänna riskbedömning
+                    </label>
+                    <p class="form-hint">Default på för Ledare, av för Anställd. ClientFlowAdmin får aldrig godkänna kunders risk.</p>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="anvandare-modal-avbryt">Avbryt</button>

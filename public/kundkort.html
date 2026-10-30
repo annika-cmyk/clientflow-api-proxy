@@ -30,6 +30,9 @@
                                 <span id="kundresa-trigger-progress" class="tjanst-mall-progress is-empty" role="img" aria-label="Kunduppläggning"></span>
                                 <span class="kundresa-trigger-label">Kunduppläggning</span>
                             </button>
+                            <button type="button" id="risk-avtal-open-btn" class="kundresa-trigger risk-avtal-trigger" aria-haspopup="dialog" aria-controls="risk-avtal-modal" hidden>
+                                <span class="kundresa-trigger-label">Riskbedömning</span>
+                            </button>
                         </div>
                         <p id="customer-org-number" class="kundkort-orgnr"></p>
                         <div id="kund-resa-timeline-host" class="kund-resa-timeline-host" aria-label="Kundresa"></div>
@@ -243,14 +246,14 @@
         </div>
     </div>
 
-    <!-- Riskbedömning & avtal — separat popup (efter KYC), inte i uppläggningspopupen -->
+    <!-- Riskbedömning & beslut — separat popup (efter uppläggning), inte i uppläggningspopupen -->
     <div id="risk-avtal-modal" class="modal kundresa-modal risk-avtal-modal" hidden aria-hidden="true">
         <div class="modal-content kundresa-modal-content risk-avtal-modal-content" role="dialog" aria-modal="true" aria-labelledby="risk-avtal-modal-title">
             <div class="modal-header">
                 <div class="tjanst-modal-head">
                     <div class="kundresa-modal-titleblock">
-                        <p class="tjanst-modal-kicker">Riskbedömning &amp; avtal · intern</p>
-                        <h3 id="risk-avtal-modal-title">Riskbedömning &amp; avtal</h3>
+                        <p class="tjanst-modal-kicker">Riskbedömning &amp; beslut · intern</p>
+                        <h3 id="risk-avtal-modal-title">Riskbedömning &amp; beslut</h3>
                         <p class="kundresa-modal-progress" id="risk-avtal-modal-progress" aria-live="polite">Kunden lämnar uppgifter → byrån bedömer risken → beslut → avtal.</p>
                     </div>
                     <button type="button" class="modal-close" id="risk-avtal-modal-close" aria-label="Stäng">
@@ -298,9 +301,10 @@
     <script src="js/kyc-verksamhet-styrning.js?v=2" defer></script>
     <script src="js/bolagsform-styrning.js?v=2" defer></script>
     <script src="js/kund-riskprofil.js?v=17" defer></script>
-    <script src="js/avtal-risk-gate.js?v=1" defer></script>
-    <script src="js/kund-resa-timeline.js?v=1" defer></script>
-    <script src="js/risk-avtal-modal.js?v=1" defer></script>
+    <script src="js/risk-beslut.js?v=1" defer></script>
+    <script src="js/avtal-risk-gate.js?v=2" defer></script>
+    <script src="js/kund-resa-timeline.js?v=2" defer></script>
+    <script src="js/risk-avtal-modal.js?v=2" defer></script>
     <script src="js/riskaptit.js?v=2" defer></script>
     <script src="js/aml-kalla.js?v=3" defer></script>
     <script src="js/kyc-status-ui.js?v=4" defer></script>
@@ -313,6 +317,6 @@
     <script src="js/kundformular-ui.js?v=9" defer></script>
     <script src="js/kundresa-ui.js?v=22" defer></script>
     <script src="js/kundresa-kyc-skicka.js?v=3" defer></script>
-    <script src="js/kundkort.js?v=16.88" defer></script>
+    <script src="js/kundkort.js?v=16.89" defer></script>
 </body>
 </html>

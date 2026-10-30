@@ -53,6 +53,15 @@
     var linked = !!opts.linked;
     var factor = opts.factor || null;
     var namn = trimStr(opts.namn) || (factor && factor.label) || '';
+    var sourceHint = trimStr(opts.source || opts.sourceKind || '');
+    if (sourceHint === 'setup' || opts.fromSetup === true) {
+      return {
+        kind: 'setup',
+        label: opts.setupSourceLabel || 'Från kunduppläggning',
+        namn: namn,
+        recordId: opts.recordId || ''
+      };
+    }
     if (suggested && factor) {
       return { kind: 'kyc', label: 'Från KYC: ' + kycAnswerLabel(factor, opts.kyc), namn: namn, recordId: opts.recordId || '' };
     }
