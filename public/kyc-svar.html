@@ -2,74 +2,370 @@
 <html lang="sv" class="cf-warm" style="color-scheme: light only;">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#f4efe6">
-  <title>ClientFlow – KYC-formulär</title>
+  <meta name="theme-color" content="#13505c">
+  <title>ClientFlow – KYC</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="styles.css?v=20260915kundformular-cond">
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=20261030kyc-kund">
   <style>
-    :root { color-scheme: light only; }
-    html { color-scheme: light only; background: var(--app-bg, #f4efe6); }
-    body {
+    :root {
+      color-scheme: light only;
+      --kyc-bg: #f4efe6;
+      --kyc-panel: #ffffff;
+      --kyc-border: #e2e8f0;
+      --kyc-muted: #5b6670;
+      --kyc-text: #18212b;
+      --kyc-soft: #3e4a55;
+      --kyc-accent: var(--accent, #13505c);
+      --kyc-accent-tint: var(--accent-tint, #e3eef0);
+      --kyc-ok-bg: #dcefe3;
+      --kyc-ok: #1e6b3c;
+      --kyc-radius: 14px;
+    }
+    html, body {
       margin: 0;
-      font-family: var(--body-font), Schibsted Grotesk, sans-serif;
-      color: var(--title-text, #0f172a);
-      background: linear-gradient(135deg, var(--app-bg, #f4efe6) 0%, var(--panel-2, #ebe4d8) 100%);
-      min-height: 100vh;
-      padding: 2rem 1.25rem 4rem;
+      min-height: 100%;
+      background: linear-gradient(160deg, var(--app-bg, #f4efe6) 0%, var(--panel-2, #ebe4d8) 55%, #e3eef0 100%);
+      color: var(--kyc-text);
+      font-family: var(--body-font), "Schibsted Grotesk", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.45;
       -webkit-font-smoothing: antialiased;
     }
-    .kyc-pub-wrap { max-width: 760px; margin: 0 auto; }
-    .kyc-pub-brand { text-align: center; margin-bottom: 1.25rem; }
-    .kyc-pub-state {
-      background: var(--card-bg, #fff);
-      border: 1px solid var(--border, #e2e8f0);
-      border-radius: 14px;
-      padding: 1.75rem 1.5rem;
-      text-align: center;
-      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+    .hidden { display: none !important; }
+    .kyc-pub-wrap {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      max-width: 440px;
+      margin: 0 auto;
     }
-    .kyc-pub-state h1 { font-family: var(--title-font), Fraunces, serif; font-size: 1.25rem; margin: 0 0 .5rem; }
-    .kyc-pub-state p { margin: 0; color: var(--text, #475569); }
+    .kyc-pub-state {
+      margin: auto 1.25rem;
+      background: var(--kyc-panel);
+      border: 1px solid var(--kyc-border);
+      border-radius: var(--kyc-radius);
+      padding: 1.75rem 1.35rem;
+      text-align: center;
+      box-shadow: 0 8px 28px rgba(19, 80, 92, 0.08);
+    }
+    .kyc-pub-state h1 {
+      font-family: var(--title-font), Fraunces, serif;
+      font-size: 1.35rem;
+      margin: 0 0 .5rem;
+    }
+    .kyc-pub-state p { margin: 0; color: var(--kyc-soft); }
     .kyc-pub-spin {
       width: 26px; height: 26px; margin: 0 auto 1rem;
       border-radius: 50%;
-      border: 3px solid #c7d2fe;
-      border-top-color: var(--accent, #4f46e5);
+      border: 3px solid var(--kyc-accent-tint);
+      border-top-color: var(--kyc-accent);
       animation: kyc-pub-spin .7s linear infinite;
     }
     @keyframes kyc-pub-spin { to { transform: rotate(360deg); } }
-    .kyc-pub-shell {
-      background: var(--card-bg, #fff);
-      border: 1px solid var(--border, #e2e8f0);
-      border-radius: 14px;
-      padding: 1rem 1rem 1.5rem;
-      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+
+    #kyc-pub-form-root { flex: 1; display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+    .kyc-shell {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      min-height: 100dvh;
+      background: rgba(246, 247, 249, 0.72);
     }
-    .hidden { display: none !important; }
-    .kyc-pub-flash {
-      margin: 0 0 1rem;
-      padding: .75rem 1rem;
+    .kyc-top {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      padding: 16px 20px;
+      background: var(--kyc-panel);
+      border-bottom: 1px solid var(--kyc-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .kyc-top--step {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      padding: 14px 20px 12px;
+    }
+    .kyc-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .kyc-brand { font-weight: 700; font-size: 15px; color: var(--kyc-accent); }
+    .kyc-autosave { font-size: 12px; color: var(--kyc-muted); }
+    .kyc-autosave.is-saving { color: var(--kyc-accent); }
+    .kyc-autosave.is-err { color: #991b1b; }
+    .kyc-part-label { font-size: 13px; color: var(--kyc-muted); }
+    .kyc-back-link {
+      display: inline-flex; align-items: center; gap: 4px;
+      border: 0; background: none; padding: 0;
+      font: inherit; font-size: 14px; font-weight: 500;
+      color: var(--kyc-accent); cursor: pointer;
+    }
+    .kyc-progress {
+      height: 4px; background: #e6e9ec; border-radius: 2px; overflow: hidden;
+    }
+    .kyc-progress-bar {
+      height: 100%; background: var(--kyc-accent); border-radius: 2px;
+      transition: width .25s ease;
+    }
+    .kyc-body {
+      flex: 1;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      overflow: auto;
+      padding-bottom: 110px;
+    }
+    .kyc-hero { display: flex; flex-direction: column; gap: 8px; }
+    .kyc-hero h1, .kyc-part-title {
+      margin: 0;
+      font-family: var(--title-font), Fraunces, serif;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--title-text, #0f172a);
+    }
+    .kyc-hero p, .kyc-lead { margin: 0; color: var(--kyc-soft); }
+    .kyc-meta { font-size: 13px; color: var(--kyc-muted); }
+
+    .kyc-toc {
+      list-style: none; margin: 0; padding: 0;
+      background: var(--kyc-panel);
+      border: 1px solid var(--kyc-border);
+      border-radius: var(--kyc-radius);
+      overflow: hidden;
+    }
+    .kyc-toc-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px;
+      border-top: 1px solid #eef0f2;
+      cursor: pointer;
+    }
+    .kyc-toc-item:first-child { border-top: 0; }
+    .kyc-toc-num {
+      width: 26px; height: 26px; border-radius: 13px;
+      border: 2px solid #cdd4da; box-sizing: border-box;
+      font-size: 13px; font-weight: 700; color: var(--kyc-muted);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .kyc-toc-item.is-done .kyc-toc-num {
+      border: 0; background: var(--kyc-ok-bg); color: var(--kyc-ok);
+    }
+    .kyc-toc-text { display: flex; flex-direction: column; min-width: 0; }
+    .kyc-toc-title { font-weight: 600; }
+    .kyc-toc-hint { font-size: 13px; color: var(--kyc-muted); }
+
+    .kyc-why {
+      background: var(--kyc-panel);
+      border: 1px solid var(--kyc-border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 14px;
+    }
+    .kyc-why summary { font-weight: 600; cursor: pointer; }
+    .kyc-why p { margin: 8px 0 0; color: var(--kyc-soft); }
+
+    .kyc-card {
+      background: var(--kyc-panel);
+      border: 1px solid var(--kyc-border);
+      border-radius: var(--kyc-radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .kyc-card-label { font-size: 13px; color: var(--kyc-muted); }
+    .kyc-card-title { margin: 0; font-size: 16px; font-weight: 700; }
+    .kyc-confirm-text, .kyc-confirm-text p { margin: 0; }
+    .kyc-confirm-ask { font-weight: 600; font-size: 14px; }
+    .kyc-q { font-weight: 600; display: block; }
+    .kyc-hint { font-size: 13px; color: var(--kyc-muted); }
+    .kyc-field { display: flex; flex-direction: column; gap: 6px; }
+    .kyc-field label { font-size: 14px; font-weight: 500; }
+    .kyc-input {
+      height: 46px; box-sizing: border-box;
+      padding: 0 12px;
+      border: 1px solid #cdd4da;
       border-radius: 10px;
-      font-size: .92rem;
+      font: inherit;
+      background: #fff;
+      color: var(--kyc-text);
     }
-    .kyc-pub-flash--ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
-    .kyc-pub-flash--err { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    textarea.kyc-input { height: auto; padding: 10px 12px; resize: vertical; }
+    .kyc-input--sm { width: 120px; max-width: 100%; }
+    .kyc-input:focus {
+      outline: none;
+      border-color: var(--kyc-accent);
+      box-shadow: 0 0 0 3px var(--kyc-accent-tint);
+    }
+
+    .kyc-yn {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .kyc-yn-btn {
+      min-height: 46px;
+      border: 1px solid #cdd4da;
+      background: #fff;
+      border-radius: 10px;
+      font: inherit;
+      font-weight: 500;
+      color: var(--kyc-text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 10px;
+    }
+    .kyc-yn-btn.is-on {
+      border: 2px solid var(--kyc-accent);
+      background: var(--kyc-accent-tint);
+      color: var(--kyc-accent);
+      font-weight: 600;
+    }
+    .kyc-followup { display: flex; flex-direction: column; gap: 6px; }
+    .kyc-link-btn {
+      align-self: flex-start;
+      border: 0; background: none; padding: 0;
+      color: var(--kyc-accent); font: inherit; font-weight: 600;
+      cursor: pointer;
+    }
+    .kyc-person {
+      padding-top: 12px; margin-top: 8px;
+      border-top: 1px solid #eef0f2;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .kyc-person:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+    .kyc-person-summary { margin: 0; padding-left: 1.1rem; }
+    .kyc-person-summary li { margin: 0.2rem 0; }
+
+    .kyc-review {
+      background: var(--kyc-panel);
+      border: 1px solid var(--kyc-border);
+      border-radius: var(--kyc-radius);
+      overflow: hidden;
+      font-size: 14px;
+    }
+    .kyc-review-row {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 13px 16px;
+      border: 0;
+      border-top: 1px solid #eef0f2;
+      background: #fff;
+      color: var(--kyc-text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .kyc-review-row:first-child { border-top: 0; }
+    .kyc-review-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .kyc-review-detail { font-size: 13px; color: var(--kyc-soft); }
+    .kyc-strike { text-decoration: line-through; color: #7a8590; }
+    .kyc-muted { color: var(--kyc-muted); }
+    .kyc-badge {
+      font-size: 12px; font-weight: 600; color: var(--kyc-accent);
+      background: var(--kyc-accent-tint);
+      padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+    }
+    .kyc-check-card {
+      display: flex; gap: 12px; align-items: flex-start;
+      background: var(--kyc-panel);
+      border: 1px solid var(--kyc-border);
+      border-radius: var(--kyc-radius);
+      padding: 14px 16px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .kyc-check-card input {
+      width: 22px; height: 22px; margin: 0; flex-shrink: 0;
+      accent-color: var(--kyc-accent);
+    }
+    .kyc-info {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 12px 14px;
+      background: var(--kyc-accent-tint);
+      border-radius: 12px;
+      font-size: 13px;
+      color: var(--kyc-text);
+    }
+    .kyc-info svg { flex-shrink: 0; margin-top: 1px; color: var(--kyc-accent); }
+
+    .kyc-foot {
+      position: sticky;
+      bottom: 0;
+      z-index: 5;
+      padding: 14px 20px calc(16px + env(safe-area-inset-bottom));
+      background: var(--kyc-panel);
+      border-top: 1px solid var(--kyc-border);
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 10px;
+    }
+    .kyc-foot--single { grid-template-columns: 1fr; }
+    .kyc-btn {
+      height: 52px;
+      border-radius: 12px;
+      font: inherit;
+      font-weight: 600;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid transparent;
+    }
+    .kyc-btn-primary {
+      background: var(--kyc-accent);
+      color: #fff;
+      border-color: var(--kyc-accent);
+    }
+    .kyc-btn-primary:disabled { opacity: .65; cursor: wait; }
+    .kyc-btn-secondary {
+      background: #fff;
+      color: var(--kyc-text);
+      border-color: #cdd4da;
+      font-weight: 500;
+    }
+    .kyc-sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    @media (min-width: 720px) {
+      .kyc-pub-wrap { max-width: 480px; padding: 24px 0; }
+      .kyc-shell {
+        min-height: calc(100vh - 48px);
+        border-radius: 18px;
+        border: 1px solid var(--kyc-border);
+        overflow: hidden;
+        box-shadow: 0 12px 40px rgba(19, 80, 92, 0.1);
+      }
+      #kyc-pub-form-root { min-height: auto; }
+    }
   </style>
 </head>
 <body>
   <div class="kyc-pub-wrap">
-    <header class="kyc-pub-brand">
-      <strong style="font-family:var(--title-font),Fraunces,serif;font-size:1.35rem;letter-spacing:-0.02em;">ClientFlow</strong>
-    </header>
-
     <div id="kyc-pub-loading" class="kyc-pub-state">
       <div class="kyc-pub-spin" aria-hidden="true"></div>
-      <h1>Hämtar KYC-formulär…</h1>
+      <h1>Hämtar formulär…</h1>
       <p>Ett ögonblick.</p>
     </div>
 
@@ -80,17 +376,16 @@
 
     <div id="kyc-pub-done" class="kyc-pub-state hidden">
       <h1>Tack!</h1>
-      <p id="kyc-pub-done-text">Era KYC-uppgifter är inskickade. Formuläret skickas vidare för BankID-signering.</p>
+      <p id="kyc-pub-done-text">Era KYC-uppgifter är inskickade. Ni får strax ett dokument via e-post att signera med BankID.</p>
     </div>
 
-    <div id="kyc-pub-form-wrap" class="kyc-pub-shell hidden">
-      <div id="kyc-pub-flash" class="kyc-pub-flash hidden" role="status"></div>
+    <div id="kyc-pub-form-wrap" class="hidden">
       <div id="kyc-pub-form-root"></div>
     </div>
   </div>
 
-  <script src="js/kyc-huvudman.js?v=1"></script>
-  <script src="js/kyc-formular-public.js?v=1"></script>
+  <script src="js/kyc-huvudman.js?v=20261030kyc-kund"></script>
+  <script src="js/kyc-formular-public.js?v=20261030kyc-kund"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
@@ -103,7 +398,6 @@
       const doneText = document.getElementById('kyc-pub-done-text');
       const formWrap = document.getElementById('kyc-pub-form-wrap');
       const formRoot = document.getElementById('kyc-pub-form-root');
-      const flashEl = document.getElementById('kyc-pub-flash');
 
       function show(el) { el.classList.remove('hidden'); }
       function hide(el) { el.classList.add('hidden'); }
@@ -117,10 +411,12 @@
         show(errorEl);
       }
 
-      function flash(msg, ok) {
-        flashEl.textContent = msg;
-        flashEl.className = 'kyc-pub-flash ' + (ok ? 'kyc-pub-flash--ok' : 'kyc-pub-flash--err');
-        show(flashEl);
+      function showDone(message) {
+        hide(loadingEl);
+        hide(formWrap);
+        hide(errorEl);
+        if (doneText && message) doneText.textContent = message;
+        show(doneEl);
       }
 
       if (!token) {
@@ -146,52 +442,36 @@
         return data;
       }
 
-      async function save(action, answers, btn) {
-        const orig = btn?.innerHTML;
-        if (btn) {
-          btn.disabled = true;
-          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (action === 'mark_answered' ? 'Skickar…' : 'Sparar…');
+      async function save(action, answers, customerUi) {
+        const res = await fetch('/api/kyc-formular/public/' + encodeURIComponent(token), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ action, answers, customerUi })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || ('HTTP ' + res.status));
         }
-        try {
-          const res = await fetch('/api/kyc-formular/public/' + encodeURIComponent(token), {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify({ action, answers })
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            flash(data.error || ('HTTP ' + res.status), false);
-            return null;
-          }
-          return data;
-        } finally {
-          if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-        }
+        return data;
       }
 
       loadForm().then((data) => {
         hide(loadingEl);
         if (!data) return;
-        if (data.answered || data.readOnly) {
-          if (doneText && data.message) doneText.textContent = data.message;
-          show(doneEl);
+        if (data.answered || data.readOnly || data.locked) {
+          showDone(data.message || 'Formuläret är redan inskickat.');
           return;
         }
         show(formWrap);
         window.KycFormularPublic.render(formRoot, data, {
-          onSave: async (answers, btn) => {
-            const result = await save('save', answers, btn);
-            if (result) flash('Utkast sparat.', true);
+          onSave: async (answers, _btn, meta) => {
+            return save('save', answers, meta && meta.customerUi);
           },
-          onSubmit: async (answers, btn) => {
-            const result = await save('mark_answered', answers, btn);
-            if (!result) return;
-            hide(formWrap);
-            if (doneText) {
-              doneText.textContent = result.message
-                || 'Era KYC-uppgifter är inskickade. Formuläret skickas vidare för BankID-signering.';
-            }
-            show(doneEl);
+          onSubmit: async (answers, _btn, meta) => {
+            const result = await save('mark_answered', answers, meta && meta.customerUi);
+            showDone(result.message
+              || 'Era KYC-uppgifter är inskickade. Ni får strax ett dokument via e-post att signera med BankID.');
+            return result;
           }
         });
       }).catch((e) => {

@@ -5,6 +5,7 @@
 (function (global) {
   const STATUS_FILL_PENDING = 'Skickat för ifyllnad';
   const STATUS_ANSWERED = 'Besvarat av kund';
+  const STATUS_SIGN_FAILED = 'Besvarat – signering ej skickad';
   const STATUS_SENT_SIGN = 'Skickat till kund';
   const STATUS_SIGNED = 'Signerat';
   const STATUS_SAVED = 'Sparat';
@@ -21,6 +22,7 @@
     if (String(kyc?.inleedDokumentId || '').trim() || String(kyc?.utskickningsdatum || '').trim()) {
       return STATUS_SENT_SIGN;
     }
+    if (status === STATUS_SIGN_FAILED) return STATUS_SIGN_FAILED;
     if (status === STATUS_ANSWERED || kyc?.customerAnsweredAt) return STATUS_ANSWERED;
     if (status === STATUS_FILL_PENDING || (String(kyc?.inviteToken || '').trim() && !kyc?.customerAnsweredAt)) {
       return STATUS_FILL_PENDING;
@@ -41,6 +43,7 @@
       || st === STATUS_SENT_SIGN
       || st === STATUS_FILL_PENDING
       || st === STATUS_ANSWERED
+      || st === STATUS_SIGN_FAILED
     ) return false;
     if (hasInleed) return false;
     return true;
@@ -69,6 +72,12 @@
     const st = normalizeStatus(kyc ? effectiveKycStatus(kyc) : status);
     if (st === STATUS_FILL_PENDING) {
       return 'KYC-formuläret skickat till kund för ifyllnad. När kunden svarat skapas PDF och skickas till Inleed för BankID.';
+    }
+    if (st === STATUS_SIGN_FAILED) {
+      const err = String(kyc?.inleedSendError || '').trim();
+      return err
+        ? `Kunden har besvarat KYC, men signering skickades inte: ${err}. Skicka igen för BankID.`
+        : 'Kunden har besvarat KYC, men signering skickades inte. Skicka igen för BankID.';
     }
     if (st === STATUS_ANSWERED) {
       return 'Kunden har besvarat KYC-formuläret. PDF skickas/skickades till Inleed för BankID-signering.';
@@ -106,6 +115,7 @@
   const api = {
     STATUS_FILL_PENDING,
     STATUS_ANSWERED,
+    STATUS_SIGN_FAILED,
     STATUS_SENT_SIGN,
     STATUS_SIGNED,
     STATUS_SAVED,

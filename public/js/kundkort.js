@@ -14594,12 +14594,14 @@ class CustomerCardManager {
             <div class="uppdrag-banner uppdrag-banner--vantar">
                 <i class="fas fa-clock"></i>
                 KYC-formuläret utskickat och väntar BankID-signering.
-            </div>` : (kycStatus === 'Skickat för ifyllnad' || kycStatus === 'Besvarat av kund') ? `
-            <div class="uppdrag-banner uppdrag-banner--vantar">
-                <i class="fas fa-clock"></i>
-                ${esc(fillBanner || (kycStatus === 'Besvarat av kund'
+            </div>` : (kycStatus === 'Skickat för ifyllnad' || kycStatus === 'Besvarat av kund' || kycStatus === 'Besvarat – signering ej skickad') ? `
+            <div class="uppdrag-banner uppdrag-banner--${kycStatus === 'Besvarat – signering ej skickad' ? 'warn' : 'vantar'}">
+                <i class="fas fa-${kycStatus === 'Besvarat – signering ej skickad' ? 'exclamation-triangle' : 'clock'}"></i>
+                ${esc(fillBanner || (kycStatus === 'Besvarat – signering ej skickad'
+                    ? 'Kunden har besvarat KYC, men signering skickades inte. Skicka igen för BankID.'
+                    : (kycStatus === 'Besvarat av kund'
                     ? 'Kunden har besvarat KYC-formuläret.'
-                    : 'KYC-formuläret skickat till kund för ifyllnad.'))}
+                    : 'KYC-formuläret skickat till kund för ifyllnad.')))}
             </div>` : kycStatus === 'Sparat' ? `
             <div class="uppdrag-banner uppdrag-banner--utkast">
                 <i class="fas fa-save"></i>

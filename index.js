@@ -18787,27 +18787,73 @@ async function deliverDocsignReceiptForRecord({ kind, recordId }) {
     if (!inleedId) return { sent: false, error: 'Inget Inleed-dokument' };
     const doc = await fetchInleedDocumentById(docsignApiKey, inleedId);
     if (!doc || !isInleedDocumentSigned(doc)) return { sent: false, error: 'Inte signerat ännu' };
-    const kycReceipt = recallDocsignReceipt(inleedId, kyc.receipt);
-    if (!kycReceipt || !docsignInvite.shouldSendReceipt(kycReceipt)) return { sent: false, skipped: true };
     const kundnamn = fields['Namn'] || kyc.foretagsnamn || 'Kund';
-    const sent = await maybeSendDocsignReceipt({
-      kind: 'kyc',
-      documentId: inleedId,
-      receipt: kycReceipt,
-      doc,
-      kundnamn,
-      filename: 'KYC-signerat.pdf'
-    });
-    if (sent.receipt) {
-      kyc.receipt = sent.receipt;
-      kyc.status = 'Signerat';
+    const datum = inleedLinks.extractSignedDate(doc) || new Date().toISOString().split('T')[0];
+    const safeNamn = String(kundnamn).replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '');
+    const docFilename = `${safeNamn}-KYC-signerat-${datum}.pdf`;
+
+    // Auto-hämta signerad PDF till Dokumentation (idempotent via systemCreated + archivePrior).
+    let savedToDocs = false;
+    try {
+      const pdfBuffer = await fetchSignedPdfBuffer(doc);
+      if (pdfBuffer) {
+        const publicBaseUrl = process.env.PUBLIC_BASE_URL || null;
+        savedToDocs = !!(await savePdfToKundDokumentationTab(
+          airtableAccessToken,
+          baseId,
+          recordId,
+          pdfBuffer,
+          docFilename,
+          'kyc',
+          {
+            baseUrl: publicBaseUrl,
+            createdDate: datum,
+            systemCreated: true,
+            subcategory: 'kyc',
+            archivePrior: true
+          }
+        ));
+      }
+    } catch (pdfErr) {
+      console.warn('kyc callback: kunde inte spara signerat till Dokumentation:', pdfErr.message);
+    }
+
+    const kycReceipt = recallDocsignReceipt(inleedId, kyc.receipt);
+    let sent = { sent: false, skipped: true, receipt: kyc.receipt };
+    if (kycReceipt && docsignInvite.shouldSendReceipt(kycReceipt)) {
+      sent = await maybeSendDocsignReceipt({
+        kind: 'kyc',
+        documentId: inleedId,
+        receipt: kycReceipt,
+        doc,
+        kundnamn,
+        filename: docFilename
+      });
+    }
+
+    kyc.status = 'Signerat';
+    kyc.signeringsdatum = datum;
+    if (sent.receipt) kyc.receipt = sent.receipt;
+    try {
+      await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+      const clearedUppfoljning = kycUppfoljning.clearTriggersAfterNewKyc(
+        fields[kycUppfoljning.UPPFOLJNING_FIELD],
+        fields
+      );
       await axios.patch(
         `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${recordId}`,
-        { fields: { 'KYC-formular (JSON)': JSON.stringify(kyc) } },
+        {
+          fields: {
+            'KYC-formular (JSON)': JSON.stringify(kyc),
+            [kycUppfoljning.UPPFOLJNING_FIELD]: kycUppfoljning.serializeUppfoljning(clearedUppfoljning)
+          }
+        },
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-      ).catch((e) => console.warn('kyc kvitto callback PATCH:', e.message));
+      );
+    } catch (e) {
+      console.warn('kyc callback PATCH:', e.message);
     }
-    return sent;
+    return { ...sent, savedToDocs, signed: true };
   }
   if (kind === 'uppdragsavtal') {
     const avtalRes = await axios.get(
@@ -20294,6 +20340,19 @@ async function maybeAutoSendKycToInleedAfterAnswer({
   baseId,
   tableName
 }) {
+  // Idempotent: redan skickat till Inleed → hoppa över.
+  if (String(kyc?.inleedDokumentId || '').trim()) {
+    return {
+      sent: true,
+      already: true,
+      documentId: String(kyc.inleedDokumentId),
+      kyc
+    };
+  }
+  if (String(kyc?.status || '').trim() === KycInvite.STATUS_SENT_SIGN
+    || String(kyc?.status || '').trim() === KycInvite.STATUS_SIGNED) {
+    return { sent: true, already: true, documentId: kyc.inleedDokumentId || null, kyc };
+  }
   const signerareList = KycInvite.normalizeSignerare(kyc.pendingSignerare);
   if (!signerareList.length) {
     return { sent: false, reason: 'Inga sparade signerare för Inleed-utskick.' };
@@ -20359,7 +20418,7 @@ app.get('/api/kyc-formular/public/:token', async (req, res) => {
     const ctx = await loadKycCustomerRecord(verified.customerId);
     const byraName = ctx.fields['Byrå'] || ctx.fields['Byra'] || '';
     if (!KycInvite.inviteIsActive(ctx.kyc, token)) {
-      if (ctx.kyc.customerAnsweredAt || ['Besvarat av kund', 'Skickat till kund', 'Signerat'].includes(String(ctx.kyc.status || ''))) {
+      if (ctx.kyc.customerAnsweredAt || KycInvite.isAnsweredStatus(ctx.kyc.status)) {
         res.set('Cache-Control', 'no-store');
         return res.json({
           ...KycInvite.publicKycPayload(ctx.kyc, {
@@ -20367,7 +20426,9 @@ app.get('/api/kyc-formular/public/:token', async (req, res) => {
             byraName,
             bolagsform: ctx.fields.Bolagsform || ctx.kyc.bolagsform
           }),
-          message: 'Formuläret är redan inskickat.'
+          message: String(ctx.kyc.status || '') === KycInvite.STATUS_SIGNED
+            ? 'Formuläret är signerat. Länken är låst.'
+            : 'Formuläret är redan inskickat.'
         });
       }
       return res.status(410).json({ error: 'Länken är inte längre aktiv. Be byrån skicka en ny.' });
@@ -20406,18 +20467,21 @@ app.put('/api/kyc-formular/public/:token', async (req, res) => {
 
     const action = String(req.body?.action || 'save').trim();
     const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : req.body;
+    const customerUi = req.body?.customerUi && typeof req.body.customerUi === 'object'
+      ? req.body.customerUi
+      : null;
     const markAnswered = action === 'mark_answered';
-    let kyc = KycInvite.applyCustomerAnswers(ctx.kyc, answers, { markAnswered });
-    // Behåll invite tills besvarat
+    let kyc = KycInvite.applyCustomerAnswers(ctx.kyc, answers, {
+      markAnswered,
+      customerUi,
+      snapshot: markAnswered
+    });
+    // Behåll invite / signerare
+    kyc.inviteToken = ctx.kyc.inviteToken;
+    kyc.inviteExpiresAt = ctx.kyc.inviteExpiresAt;
+    kyc.pendingSignerare = ctx.kyc.pendingSignerare;
     if (!markAnswered) {
-      kyc.inviteToken = ctx.kyc.inviteToken;
-      kyc.inviteExpiresAt = ctx.kyc.inviteExpiresAt;
-      kyc.pendingSignerare = ctx.kyc.pendingSignerare;
       kyc.status = KycInvite.STATUS_FILL_PENDING;
-    } else {
-      kyc.inviteToken = ctx.kyc.inviteToken;
-      kyc.inviteExpiresAt = ctx.kyc.inviteExpiresAt;
-      kyc.pendingSignerare = ctx.kyc.pendingSignerare;
     }
 
     const syncFields = {};
@@ -20431,7 +20495,6 @@ app.put('/api/kyc-formular/public/:token', async (req, res) => {
       syncFields['Verklig huvudman'] = KycHuvudman.formatHuvudmanInfo(kyc.huvudman);
     }
 
-
     await persistKycJson(verified.customerId, kyc, {
       airtableAccessToken: ctx.airtableAccessToken,
       baseId: ctx.baseId,
@@ -20439,44 +20502,68 @@ app.put('/api/kyc-formular/public/:token', async (req, res) => {
       extraFields: syncFields
     });
 
-    let inleedMeta = null;
-    let message = 'Utkast sparat.';
-    if (markAnswered) {
-      try {
-        const auto = await maybeAutoSendKycToInleedAfterAnswer({
-          customerId: verified.customerId,
-          fields: { ...ctx.fields, ...syncFields },
-          kyc,
-          airtableAccessToken: ctx.airtableAccessToken,
-          baseId: ctx.baseId,
-          tableName: ctx.tableName
-        });
-        inleedMeta = auto;
-        if (auto.sent) {
-          kyc = auto.kyc;
-          message = 'Tack! KYC-formuläret är inskickat och skickat för BankID-signering.';
-        } else {
-          message = 'Tack! KYC-formuläret är inskickat till byrån. BankID-utskick sker så snart byrån slutför signeringen.';
-          console.warn('KYC auto-Inleed efter kundsvar:', auto.reason);
-        }
-      } catch (autoErr) {
-        console.error('KYC auto-Inleed efter kundsvar misslyckades:', autoErr.message);
-        message = 'Tack! KYC-formuläret är inskickat. Byrån tar hand om BankID-signeringen.';
-        inleedMeta = { sent: false, reason: autoErr.message };
-      }
-    }
-
     const byraName = ctx.fields['Byrå'] || ctx.fields['Byra'] || '';
+    const message = markAnswered
+      ? 'Tack! Era KYC-uppgifter är inskickade. Ni får strax ett dokument via e-post att signera med BankID.'
+      : 'Utkast sparat.';
+
     res.set('Cache-Control', 'no-store');
-    return res.json({
+    res.json({
       ...KycInvite.publicKycPayload(kyc, {
         companyName: ctx.fields['Namn'] || kyc.foretagsnamn,
         byraName,
         bolagsform: ctx.fields.Bolagsform || kyc.bolagsform
       }),
       message,
-      inleed: inleedMeta ? { sent: !!inleedMeta.sent, documentId: inleedMeta.documentId || null } : undefined
+      inleed: markAnswered ? { queued: true } : undefined
     });
+
+    // Async PDF + Inleed efter att kunden fått tack-sidan. Idempotent.
+    if (markAnswered) {
+      setImmediate(() => {
+        maybeAutoSendKycToInleedAfterAnswer({
+          customerId: verified.customerId,
+          fields: { ...ctx.fields, ...syncFields },
+          kyc,
+          airtableAccessToken: ctx.airtableAccessToken,
+          baseId: ctx.baseId,
+          tableName: ctx.tableName
+        }).then(async (auto) => {
+          if (auto.sent) {
+            if (!auto.already) {
+              console.log('KYC auto-Inleed efter kundsvar OK:', auto.documentId);
+            }
+            return;
+          }
+          console.warn('KYC auto-Inleed efter kundsvar:', auto.reason);
+          const failed = KycInvite.markSignFailed(kyc, auto.reason);
+          failed.inviteToken = kyc.inviteToken;
+          failed.inviteExpiresAt = kyc.inviteExpiresAt;
+          failed.pendingSignerare = kyc.pendingSignerare;
+          await persistKycJson(verified.customerId, failed, {
+            airtableAccessToken: ctx.airtableAccessToken,
+            baseId: ctx.baseId,
+            tableName: ctx.tableName
+          });
+        }).catch(async (autoErr) => {
+          console.error('KYC auto-Inleed efter kundsvar misslyckades:', autoErr.message);
+          try {
+            const failed = KycInvite.markSignFailed(kyc, autoErr.message);
+            failed.inviteToken = kyc.inviteToken;
+            failed.inviteExpiresAt = kyc.inviteExpiresAt;
+            failed.pendingSignerare = kyc.pendingSignerare;
+            await persistKycJson(verified.customerId, failed, {
+              airtableAccessToken: ctx.airtableAccessToken,
+              baseId: ctx.baseId,
+              tableName: ctx.tableName
+            });
+          } catch (persistErr) {
+            console.error('KYC markSignFailed persist:', persistErr.message);
+          }
+        });
+      });
+    }
+    return;
   } catch (error) {
     const status = error.response?.status === 404 ? 404 : (error.status || 500);
     console.error('❌ PUT /api/kyc-formular/public:', error.response?.data || error.message);
@@ -20529,6 +20616,55 @@ app.post('/api/kyc-formular/:customerId/skicka-till-kund', authenticateToken, as
     }
     if (existingKyc.status === 'Signerat') {
       return res.status(409).json({ error: 'KYC är redan signerat.' });
+    }
+
+    // Retry: kund har besvarat men Inleed misslyckades → skicka PDF/BankID igen (ingen ny invite).
+    const st = String(existingKyc.status || '').trim();
+    const answeredAlready = !!existingKyc.customerAnsweredAt
+      || st === KycInvite.STATUS_ANSWERED
+      || st === KycInvite.STATUS_SIGN_FAILED;
+    if (answeredAlready && !existingKyc.inleedDokumentId) {
+      const retryKyc = {
+        ...existingKyc,
+        pendingSignerare: signerareList,
+        inleedSendError: null,
+        updatedAt: new Date().toISOString(),
+        updatedBy: req.user?.email || ''
+      };
+      await persistKycJson(customerId, retryKyc, { airtableAccessToken, baseId, tableName });
+      try {
+        const auto = await maybeAutoSendKycToInleedAfterAnswer({
+          customerId,
+          fields: custFields,
+          kyc: retryKyc,
+          airtableAccessToken,
+          baseId,
+          tableName
+        });
+        if (auto.sent) {
+          return res.json({
+            success: true,
+            retriedInleed: true,
+            documentId: auto.documentId || null,
+            message: 'KYC skickat för BankID-signering.'
+          });
+        }
+        const failed = KycInvite.markSignFailed(retryKyc, auto.reason);
+        failed.pendingSignerare = signerareList;
+        await persistKycJson(customerId, failed, { airtableAccessToken, baseId, tableName });
+        return res.status(502).json({
+          error: auto.reason || 'Kunde inte skicka för signering.',
+          status: KycInvite.STATUS_SIGN_FAILED
+        });
+      } catch (retryErr) {
+        const failed = KycInvite.markSignFailed(retryKyc, retryErr.message);
+        failed.pendingSignerare = signerareList;
+        await persistKycJson(customerId, failed, { airtableAccessToken, baseId, tableName });
+        return res.status(502).json({
+          error: retryErr.message || 'Kunde inte skicka för signering.',
+          status: KycInvite.STATUS_SIGN_FAILED
+        });
+      }
     }
 
     const { kyc, inviteUrl } = KycInvite.applyInviteSent(existingKyc, {

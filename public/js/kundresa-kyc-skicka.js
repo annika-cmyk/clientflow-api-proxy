@@ -46,6 +46,11 @@
       return d ? `Besvarat ${d}` : 'Besvarat (utanför ClientFlow)';
     }
     if (/signerat/i.test(status) || signedAt) return signedAt ? `Signerat ${signedAt}` : 'Signerat';
+    if (/signering ej skickad/i.test(status)) {
+      return answeredAt
+        ? `Besvarat ${answeredAt} – signering ej skickad`
+        : 'Besvarat – signering ej skickad';
+    }
     if (/besvarat/i.test(status) || answeredAt) return answeredAt ? `Besvarat ${answeredAt}` : 'Besvarat';
     if (/skickat|ifyllnad|invite|länk/i.test(status) || k.inviteToken || sentAt || k.inleedDokumentId) {
       if (sentAt && email) return `Skickat ${sentAt} till ${email}`;
