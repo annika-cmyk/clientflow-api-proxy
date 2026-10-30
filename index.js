@@ -49,6 +49,7 @@ require('dotenv').config();
 const { createMinibokSync } = require('./lib/minibok-sync');
 const { createMinibokUppdrag } = require('./lib/minibok-uppdrag');
 const { createMinibokAml } = require('./lib/minibok-aml');
+const { createFirefliesIntegration } = require('./lib/fireflies');
 const { createGmailIntegration } = require('./lib/gmail');
 const { createMejlExtras } = require('./lib/mejl');
 const { createMotesbokning } = require('./lib/motesbokning');
@@ -250,6 +251,9 @@ console.log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET')
 console.log('  DILISENSE_API_KEY:', process.env.DILISENSE_API_KEY ? 'SET' : 'NOT SET');
 console.log('  MINIBOK_API_KEY:', process.env.MINIBOK_API_KEY ? 'SET' : 'NOT SET');
 console.log('  MINIBOK_WEBHOOK_URL:', process.env.MINIBOK_WEBHOOK_URL ? 'SET' : 'NOT SET');
+console.log('  FIREFLIES_API_KEY:', process.env.FIREFLIES_API_KEY ? 'SET' : 'NOT SET');
+console.log('  FIREFLIES_WEBHOOK_SECRET:', process.env.FIREFLIES_WEBHOOK_SECRET ? 'SET' : 'NOT SET');
+console.log('  FIREFLIES_OWNER_EMAIL:', process.env.FIREFLIES_OWNER_EMAIL ? 'SET' : 'NOT SET');
 console.log('');
 
 const cookieParser = require('cookie-parser');
@@ -290,7 +294,15 @@ app.use((req, res, next) => {
     
     next();
 });
-app.use(express.json({ limit: '50mb' }));
+app.use(
+  express.json({
+    limit: '50mb',
+    verify: (req, res, buf) => {
+      // Behåll rå body för webhook-signatur (Fireflies X-Hub-Signature m.m.)
+      req.rawBody = buf;
+    }
+  })
+);
  
  // Serve static frontend
  // Force HTML/JS/CSS to always revalidate (via ETag) so updated frontend code
@@ -3048,6 +3060,11 @@ const gmailIntegration = createGmailIntegration({
 const mejlExtras = createMejlExtras({
   authenticateToken,
   getAirtableUser
+});
+
+const firefliesIntegration = createFirefliesIntegration({
+  getAirtableUser,
+  listAccessibleCustomers: listAccessibleCustomersForGmail
 });
 
 async function pushMeetingInviteToGoogle(invite) {
@@ -28425,6 +28442,7 @@ minibokAml.registerRoutes(app);
 // Gmail ↔ Clientflow (inkorg under KUNDER + skicka som användaren)
 gmailIntegration.registerRoutes(app);
 mejlExtras.registerRoutes(app);
+firefliesIntegration.registerRoutes(app);
 // Möteslänkar före generiska /public/:token så "link"/"share" inte fångas som token
 moteslankar.registerRoutes(app);
 motesbokning.registerRoutes(app);
