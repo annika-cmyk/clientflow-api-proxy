@@ -20361,6 +20361,13 @@ body.byra-resa-page .risk-header h1 {
   border-radius: 16px;
   padding: 0;
 }
+/* Kunduppläggning: låst skalstorlek så stegbyte (tätt vs glest) inte hoppar */
+#kundresa-modal > .kundresa-modal-content {
+  height: min(90dvh, 920px);
+  max-height: min(90dvh, 920px);
+  width: min(1180px, 98vw);
+  max-width: min(1180px, 98vw);
+}
 .kundresa-modal-content .modal-header {
   flex-shrink: 0;
   padding: 1rem 1.15rem 0.85rem;

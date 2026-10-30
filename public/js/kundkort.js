@@ -13186,7 +13186,6 @@ class CustomerCardManager {
 
     _gotoKundresaStep(target) {
         const step = target && typeof target === 'object' ? target : { tab: target };
-        const tab = step.tab || '';
         const focus = step.focus || '';
         const stepId = step.stepId != null ? step.stepId : step.id;
         const key = step.key || '';
@@ -13198,7 +13197,54 @@ class CustomerCardManager {
             this.openKundresaModal();
             return;
         }
-        this._renderKundresa();
+        // Stegbyte: behåll skalet (header/rail/footer), byt bara chrome + #kundresa-step-host
+        this._softGotoKundresaStep();
+    }
+
+    /** Uppdatera aktiv steg-chrome utan att remounta hela popup-skalet. */
+    _softGotoKundresaStep() {
+        const host = document.getElementById('kundresa-shell');
+        const ui = window.KundresaUi;
+        const summary = this._kundresa;
+        if (!host || !ui || typeof ui.updateActiveStep !== 'function' || !summary) {
+            this._renderKundresa();
+            return;
+        }
+        if (!host.querySelector('.kundresa-popup-layout') || !host.querySelector('#kundresa-step-host')) {
+            this._renderKundresa();
+            return;
+        }
+        const kf = this._kundformularSummary || {};
+        const fields = this.customerData?.fields || {};
+        const step4Send = this._buildKundresaStep4Send(summary);
+        const fromKontakt = this._vhRegisterFromKontakt();
+        const enriched = {
+            ...summary,
+            byraVhBekraftelse: kf.byraVhBekraftelse || summary.byraVhBekraftelse || '',
+            byraVhNote: kf.byraVhNote || summary.byraVhNote || '',
+            vhRegister: fromKontakt.length
+                ? fromKontakt
+                : (summary.vhRegister || summary.vhAlignment?.register || []),
+            vhAlignment: summary.vhAlignment || null,
+            vhJustSaved: !!this._kundresaVhJustSaved,
+            step4Status: summary.step4Status || null,
+            step4Send,
+            activeStepId: this._activeKundresaStepId || summary.nextStepId,
+            customerName: fields.Namn || fields.namn || this.customerData?.namn || '',
+            customerOrgnr: fields.Orgnr || fields.orgnr || ''
+        };
+        this._updateKundresaTrigger();
+        ui.updateActiveStep(host, enriched, {
+            onStep: (target) => this._gotoKundresaStep(target),
+            onClose: () => this.closeKundresaModal(),
+            onReady: ({ activeStep }) => {
+                this._mountKundresaStep(activeStep || {
+                    id: this._activeKundresaStepId,
+                    focus: this._activeKundresaFocus,
+                    key: this._activeKundresaFocus
+                });
+            }
+        });
     }
 
     _mountKundresaKycSkickaStep(host) {

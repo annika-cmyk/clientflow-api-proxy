@@ -436,6 +436,40 @@
       });
     });
 
+    bindStepNav(container, {
+      steps,
+      activeStep,
+      onStep,
+      onClose,
+      emitStep
+    });
+
+    if (onReady) {
+      onReady({
+        host: container.querySelector('#kundresa-step-host'),
+        activeStep,
+        activeStepId: activeStep ? activeStep.id : null
+      });
+    }
+  }
+
+  function bindStepNav(container, ctx) {
+    const steps = ctx.steps || [];
+    const activeStep = ctx.activeStep;
+    const onClose = ctx.onClose;
+    const emitStep = typeof ctx.emitStep === 'function'
+      ? ctx.emitStep
+      : function (stepLike) {
+        if (!stepLike || stepLike.gated || !ctx.onStep) return;
+        ctx.onStep({
+          tab: stepLike.tab || '',
+          focus: stepLike.focus || '',
+          stepId: stepLike.id != null ? Number(stepLike.id) : Number(stepLike.stepId || 0),
+          key: stepLike.key || '',
+          closeAfter: false,
+          embed: true
+        });
+      };
     const prevBtn = container.querySelector('[data-kundresa-prev]');
     const nextBtn = container.querySelector('[data-kundresa-next]');
     const klarBtn = container.querySelector('[data-kundresa-klar]');
@@ -454,15 +488,224 @@
     if (klarBtn && onClose) {
       klarBtn.addEventListener('click', () => onClose());
     }
+  }
+
+  function bindChecklistScroll(container) {
+    container.querySelectorAll('[data-kundresa-check]').forEach((a) => {
+      if (a.dataset.kundresaCheckBound === '1') return;
+      a.dataset.kundresaCheckBound = '1';
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const key = a.getAttribute('data-kundresa-check') || '';
+        const target = container.querySelector(`[data-kundresa-sec="${key}"]`)
+          || document.querySelector(`[data-kundresa-sec="${key}"]`);
+        if (target && target.scrollIntoView) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  }
+
+  function layoutStepClassFor(activeStep) {
+    if (isStep1(activeStep)) return ' kundresa-popup-layout--steg1';
+    if (isStep2(activeStep)) return ' kundresa-popup-layout--steg2';
+    if (isStep3(activeStep)) return ' kundresa-popup-layout--steg3';
+    if (isStep4(activeStep)) return ' kundresa-popup-layout--steg4';
+    return '';
+  }
+
+  function remainingLabelFor(s, activeStep) {
+    if (isStep1(activeStep)) return s.step1Substatus?.remainingLabel || '';
+    if (isStep2(activeStep)) return s.step2Substatus?.remainingLabel || '';
+    if (isStep3(activeStep)) return s.step3Substatus?.remainingLabel || '';
+    return '';
+  }
+
+  /**
+   * Stegbyte utan att bygga om hela popup-skalet (rail/header/footer behålls).
+   * Uppdaterar aktiv flik, steginfo, checklista, VH-panel-synlighet och sidfot,
+   * sedan anropas onReady så host-innehållet kan bytas.
+   */
+  function updateActiveStep(container, summary, opts) {
+    if (!container) return null;
+    const layout = container.querySelector('.kundresa-popup-layout');
+    const host = container.querySelector('#kundresa-step-host');
+    if (!layout || !host) {
+      render(container, summary, opts);
+      return null;
+    }
+
+    const onStep = typeof opts?.onStep === 'function' ? opts.onStep : null;
+    const onReady = typeof opts?.onReady === 'function' ? opts.onReady : null;
+    const onClose = typeof opts?.onClose === 'function' ? opts.onClose : null;
+    const s = summary || {};
+    const steps = Array.isArray(s.steps) ? s.steps : [];
+    const gate = s.vhGate || {};
+    const activeStepId = s.activeStepId != null
+      ? s.activeStepId
+      : (s.nextStepId || (steps.find((st) => st.status === 'attention') || {}).id || null);
+    const activeStep = steps.find((st) => Number(st.id) === Number(activeStepId))
+      || steps.find((st) => st.status === 'next')
+      || steps[0]
+      || null;
+    const step1Sub = s.step1Substatus || null;
+    const showChecklist = isStep1(activeStep) && step1Sub && Array.isArray(step1Sub.items) && step1Sub.items.length;
+    const remainingLabel = remainingLabelFor(s, activeStep);
+    const progress = progressMeta(s);
+    const isLastStep = isStep4(activeStep);
+    const stepNum = activeStep
+      ? (activeStep.number != null ? activeStep.number : activeStep.id)
+      : '';
+    const totalSteps = steps.length || Number(s.total) || 4;
+    const companyLabel = [s.customerName, s.customerOrgnr].filter(Boolean).join(' · ');
+    const showVhPanel = gate.relevant !== false
+      && (isVhStep(activeStep) || gate.blocked || Number(activeStepId) === 1);
+
+    layout.className = `kundresa-popup-layout tjanst-modal-layout kundresa-popup-layout--embed${layoutStepClassFor(activeStep)}`;
+
+    container.querySelectorAll('.tjanst-tab[data-kundresa-step-id]').forEach((btn) => {
+      const sid = Number(btn.getAttribute('data-kundresa-step-id') || 0);
+      const step = steps.find((st) => Number(st.id) === sid);
+      if (!step) return;
+      btn.className = `tjanst-tab ${tabStateClass(step, activeStepId)}`;
+      btn.setAttribute('aria-selected', Number(step.id) === Number(activeStepId) ? 'true' : 'false');
+      btn.disabled = !!step.gated;
+      const done = step.status === 'done' || step.done;
+      const displayNum = step.number != null ? step.number : step.id;
+      const blob = btn.querySelector('[data-resa-blob]');
+      if (blob) {
+        blob.innerHTML = done
+          ? '<i class="fas fa-check" aria-hidden="true"></i>'
+          : esc(String(displayNum));
+      }
+      const statusEl = btn.querySelector('.kundresa-tab-status');
+      if (statusEl) {
+        statusEl.textContent = step.label
+          || (done ? 'Klart' : (Number(step.id) === Number(activeStepId) ? 'Pågår' : ''));
+      }
+    });
+
+    const body = container.querySelector('.kundresa-popup-body--embed') || container.querySelector('.kundresa-popup-body');
+    let stepinfo = container.querySelector('.kundresa-popup-stepinfo');
+    if (activeStep && body) {
+      const infoClass = `kundresa-popup-stepinfo kundresa-popup-stepinfo--compact${(isStep2(activeStep) || isStep3(activeStep)) ? ' kundresa-popup-stepinfo--row' : ''}${isStep1(activeStep) ? ' kundresa-popup-stepinfo--steg1' : ''}`;
+      const autosave = (isStep2(activeStep) || isStep3(activeStep))
+        ? `<span class="kundresa-step2-autosave is-saved" data-kundresa-autosave><i class="fas fa-check" aria-hidden="true"></i> Sparas automatiskt</span>`
+        : '';
+      const html = `<p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>
+            <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
+            ${autosave}
+            ${companyLabel ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
+            <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>`;
+      if (!stepinfo) {
+        stepinfo = document.createElement('header');
+        const scroll = container.querySelector('[data-kundresa-scroll]');
+        if (scroll && scroll.parentNode === body) body.insertBefore(stepinfo, scroll);
+        else body.insertBefore(stepinfo, body.firstChild);
+      }
+      stepinfo.className = infoClass;
+      stepinfo.innerHTML = html;
+    }
+
+    const scroll = container.querySelector('[data-kundresa-scroll]');
+    if (scroll) {
+      let checklist = scroll.querySelector('.kundresa-step1-checklist');
+      if (showChecklist) {
+        const html = renderStep1Checklist(step1Sub);
+        if (checklist) {
+          checklist.outerHTML = html;
+        } else {
+          host.insertAdjacentHTML('beforebegin', html);
+        }
+        bindChecklistScroll(container);
+      } else if (checklist) {
+        checklist.remove();
+      }
+    }
+
+    host.setAttribute('data-active-focus', activeStep?.focus || '');
+    host.setAttribute('data-active-key', activeStep?.key || '');
+    host.setAttribute('data-active-step-id', String(activeStep?.id || ''));
+    host.classList.toggle('kundresa-step2', isStep2(activeStep));
+    host.classList.toggle('kundresa-step3', isStep3(activeStep));
+
+    const vhPanel = container.querySelector('[data-kundresa-vh-panel]');
+    if (vhPanel) {
+      vhPanel.hidden = !showVhPanel;
+    }
+
+    const gateBanner = container.querySelector('.kundresa-gate-banner');
+    if (gate.blocked) {
+      if (!gateBanner && body) {
+        const el = document.createElement('div');
+        el.className = 'kundresa-gate-banner';
+        el.setAttribute('role', 'alert');
+        el.innerHTML = `<strong>VH blockerar.</strong> ${esc(gate.message || 'Bekräfta verklig huvudman innan ni går vidare.')}`;
+        const insertBefore = stepinfo || scroll;
+        if (insertBefore && insertBefore.parentNode === body) body.insertBefore(el, insertBefore);
+        else body.prepend(el);
+      }
+    } else if (gateBanner) {
+      gateBanner.remove();
+    }
+
+    if (body && activeStep && !activeStep.gated) {
+      let nav = body.querySelector('.kundresa-step-nav');
+      const remainingHtml = isLastStep
+        ? ''
+        : (remainingLabel
+          ? `<span class="kundresa-step-remaining" role="status">
+              <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+              ${esc(remainingLabel)}
+            </span>`
+          : `<span class="kundresa-step-remaining is-ok" role="status">${esc(
+            progress.complete ? 'Alla steg klara' : ''
+          )}</span>`);
+      const rightHtml = isLastStep
+        ? `<button type="button" class="btn btn-ghost btn-sm" data-kundresa-klar>Stäng</button>`
+        : `<button type="button" class="btn btn-primary btn-sm" data-kundresa-next
+                  ${!steps.some((st) => Number(st.number) === Number(activeStep.number) + 1) ? 'disabled' : ''}
+                  data-kundresa-step-id="${esc(String(activeStep.id))}">
+                  Nästa steg <i class="fas fa-arrow-right"></i>
+                </button>`;
+      const navHtml = `<button type="button" class="btn btn-ghost btn-sm" data-kundresa-prev
+              ${Number(activeStep.number) <= 1 ? 'disabled' : ''}
+              data-kundresa-step-id="${esc(String(activeStep.id))}">
+              <i class="fas fa-arrow-left"></i> Föregående
+            </button>
+            ${remainingHtml}
+            ${rightHtml}`;
+      if (!nav) {
+        nav = document.createElement('div');
+        nav.className = 'kundresa-step-nav';
+        body.appendChild(nav);
+      }
+      nav.innerHTML = navHtml;
+      bindStepNav(container, { steps, activeStep, onStep, onClose });
+    } else {
+      const nav = body && body.querySelector('.kundresa-step-nav');
+      if (nav) nav.remove();
+    }
+
+    if (scroll) scroll.scrollTop = 0;
 
     if (onReady) {
       onReady({
-        host: container.querySelector('#kundresa-step-host'),
+        host,
         activeStep,
         activeStepId: activeStep ? activeStep.id : null
       });
     }
+    return { host, activeStep, activeStepId: activeStep ? activeStep.id : null };
   }
 
-  global.KundresaUi = { render, renderProgressIcon, progressMeta, isStep2, isStep3, isStep4 };
+  global.KundresaUi = {
+    render,
+    updateActiveStep,
+    renderProgressIcon,
+    progressMeta,
+    isStep2,
+    isStep3,
+    isStep4
+  };
 })(typeof window !== 'undefined' ? window : global);
