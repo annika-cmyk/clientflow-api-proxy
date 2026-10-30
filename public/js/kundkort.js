@@ -7366,21 +7366,26 @@ class CustomerCardManager {
             })();
 
             if (inKundresa) {
+                // Checklista-layout: saknad info bara i checklistan — raden visar namn · roller / personnr · e-post
+                const rolesInline = rollText
+                    ? `<span class="roller-person-roles-inline">${this._esc(rollText)}</span>`
+                    : '';
+                const line2Parts = [];
+                if (personnrDisplay) line2Parts.push(`<span class="roller-meta-bit">${this._esc(personnrDisplay)}</span>`);
+                if (p.epost) line2Parts.push(`<span class="roller-meta-bit">${this._esc(p.epost)}</span>`);
                 return `
-                <div class="roller-person-item roller-person-item--row" data-idx="${idx}">
-                    <div class="roller-col-person">
-                        <span class="roller-avatar-initials" aria-hidden="true">${this._esc(initials)}</span>
-                        <span class="roller-person-name-stack">
-                            <span class="roller-person-name">${this._esc(p.namn || 'Namnlös')}</span>
-                            <span class="roller-person-submeta">${personnrDisplay ? this._esc(personnrDisplay) : this._esc(idMissing)}${pepMarked ? ' · PEP' : ''}</span>
-                        </span>
+                <div class="roller-person-item roller-person-item--row roller-person-item--checklista" data-idx="${idx}">
+                    <div class="roller-person-main">
+                        <div class="roller-person-line1">
+                            <span class="roller-person-name">${this._esc(p.namn || 'Namnlös')}</span>${rolesInline ? ` <span class="roller-person-dot" aria-hidden="true">·</span> ${rolesInline}` : ''}
+                        </div>
+                        ${line2Parts.length ? `<div class="roller-person-line2">${line2Parts.join('<span class="roller-meta-sep" aria-hidden="true"> · </span>')}</div>` : ''}
                     </div>
-                    <div class="roller-col-roles">${roleChips || '<span class="text-muted">—</span>'}</div>
-                    <div class="roller-col-kontakt">${kontaktHtml}</div>
-                    <div class="roller-col-kontroller">${kontrollerHtml}</div>
+                    <div class="roller-col-roles" hidden aria-hidden="true">${roleChips}</div>
+                    <div class="roller-col-kontakt" hidden aria-hidden="true">${kontaktHtml}</div>
+                    <div class="roller-col-kontroller" hidden aria-hidden="true">${kontrollerHtml}</div>
                     <div class="roller-person-actions">
-                        <button type="button" class="btn-icon-note roller-edit-btn" title="Redigera" aria-label="Redigera ${this._esc(p.namn || '')}" data-idx="${idx}"><i class="fas fa-edit"></i></button>
-                        <button type="button" class="btn-icon-note btn-icon-delete roller-delete-btn" title="Ta bort" aria-label="Ta bort ${this._esc(p.namn || '')}" data-idx="${idx}"><i class="fas fa-trash"></i></button>
+                        <button type="button" class="kundresa-person-edit-link roller-edit-btn" data-idx="${idx}">Redigera</button>
                     </div>
                 </div>`;
             }
@@ -7432,12 +7437,7 @@ class CustomerCardManager {
         }).join('');
 
         if (inKundresa) {
-            return `<div class="roller-person-list roller-person-list--table">
-                <div class="roller-person-table-head" aria-hidden="true">
-                    <span>Person</span><span>Roller</span><span>Kontakt</span><span>Kontroller</span><span></span>
-                </div>
-                ${rows}
-            </div>`;
+            return `<div class="roller-person-list roller-person-list--checklista">${rows}</div>`;
         }
         return `<div class="roller-person-list">${rows}</div>`;
     }
@@ -11823,7 +11823,8 @@ class CustomerCardManager {
 
     _enhanceKundresaStep1() {
         const host = document.getElementById('kundresa-step-host');
-        if (host) host.classList.remove('kundresa-step1-checklista');
+        if (!host) return;
+        host.classList.add('kundresa-step1-checklista');
 
         const fields = this.customerData?.fields || {};
         const adressEl = document.getElementById('bv-adress-view');
@@ -11837,11 +11838,491 @@ class CustomerCardManager {
             verkEl.outerHTML = this._verksamhetClampHtml(verksamhet);
         }
 
+        this._mountKundresaStep1Checklist(host);
+        this._styleKundresaStep1Persons();
+        this._styleKundresaStep1BvCollapsed();
+
+        const vhPanel = document.getElementById('kundresa-vh-panel');
+        if (vhPanel) {
+            vhPanel.hidden = true;
+            vhPanel.classList.add('kundresa-vh-box--source');
+        }
+        const screening = host.querySelector('.roller-screening-toolbar');
+        if (screening) screening.hidden = true;
+
         const rolesList = document.getElementById('roles-list');
         if (rolesList && Array.isArray(this._kontaktPersoner)) {
             rolesList.innerHTML = this._renderRollerView(this._kontaktPersoner);
             rolesList.classList.add('roles-list--kundresa');
         }
+
+        this._wireKundresaStep1Checklist(host);
+        this._refreshKundresaStep1Remaining();
+    }
+
+    _step1SubstatusLive() {
+        const fields = this.customerData?.fields || {};
+        const summary = this._kundresa || {};
+        const fromApi = summary.step1Substatus;
+        // Prefer live recompute from fields when possible via last API shape + local patches
+        if (fromApi && Array.isArray(fromApi.items)) {
+            // Rebuild detail for kontakt/screening from current personer after local edits
+            try {
+                return this._recomputeStep1SubstatusClient(fromApi);
+            } catch (_) {
+                return fromApi;
+            }
+        }
+        return { items: [], remaining: [], remainingLabel: '', attentionCount: 0, doneCount: 0, totalCount: 0, controlsMeta: '0 kontroller · 0 klara' };
+    }
+
+    _recomputeStep1SubstatusClient(base) {
+        const fields = this.customerData?.fields || {};
+        const bolagsform = String(fields.Bolagsform || '');
+        const vhRelevant = !/enskild\s*firma|fysisk/i.test(bolagsform);
+        const personer = Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner : [];
+        const isVh = (p) => (this._getRollerList(p) || []).some((r) => /verklig\s+huvudman/i.test(String(r || '')));
+        const vhs = personer.filter(isVh);
+        const kf = this._kundformularSummary || {};
+        const byraVal = kf.byraVhBekraftelse || this._kundresa?.byraVhBekraftelse || '';
+        const byraUpdatedAt = String(kf.byraVhUpdatedAt || this._kundresa?.byraVhUpdatedAt || '').slice(0, 10);
+        const bvOk = !!(fields['Bolagsverket uppdaterad'] || (fields.Orgnr && fields.Namn));
+        const screenDatum = String(fields['Entity screening datum'] || fields['PEP entity screening datum'] || '').slice(0, 10);
+        const screenOk = !!screenDatum;
+        const personsUnscreened = personer.filter((p) => !String(p.pepSoktDatum || '').trim()).length;
+        const bvDatum = String(fields['Bolagsverket uppdaterad'] || '').slice(0, 10);
+        const statusLabel = String(fields.Status || fields.Bolagsstatus || '').trim();
+
+        const items = [];
+        // a BV
+        items.push({
+            key: 'bolagsverket',
+            anchor: 'bv',
+            title: 'Uppgifter hämtade från Bolagsverket',
+            status: bvOk ? 'done' : 'attention',
+            detail: bvOk
+                ? [bvDatum ? `Uppdaterat ${bvDatum}` : 'Hämtat', bolagsform, statusLabel].filter(Boolean).join(' · ')
+                : 'Hämtas / fylls i'
+        });
+        // b VH
+        if (vhRelevant) {
+            let vhStatus = 'pending';
+            let vhDetail = 'Bekräfta mot registret';
+            if (byraVal === 'Ja') {
+                vhStatus = 'done';
+                const names = vhs.map((p) => p.namn).filter(Boolean).join(', ') || 'Bekräftad';
+                vhDetail = byraUpdatedAt ? `${names} · bekräftat ${byraUpdatedAt}` : `${names} · bekräftad mot registret`;
+            } else if (byraVal === 'Osaker' || byraVal === 'Nej') {
+                vhStatus = 'attention';
+                vhDetail = byraVal === 'Nej' ? 'Markerad Nej' : 'Osäker — utred';
+            }
+            items.push({
+                key: 'vh',
+                anchor: 'vh',
+                title: 'Verklig huvudman stämmer mot Bolagsverket',
+                status: vhStatus,
+                detail: vhDetail,
+                byraVal
+            });
+            // c kontakt
+            let kontaktStatus = 'pending';
+            let kontaktDetail = '';
+            const missing = { phone: false, email: false, vhIdx: -1, vhName: '', vhEmail: '' };
+            if (!vhs.length) {
+                kontaktStatus = 'attention';
+                kontaktDetail = 'VH saknas — lägg till verklig huvudman under Personer';
+            } else {
+                const gap = vhs.find((p) => {
+                    const tel = String(p.telefon || p.telefonnr || '').trim();
+                    const mail = String(p.epost || '').trim();
+                    return !tel || !mail;
+                });
+                if (gap) {
+                    kontaktStatus = 'attention';
+                    missing.phone = !String(gap.telefon || gap.telefonnr || '').trim();
+                    missing.email = !String(gap.epost || '').trim();
+                    missing.vhIdx = personer.indexOf(gap);
+                    missing.vhName = gap.namn || '';
+                    missing.vhEmail = gap.epost || '';
+                    if (missing.phone && !missing.email) {
+                        const who = [missing.vhName, missing.vhEmail].filter(Boolean).join(' · ');
+                        kontaktDetail = who ? `Krävs för aktiebolag. ${who}` : 'Krävs för aktiebolag';
+                    } else if (missing.email && !missing.phone) {
+                        kontaktDetail = missing.vhName
+                            ? `Krävs för aktiebolag. ${missing.vhName}`
+                            : 'Krävs för aktiebolag';
+                    } else {
+                        const parts = [];
+                        if (missing.phone) parts.push('Telefon saknas');
+                        if (missing.email) parts.push('E-post saknas');
+                        kontaktDetail = parts.join(' · ');
+                    }
+                } else {
+                    kontaktStatus = 'done';
+                    kontaktDetail = vhs.length === 1
+                        ? `${vhs[0].namn || 'VH'} · telefon & e-post`
+                        : `${vhs.length} VH med kontaktuppgifter`;
+                }
+            }
+            let kontaktTitle = 'Kontaktuppgifter för verklig huvudman';
+            if (kontaktStatus !== 'done') {
+                if (!vhs.length) kontaktTitle = 'Lägg till verklig huvudman';
+                else if (missing.phone && !missing.email) kontaktTitle = 'Lägg till telefon för verklig huvudman';
+                else if (missing.email && !missing.phone) kontaktTitle = 'Lägg till e-post för verklig huvudman';
+                else kontaktTitle = 'Lägg till kontaktuppgifter för verklig huvudman';
+            }
+            items.push({
+                key: 'kontakt',
+                anchor: 'kontakt',
+                title: kontaktTitle,
+                status: kontaktStatus,
+                detail: kontaktDetail,
+                missing
+            });
+        }
+        // d screening
+        let screenDetail;
+        if (screenOk) {
+            const d = `Företaget screenat ${screenDatum}`;
+            screenDetail = personsUnscreened > 0
+                ? `${d} · ${personsUnscreened} ${personsUnscreened === 1 ? 'person' : 'personer'} ej screenade`
+                : d;
+        } else {
+            screenDetail = personsUnscreened > 0
+                ? `Ej screenat · ${personsUnscreened} ${personsUnscreened === 1 ? 'person' : 'personer'} ej screenade`
+                : 'Ej screenat';
+        }
+        items.push({
+            key: 'screening',
+            anchor: 'screening',
+            title: 'PEP- och sanktionsscreening',
+            status: screenOk ? 'done' : 'attention',
+            detail: screenDetail,
+            screenOk,
+            screenDatum,
+            personsUnscreened
+        });
+
+        const attentionCount = items.filter((i) => i.status !== 'done').length;
+        const doneCount = items.filter((i) => i.status === 'done').length;
+        return {
+            items,
+            remaining: base?.remaining || [],
+            remainingLabel: attentionCount === 0
+                ? ''
+                : (attentionCount === 1 ? '1 kontroll kvar' : `${attentionCount} kontroller kvar`),
+            attentionCount,
+            doneCount,
+            totalCount: items.length,
+            controlsMeta: `${items.length} kontroller · ${doneCount} klara`
+        };
+    }
+
+    _mountKundresaStep1Checklist(host) {
+        let wrap = host.querySelector('[data-kundresa-step1-checklist]');
+        if (!wrap) {
+            wrap = document.createElement('section');
+            wrap.className = 'kundresa-att-gora';
+            wrap.setAttribute('data-kundresa-step1-checklist', '1');
+            wrap.setAttribute('data-kundresa-sec', 'checklist');
+            host.insertBefore(wrap, host.firstChild);
+        }
+        wrap.innerHTML = this._renderKundresaStep1ChecklistHtml(this._step1SubstatusLive());
+    }
+
+    _renderKundresaStep1ChecklistHtml(sub) {
+        const items = Array.isArray(sub?.items) ? sub.items : [];
+        const total = sub?.totalCount != null ? sub.totalCount : items.length;
+        const done = sub?.doneCount != null ? sub.doneCount : items.filter((i) => i.status === 'done').length;
+        const firstOpenKey = (items.find((i) => i.status !== 'done') || {}).key || '';
+        const byraVal = this._kundformularSummary?.byraVhBekraftelse
+            || this._kundresa?.byraVhBekraftelse || '';
+
+        const rows = items.map((it, idx) => {
+            const doneRow = it.status === 'done';
+            const open = !doneRow && it.key === firstOpenKey;
+            const num = idx + 1;
+            const icon = doneRow
+                ? '<span class="kundresa-check-mark" aria-hidden="true"><i class="fas fa-check-circle"></i></span>'
+                : `<span class="kundresa-check-num" aria-hidden="true">${num}</span>`;
+            let action = '';
+            if (it.key === 'bolagsverket') {
+                action = '<button type="button" class="kundresa-check-link" data-kundresa-check-action="visa-bv">Visa</button>';
+            } else if (it.key === 'vh') {
+                const segs = this._kundresaVhSegmentsHtml(byraVal);
+                if (doneRow) {
+                    action = `<button type="button" class="kundresa-check-link" data-kundresa-check-action="andra-vh">Ändra</button>
+                      <div class="kundresa-check-vh-edit" hidden data-kundresa-vh-edit>${segs}</div>`;
+                } else {
+                    action = `<div class="kundresa-check-vh-edit is-inline" data-kundresa-vh-edit>${segs}</div>`;
+                }
+            } else if (it.key === 'kontakt') {
+                const miss = it.missing || {};
+                const idxP = miss.vhIdx != null ? miss.vhIdx : -1;
+                const p = idxP >= 0 ? (this._kontaktPersoner || [])[idxP] : null;
+                if (!doneRow && p) {
+                    const needPhone = miss.phone || !String(p.telefon || p.telefonnr || '').trim();
+                    const needEmail = miss.email || !String(p.epost || '').trim();
+                    const phoneField = needPhone
+                      ? `<label class="kundresa-check-field${!needEmail ? ' is-solo' : ''}">
+                        <span class="sr-only">Telefon</span>
+                        <input type="tel" class="form-control" data-kundresa-kontakt-phone
+                          value="${this._esc(p.telefon || p.telefonnr || '')}" placeholder="070-123 45 67" autocomplete="tel">
+                      </label>` : `<input type="hidden" data-kundresa-kontakt-phone value="${this._esc(p.telefon || p.telefonnr || '')}">`;
+                    const emailField = needEmail
+                      ? `<label class="kundresa-check-field">
+                        <span class="sr-only">E-post</span>
+                        <input type="email" class="form-control" data-kundresa-kontakt-email
+                          value="${this._esc(p.epost || '')}" placeholder="namn@foretag.se">
+                      </label>` : `<input type="hidden" data-kundresa-kontakt-email value="${this._esc(p.epost || '')}">`;
+                    action = `<div class="kundresa-check-kontakt" data-kundresa-kontakt-idx="${idxP}">
+                      ${phoneField}
+                      ${emailField}
+                      <button type="button" class="btn btn-primary btn-sm" data-kundresa-check-action="spara-kontakt">Spara</button>
+                    </div>`;
+                } else if (!doneRow) {
+                    action = '<button type="button" class="kundresa-check-link" data-kundresa-check-action="add-vh">+ Lägg till VH</button>';
+                }
+            } else if (it.key === 'screening') {
+                const label = it.screenOk
+                    ? (it.personsUnscreened > 0 ? 'Screena personer' : 'Screena igen')
+                    : (it.personsUnscreened > 0 ? 'Screena personer' : 'Screena företag');
+                // Zip: sekundär/outline-knapp för screening-åtgärd
+                action = `<button type="button" class="btn btn-outline btn-sm kundresa-check-screen-btn" data-kundresa-check-action="screena">${this._esc(label)}</button>`;
+            }
+
+            // Första ofullständiga raden med formulär expanderas (#FFF9F2). Screening: knapp till höger.
+            const expandInline = !doneRow && open && (it.key === 'kontakt' || it.key === 'vh');
+            const trailing = (doneRow || (!expandInline && action))
+                ? `<div class="kundresa-check-trailing">${action}</div>`
+                : '';
+            const expanded = (expandInline && action)
+                ? `<div class="kundresa-check-action">${action}</div>`
+                : '';
+
+            return `<div class="kundresa-check-row${doneRow ? ' is-done' : ' is-todo'}${(!doneRow && open) ? ' is-open' : ''}"
+                data-kundresa-check-key="${this._esc(it.key)}" data-kundresa-sec="${this._esc(it.anchor || it.key)}">
+              <div class="kundresa-check-row-main">
+                ${icon}
+                <div class="kundresa-check-text">
+                  <div class="kundresa-check-title">${this._esc(it.title)}</div>
+                  <div class="kundresa-check-detail">${this._esc(it.detail || '')}</div>
+                </div>
+                ${trailing}
+              </div>
+              ${expanded}
+            </div>`;
+        }).join('');
+
+        // Rubrik + «N kontroller · M klara» ligger i stepinfo (zip); listan är innehållet.
+        return `<div class="kundresa-att-gora-list" role="list" aria-label="Att göra först — ${total} kontroller, ${done} klara">${rows}</div>`;
+    }
+
+    _kundresaVhSegmentsHtml(byraVal) {
+        const v = byraVal || '';
+        return `<div class="kundresa-vh-segments" role="group" aria-label="VH-bekräftelse">
+          <button type="button" class="kundresa-vh-seg${v === 'Ja' ? ' is-active' : ''}" data-kundresa-vh-seg="Ja" aria-pressed="${v === 'Ja' ? 'true' : 'false'}">Ja</button>
+          <button type="button" class="kundresa-vh-seg${v === 'Osaker' ? ' is-active' : ''}" data-kundresa-vh-seg="Osaker" aria-pressed="${v === 'Osaker' ? 'true' : 'false'}">Osäker</button>
+          <button type="button" class="kundresa-vh-seg${v === 'Nej' ? ' is-active' : ''}" data-kundresa-vh-seg="Nej" aria-pressed="${v === 'Nej' ? 'true' : 'false'}">Nej</button>
+        </div>`;
+    }
+
+    _wireKundresaStep1Checklist(host) {
+        const root = host.querySelector('[data-kundresa-step1-checklist]');
+        if (!root) return;
+
+        root.onclick = (e) => {
+            const btn = e.target.closest('[data-kundresa-check-action], [data-kundresa-vh-seg]');
+            if (!btn || !root.contains(btn)) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (btn.hasAttribute('data-kundresa-vh-seg')) {
+                const val = btn.getAttribute('data-kundresa-vh-seg') || '';
+                const note = document.querySelector('[data-kundresa-vh-note]')?.value || '';
+                const sel = document.querySelector('#kundresa-vh-panel [data-kundresa-vh]');
+                if (sel) {
+                    sel.value = val;
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                this._onKundresaVhSave({ byraVhBekraftelse: val, byraVhNote: note });
+                return;
+            }
+
+            const action = btn.getAttribute('data-kundresa-check-action');
+            if (action === 'visa-bv') {
+                this._expandKundresaBvBox(true);
+                return;
+            }
+            if (action === 'andra-vh') {
+                const edit = btn.parentElement?.querySelector('[data-kundresa-vh-edit]')
+                    || root.querySelector('[data-kundresa-vh-edit]');
+                if (edit) edit.hidden = !edit.hidden;
+                const row = btn.closest('.kundresa-check-row');
+                if (row) row.classList.add('is-open');
+                return;
+            }
+            if (action === 'spara-kontakt') {
+                this._saveKundresaChecklistKontakt(btn.closest('[data-kundresa-kontakt-idx]'));
+                return;
+            }
+            if (action === 'add-vh') {
+                this.addRollePersonAs('Verklig huvudman');
+                return;
+            }
+            if (action === 'screena') {
+                this.screenAllPepAndEntity(e);
+            }
+        };
+    }
+
+    async _saveKundresaChecklistKontakt(wrap) {
+        if (!wrap) return;
+        const idx = Number(wrap.getAttribute('data-kundresa-kontakt-idx'));
+        if (!Number.isFinite(idx) || idx < 0) return;
+        const p = (this._kontaktPersoner || [])[idx];
+        if (!p) return;
+        const phone = wrap.querySelector('[data-kundresa-kontakt-phone]')?.value.trim() || '';
+        const email = wrap.querySelector('[data-kundresa-kontakt-email]')?.value.trim() || '';
+        if (!phone || !email) {
+            this.showNotification('Telefon och e-post krävs för verklig huvudman', 'error');
+            return;
+        }
+        p.telefon = phone;
+        p.epost = email;
+        await this._saveKontaktPersoner();
+        this._refreshRollerList();
+        this._refreshKundresaAfterRollerChange();
+    }
+
+    _styleKundresaStep1Persons() {
+        const roller = document.getElementById('roller-card');
+        if (!roller) return;
+        roller.classList.add('kundresa-personer-card');
+        roller.classList.remove('is-collapsed');
+        const header = roller.querySelector('.collapsible-header');
+        if (header) {
+            header.classList.add('kundresa-personer-head');
+            header.onclick = (e) => { e.preventDefault(); e.stopPropagation(); };
+        }
+        const titleEl = roller.querySelector('.collapsible-title span');
+        if (titleEl) titleEl.textContent = 'Personer';
+        let actions = roller.querySelector('.roller-add-actions');
+        const titleWrap = roller.querySelector('.collapsible-title');
+        if (actions && titleWrap && !titleWrap.contains(actions)) {
+            actions.classList.add('kundresa-personer-add');
+            actions.querySelectorAll('button').forEach((b) => {
+                b.classList.add('kundresa-personer-add-link');
+                b.classList.remove('btn', 'btn-ghost', 'btn-sm');
+                const t = b.textContent || '';
+                if (/ombud/i.test(t)) b.textContent = '+ Lägg till ombud';
+                else if (/person/i.test(t)) b.textContent = '+ Lägg till person';
+            });
+            titleWrap.appendChild(actions);
+        }
+        const dashed = roller.querySelector('.roller-add-dashed');
+        if (dashed) dashed.hidden = true;
+        const placeholder = roller.querySelector('.roller-ledamoter-placeholder');
+        if (placeholder) placeholder.hidden = true;
+        const sub = roller.querySelector('.kundresa-sec-sub');
+        if (sub) sub.hidden = true;
+    }
+
+    _styleKundresaStep1BvCollapsed() {
+        const bv = document.getElementById('bolagsverket-card');
+        if (!bv) return;
+        bv.classList.add('kundresa-bv-collapsed');
+        bv.setAttribute('data-kundresa-sec', 'bv');
+        const fields = this.customerData?.fields || {};
+        const orgnr = fields.Orgnr || fields.orgnr || '';
+        const form = fields.Bolagsform || '';
+        const status = fields.Status || fields.Bolagsstatus || '';
+        const ort = (() => {
+            const a = String(fields.Address || fields.Adress || '');
+            const m = a.match(/(\d{3}\s?\d{2})\s+([A-Za-zÅÄÖåäöÉé\- ]+)/);
+            if (m) return m[2].trim();
+            const parts = a.split(',').map((s) => s.trim()).filter(Boolean);
+            return parts.length > 1 ? parts[parts.length - 1].replace(/^\d{3}\s?\d{2}\s*/, '') : '';
+        })();
+        const sni = fields.SNI || fields['SNI-kod'] || fields.Sni || '';
+        const summaryParts = [orgnr, form, status, ort, sni].filter(Boolean);
+
+        let summary = bv.querySelector('[data-kundresa-bv-summary]');
+        if (!summary) {
+            summary = document.createElement('div');
+            summary.className = 'kundresa-bv-summary';
+            summary.setAttribute('data-kundresa-bv-summary', '1');
+            bv.insertBefore(summary, bv.firstChild);
+        }
+        summary.innerHTML = `
+          <div class="kundresa-bv-summary-top">
+            <div class="kundresa-bv-summary-titles">
+              <h3 class="kundresa-bv-summary-title">Företaget enligt Bolagsverket</h3>
+              <p class="kundresa-bv-summary-line">${this._esc(summaryParts.join(' · '))}</p>
+            </div>
+            <button type="button" class="kundresa-check-link" data-kundresa-bv-toggle>Visa alla uppgifter</button>
+          </div>`;
+        const toggle = summary.querySelector('[data-kundresa-bv-toggle]');
+        if (toggle) {
+            toggle.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._expandKundresaBvBox();
+            };
+        }
+        if (!bv.classList.contains('is-bv-expanded')) {
+            const body = bv.querySelector('.collapsible-body');
+            if (body) body.hidden = true;
+            const header = bv.querySelector('.collapsible-header');
+            if (header) header.hidden = true;
+            const fab = bv.querySelector('.card-edit-fab');
+            if (fab) fab.hidden = true;
+        }
+    }
+
+    _expandKundresaBvBox(scroll) {
+        const bv = document.getElementById('bolagsverket-card');
+        if (!bv) return;
+        const expanding = !bv.classList.contains('is-bv-expanded');
+        bv.classList.toggle('is-bv-expanded', expanding);
+        const body = bv.querySelector('.collapsible-body');
+        if (body) body.hidden = !expanding;
+        const header = bv.querySelector('.collapsible-header');
+        if (header) header.hidden = !expanding;
+        const fab = bv.querySelector('.card-edit-fab');
+        if (fab) fab.hidden = !expanding;
+        const toggle = bv.querySelector('[data-kundresa-bv-toggle]');
+        if (toggle) toggle.textContent = expanding ? 'Dölj uppgifter' : 'Visa alla uppgifter';
+        if (scroll && bv.scrollIntoView) {
+            bv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    _refreshKundresaStep1Remaining() {
+        if (!this._kundresa) return;
+        try {
+            const sub = this._step1SubstatusLive();
+            this._kundresa.step1Substatus = sub;
+            const foot = document.querySelector('.kundresa-step-remaining');
+            if (foot && (this._activeKundresaFocus === 'foretag_personer' || Number(this._activeKundresaStepId) === 1)) {
+                if (sub.attentionCount > 0) {
+                    foot.classList.remove('is-ok');
+                    foot.innerHTML = `<i class="fas fa-exclamation-circle" aria-hidden="true"></i> ${this._esc(sub.remainingLabel)}`;
+                } else {
+                    foot.classList.add('is-ok');
+                    foot.textContent = '';
+                }
+            }
+            const step = (this._kundresa.steps || []).find((s) => Number(s.id) === 1);
+            if (step && !step.done) {
+                const n = sub.attentionCount;
+                if (n > 0) {
+                    step.label = n === 1 ? '1 sak kvar' : `${n} saker kvar`;
+                    const tabStatus = document.querySelector('.tjanst-tab[data-kundresa-step-id="1"] .kundresa-tab-status');
+                    if (tabStatus) tabStatus.textContent = step.label;
+                }
+            }
+        } catch (_) { /* ignore */ }
     }
 
     _enhanceKundresaStep3() {
@@ -12406,7 +12887,7 @@ class CustomerCardManager {
                 if (!node) console.warn('[kundresa] saknar kort vid mount:', sel);
             });
 
-            // Steg 1: Bolagsverket → Personer → VH-verifiering → PEP/screening
+            // Steg 1 checklista: Att göra först → Personer → Bolagsverket (kollapsad)
             const isStep1 = focus === 'foretag_personer' || focus === 'screening'
                 || focus === 'nykund' || focus === 'sok_hamta' || Number(stepId) === 1;
             if (isStep1) {
@@ -12424,60 +12905,30 @@ class CustomerCardManager {
                         movedExtras.push({ kind: 'title', titleEl, prevText: titleEl.textContent });
                         titleEl.textContent = 'Personer';
                     }
-                    const count = Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner.length : 0;
-                    let sub = roller.querySelector('.kundresa-sec-sub');
-                    if (!sub) {
-                        const titleWrap = roller.querySelector('.collapsible-title');
-                        if (titleWrap) {
-                            sub = document.createElement('span');
-                            sub.className = 'kundresa-sec-sub';
-                            titleWrap.appendChild(sub);
-                            movedExtras.push({ kind: 'node', node: sub, parent: titleWrap, nextSibling: null });
-                        }
-                    }
-                    if (sub) {
-                        sub.textContent = count
-                            ? `· ${count}`
-                            : 'Ledamöter hämtas från Bolagsverket längre fram – lägg till manuellt tills vidare';
-                    }
                 }
 
-                if (screening && screening.parentNode) {
-                    movedExtras.push({
-                        kind: 'node',
-                        node: screening,
-                        parent: screening.parentNode,
-                        nextSibling: screening.nextSibling
-                    });
-                    screening.classList.add('kundresa-embed-section');
-                    screening.remove();
-                }
-
-                if (bv) {
-                    bv.setAttribute('data-kundresa-sec', 'bv');
-                    host.appendChild(bv);
-                }
-                if (roller) {
-                    roller.setAttribute('data-kundresa-sec', 'personer');
-                    host.appendChild(roller);
-                }
-                if (vhPanel && !vhPanel.hidden) {
+                if (vhPanel) {
                     movedExtras.push({
                         kind: 'node',
                         node: vhPanel,
                         parent: vhPanel.parentNode,
                         nextSibling: vhPanel.nextSibling
                     });
-                    vhPanel.classList.add('kundresa-embed-section');
-                    vhPanel.classList.remove('kundresa-vh-box--source');
+                    vhPanel.classList.add('kundresa-embed-section', 'kundresa-vh-box--source');
                     vhPanel.setAttribute('data-kundresa-sec', 'vh');
-                    host.appendChild(vhPanel);
+                    vhPanel.hidden = true;
                 }
-                if (screening) {
-                    screening.hidden = false;
-                    screening.setAttribute('data-kundresa-sec', 'screening');
-                    host.appendChild(screening);
+
+                if (roller) {
+                    roller.setAttribute('data-kundresa-sec', 'personer');
+                    host.appendChild(roller);
                 }
+                if (bv) {
+                    bv.setAttribute('data-kundresa-sec', 'bv');
+                    host.appendChild(bv);
+                }
+                if (vhPanel) host.appendChild(vhPanel);
+                if (screening) screening.setAttribute('data-kundresa-sec', 'screening');
 
                 const rolesList = document.getElementById('roles-list');
                 if (rolesList) rolesList.classList.add('roles-list--kundresa');

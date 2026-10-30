@@ -1,7 +1,7 @@
 /**
  * Kundresa-UI — popup «Din resa» (analyskorts-design) med INBÄDDAT steg-innehåll.
  * Stegytan (#kundresa-step-host) fylls av CustomerCardManager via reparent av befintliga kort.
- * Steg 1: Förslag 1 · Företag & personer (#kundresa-step-host: statuschecklista + vita sektionskort).
+ * Steg 1: Att göra först — checklista i #kundresa-step-host (BV, VH, kontakt, screening).
  * övriga steg behåller Förslag 2 · Lugnare-chrome. Spar-API oförändrat.
  */
 (function (global) {
@@ -171,12 +171,16 @@
     const step1Sub = s.step1Substatus || null;
     const step2Sub = s.step2Substatus || null;
     const step3Sub = s.step3Substatus || null;
-    const showChecklist = isStep1(activeStep) && step1Sub && Array.isArray(step1Sub.items) && step1Sub.items.length;
+    const showChecklist = false; /* checklista byggs i #kundresa-step-host */
     const remainingLabel = isStep1(activeStep)
       ? (step1Sub?.remainingLabel || '')
       : (isStep2(activeStep)
         ? (step2Sub?.remainingLabel || '')
         : (isStep3(activeStep) ? (step3Sub?.remainingLabel || '') : ''));
+    const step1ControlsMeta = step1Sub?.controlsMeta
+      || (step1Sub && step1Sub.totalCount != null
+        ? `${step1Sub.totalCount} kontroller · ${step1Sub.doneCount || 0} klara`
+        : '');
     const totalSteps = steps.length || Number(s.total) || 4;
     const isLastStep = isStep4(activeStep);
     const stepNum = activeStep
@@ -240,11 +244,11 @@
           </div>` : ''}
 
           ${activeStep ? `<header class="kundresa-popup-stepinfo kundresa-popup-stepinfo--compact${(isStep2(activeStep) || isStep3(activeStep)) ? ' kundresa-popup-stepinfo--row' : ''}${isSteg1 ? ' kundresa-popup-stepinfo--steg1' : ''}">
-            <p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>
+            ${isSteg1 ? '' : `<p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>`}
             <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
             ${(isStep2(activeStep) || isStep3(activeStep)) ? `<span class="kundresa-step2-autosave is-saved" data-kundresa-autosave><i class="fas fa-check" aria-hidden="true"></i> Sparas automatiskt</span>` : ''}
-            ${companyLabel ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
-            <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>
+            ${companyLabel && !isSteg1 ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
+            <p class="kundresa-popup-stepdesc">${esc(isSteg1 ? (step1ControlsMeta || '') : (activeStep.desc || ''))}</p>
           </header>` : ''}
 
           <div class="kundresa-popup-scroll" data-kundresa-scroll>
@@ -549,7 +553,7 @@
       || steps[0]
       || null;
     const step1Sub = s.step1Substatus || null;
-    const showChecklist = isStep1(activeStep) && step1Sub && Array.isArray(step1Sub.items) && step1Sub.items.length;
+    const showChecklist = false; /* checklista byggs i #kundresa-step-host */
     const remainingLabel = remainingLabelFor(s, activeStep);
     const progress = progressMeta(s);
     const isLastStep = isStep4(activeStep);
@@ -560,6 +564,10 @@
     const companyLabel = [s.customerName, s.customerOrgnr].filter(Boolean).join(' · ');
     const showVhPanel = gate.relevant !== false
       && (isVhStep(activeStep) || gate.blocked || Number(activeStepId) === 1);
+    const step1ControlsMeta = step1Sub?.controlsMeta
+      || (step1Sub && step1Sub.totalCount != null
+        ? `${step1Sub.totalCount} kontroller · ${step1Sub.doneCount || 0} klara`
+        : '');
 
     layout.className = `kundresa-popup-layout tjanst-modal-layout kundresa-popup-layout--embed${layoutStepClassFor(activeStep)}`;
 
@@ -592,11 +600,12 @@
       const autosave = (isStep2(activeStep) || isStep3(activeStep))
         ? `<span class="kundresa-step2-autosave is-saved" data-kundresa-autosave><i class="fas fa-check" aria-hidden="true"></i> Sparas automatiskt</span>`
         : '';
-      const html = `<p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>
+      const stepDesc = isStep1(activeStep) ? (step1ControlsMeta || '') : (activeStep.desc || '');
+      const html = `${isStep1(activeStep) ? '' : `<p class="kundresa-popup-stepmeta">Steg ${esc(String(stepNum))} av ${esc(String(totalSteps))}</p>`}
             <h4 class="kundresa-popup-steptitle">${esc(activeStep.title)}</h4>
             ${autosave}
-            ${companyLabel ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
-            <p class="kundresa-popup-stepdesc">${esc(activeStep.desc || '')}</p>`;
+            ${companyLabel && !isStep1(activeStep) ? `<p class="kundresa-popup-company">${esc(companyLabel)}</p>` : ''}
+            <p class="kundresa-popup-stepdesc">${esc(stepDesc)}</p>`;
       if (!stepinfo) {
         stepinfo = document.createElement('header');
         const scroll = container.querySelector('[data-kundresa-scroll]');
@@ -609,18 +618,8 @@
 
     const scroll = container.querySelector('[data-kundresa-scroll]');
     if (scroll) {
-      let checklist = scroll.querySelector('.kundresa-step1-checklist');
-      if (showChecklist) {
-        const html = renderStep1Checklist(step1Sub);
-        if (checklist) {
-          checklist.outerHTML = html;
-        } else {
-          host.insertAdjacentHTML('beforebegin', html);
-        }
-        bindChecklistScroll(container);
-      } else if (checklist) {
-        checklist.remove();
-      }
+      const checklist = scroll.querySelector('.kundresa-step1-checklist');
+      if (checklist) checklist.remove();
     }
 
     host.setAttribute('data-active-focus', activeStep?.focus || '');
